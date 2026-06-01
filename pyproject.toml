@@ -1,0 +1,82 @@
+[project]
+name = "gmm-divergence"
+version = "0.0.1a1"
+description = "Utilities for estimating divergences between Gaussian mixture models."
+readme = "README.md"
+authors = [
+    { name = "David Axelsson", email = "david.axelsson@liu.se" }
+]
+license = "Apache-2.0"
+license-files = ["LICENSE"]
+requires-python = ">=3.10"
+keywords = ["divergence", "gaussian-mixture-model", "gmm", "kl-divergence", "numpy"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Intended Audience :: Science/Research",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Scientific/Engineering",
+    "Typing :: Typed",
+]
+dependencies = [
+    "numpy>=2.2.6",
+    "typing-extensions>=4.13.2",
+]
+
+[dependency-groups]
+build = [
+    "build>=1.5.0",
+    "twine>=6.2.0",
+]
+test = [
+    "pytest>=8.3.5",
+    "pytest-benchmark>=5.2.3",
+]
+
+[build-system]
+requires = ["uv_build>=0.11.16,<0.12.0"]
+build-backend = "uv_build"
+
+[tool.ruff]
+line-length = 100
+preview = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "D203",
+    "D213",
+    "COM812",
+    "PLR2004",
+    "DOC201",
+    "DOC501",
+    "TRY003",
+    "D100",
+    "PLR0904",
+    "TD002",
+    "TD003",
+    "PLR0913",
+    "PLR0917",
+    "PLR0914",
+    "DOC402",
+    "CPY001",
+    "D104",
+    "TD005",
+    "PLC2801",
+    "D101",
+]
+pydocstyle = { convention = "numpy" }
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**/*.py" = ["D", "INP001", "S101", "PLC2701"]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
