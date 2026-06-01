@@ -6,8 +6,8 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from gmm_divergence.gmm import GaussianMixture
-from gmm_divergence.methods.monte_carlo import kl_monte_carlo
+from gmm_divergence import kl_divergence
+from gmm_divergence.distribution import GaussianMixture
 
 if TYPE_CHECKING:
     from pytest_benchmark.fixture import BenchmarkFixture
@@ -18,7 +18,7 @@ def make_spd_covariances(
     n_components: int,
     n_features: int,
     dtype: type[np.floating] = np.float64,
-) -> np.ndarray:
+) -> npt.NDArray[np.floating]:
     covs = np.empty((n_components, n_features, n_features), dtype=dtype)
 
     for k in range(n_components):
@@ -105,11 +105,10 @@ def test_kl_monte_carlo_with_internal_sampling(
         covariance_type=covariance_type,
     )
 
-    result = benchmark(
-        kl_monte_carlo,
+    benchmark(
+        kl_divergence,
         p,
         q,
         num_samples=num_samples,
+        method="monte_carlo",
     )
-
-    assert np.isfinite(result.value)

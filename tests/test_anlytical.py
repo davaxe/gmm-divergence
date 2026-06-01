@@ -1,27 +1,31 @@
 from __future__ import annotations
 
 import numpy as np
+import numpy.typing as npt
 import pytest
 
 from gmm_divergence import kl_divergence
-from gmm_divergence.gmm import GaussianMixture
+from gmm_divergence.distribution import GaussianMixture
 
 
 def kl_normal(
-    mean_p: np.ndarray,
-    covariance_p: np.ndarray,
-    mean_q: np.ndarray,
-    covariance_q: np.ndarray,
+    mean_p: npt.NDArray[np.float64],
+    covariance_p: npt.NDArray[np.float64],
+    mean_q: npt.NDArray[np.float64],
+    covariance_q: npt.NDArray[np.float64],
 ) -> float:
     n_features = mean_p.shape[0]
     covariance_q_inv = np.linalg.inv(covariance_q)
     mean_delta = mean_q - mean_p
 
-    return 0.5 * (
-        np.trace(covariance_q_inv @ covariance_p)
-        + mean_delta @ covariance_q_inv @ mean_delta
-        - n_features
-        + np.log(np.linalg.det(covariance_q) / np.linalg.det(covariance_p))
+    return float(
+        0.5
+        * (
+            np.trace(covariance_q_inv @ covariance_p)
+            + mean_delta @ covariance_q_inv @ mean_delta
+            - n_features
+            + np.log(np.linalg.det(covariance_q) / np.linalg.det(covariance_p))
+        )
     )
 
 

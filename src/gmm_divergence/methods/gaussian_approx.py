@@ -8,7 +8,8 @@ import numpy.typing as npt
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.gmm.model import GaussianMixture, PrecisionT
+    from gmm_divergence.distribution.gmm import GaussianMixture
+    from gmm_divergence.typing import PrecisionT
 
 Approximation = Literal["nearest", "moment_matching"]
 
@@ -27,12 +28,9 @@ def kl_gaussian_approximation(
             value=_kl_single_gaussian(mean_p, cov_p, mean_q, cov_q),
             method="moment_matching",
         )
-    if approximation == "nearest":
-        return DivergenceResult(
-            value=_nearest_component_approximation(p, q), method="nearest_component"
-        )
-    msg = f"Unsupported approximation method: {approximation}"
-    raise ValueError(msg)
+    return DivergenceResult(
+        value=_nearest_component_approximation(p, q), method="nearest_component"
+    )
 
 
 def _moment_matching_approximation(

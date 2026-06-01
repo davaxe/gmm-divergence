@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence.gmm.sampling import sample_gmm
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.gmm.model import GaussianMixture, PrecisionT
+    from gmm_divergence.distribution.gmm import GaussianMixture
+    from gmm_divergence.typing import PrecisionT
 
 
 def kl_monte_carlo(
@@ -42,4 +42,4 @@ def _resolve_samples(
             msg = f"Expected samples of shape (n_samples, n_features), got {samples.shape}"
             raise ValueError(msg)
         return samples
-    return sample_gmm(gmm, n_samples=num_samples, rng=rng)
+    return gmm.sample(n_samples=num_samples, rng=rng)

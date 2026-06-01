@@ -10,8 +10,9 @@ if TYPE_CHECKING:
     import numpy as np
     import numpy.typing as npt
 
-    from gmm_divergence.gmm.model import GaussianMixture, PrecisionT
+    from gmm_divergence.distribution.gmm import GaussianMixture
     from gmm_divergence.results import DivergenceResult
+    from gmm_divergence.typing import PrecisionT
 
 KLMethod = Literal["monte_carlo", "unscented", "gaussian_approximation"]
 
@@ -22,8 +23,8 @@ def kl_divergence(
     q: GaussianMixture[PrecisionT],
     /,
     *,
-    method: Literal["gaussian_approximation"] = ...,
-    approximation: Literal["nearest", "moment_matching"] = "moment_matching",
+    method: Literal["gaussian_approximation"] = "gaussian_approximation",
+    approximation: Literal["nearest", "moment_matching"] = ...,
 ) -> DivergenceResult: ...
 
 

@@ -8,7 +8,8 @@ import numpy.typing as npt
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.gmm.model import GaussianMixture, PrecisionT
+    from gmm_divergence.distribution.gmm import GaussianMixture
+    from gmm_divergence.typing import PrecisionT
 
 
 def kl_unscented(

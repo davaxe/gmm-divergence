@@ -28,6 +28,9 @@ dependencies = [
     "typing-extensions>=4.13.2",
 ]
 
+[project.urls]
+"Repository" = "https://github.com/davaxe/gmm-divergence"
+
 [dependency-groups]
 build = [
     "build>=1.5.0",
@@ -36,6 +39,9 @@ build = [
 test = [
     "pytest>=8.3.5",
     "pytest-benchmark>=5.2.3",
+]
+typecheck = [
+    "pyrefly>=1.0.0",
 ]
 
 [build-system]
@@ -80,3 +86,18 @@ ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.basedpyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "recommended"
+include = ["src", "tests"]
+reportAny = false
+reportUnknownMemberType = false
+
+[tool.pyrefly]
+project-includes = ["src/**/*.py", "tests/**/*.py"]
+search-path = ["src"]
+python-interpreter-path = ".venv/bin/python"
+python-version = "3.10"
+min-severity = "warn"
