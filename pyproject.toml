@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a1"
+version = "0.0.1a2"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
