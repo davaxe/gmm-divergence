@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 
 from gmm_divergence.estimators._components import as_gaussian_components
 from gmm_divergence.results import DivergenceResult
@@ -12,14 +11,10 @@ if TYPE_CHECKING:
     from gmm_divergence.distribution.base import Distribution
     from gmm_divergence.distribution.gaussian import Gaussian
     from gmm_divergence.distribution.gmm import GaussianMixture
-    from gmm_divergence.typing import PrecisionT
+    from gmm_divergence.typing import FloatArray
 
 
-def kl_unscented(
-    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    q: Distribution[PrecisionT],
-    /,
-) -> DivergenceResult:
+def kl_unscented(p: Gaussian | GaussianMixture, q: Distribution, /) -> DivergenceResult:
     """Estimate KL divergence with unscented sigma points."""
     weights, means, covariances = as_gaussian_components(p)
     sigma_points = _sigma_points(means, covariances)
@@ -35,11 +30,7 @@ def kl_unscented(
     )
 
 
-def _sigma_points(
-    means: npt.NDArray[PrecisionT],
-    covariances: npt.NDArray[PrecisionT],
-    /,
-) -> npt.NDArray[PrecisionT]:
+def _sigma_points(means: FloatArray, covariances: FloatArray, /) -> FloatArray:
     """Compute sigma points for Gaussian components."""
     n_components, dim = means.shape
     eigenvalues, eigenvectors = np.linalg.eigh(covariances)
@@ -48,7 +39,7 @@ def _sigma_points(
     offsets = eigenvectors * scales[:, None, :]  # (K, d, d)
     sigma_points = np.empty(
         (n_components, 2 * dim, dim),
-        dtype=means.dtype,
+        dtype=np.float64,
     )
     sigma_points[:, :dim, :] = means[:, None, :] + offsets.transpose(0, 2, 1)
     sigma_points[:, dim:, :] = means[:, None, :] - offsets.transpose(0, 2, 1)

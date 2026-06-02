@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal
 
 import numpy as np
-import numpy.typing as npt
 
 from gmm_divergence.distribution import Gaussian
 from gmm_divergence.estimators._components import as_gaussian_components
@@ -11,14 +10,14 @@ from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence.distribution.gmm import GaussianMixture
-    from gmm_divergence.typing import PrecisionT
+    from gmm_divergence.typing import FloatArray
 
 Approximation = Literal["nearest", "moment_matching"]
 
 
 def kl_gaussian_approximation(
-    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    q: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    p: Gaussian | GaussianMixture,
+    q: Gaussian | GaussianMixture,
     /,
     approximation: Approximation = "moment_matching",
 ) -> DivergenceResult:
@@ -36,8 +35,8 @@ def kl_gaussian_approximation(
 
 
 def _moment_matching_approximation(
-    distribution: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-) -> tuple[npt.NDArray[PrecisionT], npt.NDArray[PrecisionT]]:
+    distribution: Gaussian | GaussianMixture,
+) -> tuple[FloatArray, FloatArray]:
     """Compute mean and covariance of the Gaussian approximation."""
     if isinstance(distribution, Gaussian):
         return distribution.mean, distribution.covariance
@@ -54,8 +53,8 @@ def _moment_matching_approximation(
 
 
 def _nearest_component_approximation(
-    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    q: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    p: Gaussian | GaussianMixture,
+    q: Gaussian | GaussianMixture,
     /,
 ) -> float:
     """Find the component of q closest to p in KL divergence."""
@@ -75,10 +74,10 @@ def _nearest_component_approximation(
 
 
 def _kl_single_gaussian(
-    mean_p: npt.NDArray[PrecisionT],
-    cov_p: npt.NDArray[PrecisionT],
-    mean_q: npt.NDArray[PrecisionT],
-    cov_q: npt.NDArray[PrecisionT],
+    mean_p: FloatArray,
+    cov_p: FloatArray,
+    mean_q: FloatArray,
+    cov_q: FloatArray,
 ) -> float:
     """Compute KL divergence between two Gaussians."""
     dim = mean_p.shape[0]

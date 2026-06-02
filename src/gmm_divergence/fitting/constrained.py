@@ -9,26 +9,26 @@ from scipy.optimize import LinearConstraint, minimize
 from gmm_divergence.distribution.gmm import GaussianMixture
 from gmm_divergence.divergence import kl_divergence
 from gmm_divergence.results import KLFitResult
-from gmm_divergence.typing import PrecisionT
 from gmm_divergence.utils import logsumexp, resolve_samples
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from gmm_divergence.distribution.gaussian import Gaussian
+    from gmm_divergence.typing import FloatArray
 
 
 def fit_forward_kl_weights_constrained(
-    target: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    components: Sequence[Gaussian[PrecisionT] | GaussianMixture[PrecisionT]],
+    target: Gaussian | GaussianMixture,
+    components: Sequence[Gaussian | GaussianMixture],
     num_samples: int = 10_000,
     rng: np.random.Generator | int | None = None,
     samples: npt.ArrayLike | None = None,
-) -> KLFitResult[PrecisionT]:
+) -> KLFitResult:
     """Fit mixture weights by minimizing forward KL with constrained optimization."""
     samples = resolve_samples(target, num_samples, samples, rng)
     q_component = len(components)
-    log_q: npt.NDArray[PrecisionT] = np.zeros((num_samples, q_component), dtype=target.dtype)
+    log_q: FloatArray = np.zeros((num_samples, q_component), dtype=np.float64)
 
     for i, qi in enumerate(components):
         log_q[:, i] = qi.logpdf(samples)
@@ -61,9 +61,7 @@ def fit_forward_kl_weights_constrained(
             "maxiter": 1000,
         },
     )
-    fitted_mixture = GaussianMixture[PrecisionT].from_distributions(
-        weights=result.x, distributions=components
-    )
+    fitted_mixture = GaussianMixture.from_distributions(weights=result.x, distributions=components)
     return KLFitResult(
         weights=result.x.astype(np.float64),
         objective=result.fun,

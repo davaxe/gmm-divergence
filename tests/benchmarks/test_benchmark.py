@@ -17,14 +17,13 @@ def make_spd_covariances(
     rng: np.random.Generator,
     n_components: int,
     n_features: int,
-    dtype: type[np.floating] = np.float64,
-) -> npt.NDArray[np.floating]:
-    covs = np.empty((n_components, n_features, n_features), dtype=dtype)
+) -> npt.NDArray[np.float64]:
+    covs = np.empty((n_components, n_features, n_features), dtype=np.float64)
 
     for k in range(n_components):
-        matrix = rng.normal(size=(n_features, n_features)).astype(dtype)
+        matrix = rng.normal(size=(n_features, n_features)).astype(np.float64)
         cov = matrix @ matrix.T
-        cov += np.eye(n_features, dtype=dtype) * dtype(1e-3)
+        cov += np.eye(n_features, dtype=np.float64) * np.float64(1e-3)
         covs[k] = cov
 
     return covs
@@ -48,7 +47,7 @@ def make_gmm(
     n_components: int,
     n_features: int,
     covariance_shape: str,
-) -> GaussianMixture[np.float64]:
+) -> GaussianMixture:
     rng = np.random.default_rng(seed)
 
     weights = rng.uniform(size=n_components)

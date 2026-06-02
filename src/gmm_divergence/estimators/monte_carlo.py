@@ -10,12 +10,11 @@ from gmm_divergence.utils import resolve_samples
 
 if TYPE_CHECKING:
     from gmm_divergence.distribution.base import Distribution
-    from gmm_divergence.typing import PrecisionT
 
 
 def kl_monte_carlo(
-    p: Distribution[PrecisionT],
-    q: Distribution[PrecisionT],
+    p: Distribution,
+    q: Distribution,
     /,
     *,
     num_samples: int = 10_000,

@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Generic
-
-from gmm_divergence.typing import PrecisionT
+from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
     import numpy as np
@@ -21,9 +19,9 @@ class DivergenceResult:
 
 
 @dataclass(frozen=True, slots=True)
-class KLFitResult(Generic[PrecisionT]):
+class KLFitResult:
     weights: npt.NDArray[np.float64]
     objective: float
     estimated_kl: DivergenceResult
     scipy_result: OptimizeResult | None
-    fitted_mixture: GaussianMixture[PrecisionT]
+    fitted_mixture: GaussianMixture

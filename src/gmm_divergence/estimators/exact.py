@@ -8,10 +8,9 @@ from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence.distribution import Gaussian
-    from gmm_divergence.typing import PrecisionT
 
 
-def kl_exact(p: Gaussian[PrecisionT], q: Gaussian[PrecisionT]) -> DivergenceResult:
+def kl_exact(p: Gaussian, q: Gaussian) -> DivergenceResult:
     """Compute KL divergence exactly by summing over all component pairs."""
     dim = p.dim
     inv_cov_q = np.linalg.inv(q.covariance)

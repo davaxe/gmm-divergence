@@ -13,21 +13,20 @@ if TYPE_CHECKING:
     from gmm_divergence.distribution.gaussian import Gaussian
     from gmm_divergence.distribution.gmm import GaussianMixture
     from gmm_divergence.results import KLFitResult
-    from gmm_divergence.typing import PrecisionT
 
 FitMethod = Literal["forward_kl_constrained"]
 
 
 def fit_weights(
-    target: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    components: Sequence[Gaussian[PrecisionT] | GaussianMixture[PrecisionT]],
+    target: Gaussian | GaussianMixture,
+    components: Sequence[Gaussian | GaussianMixture],
     /,
     *,
     method: FitMethod = "forward_kl_constrained",
     num_samples: int = 10_000,
     samples: npt.ArrayLike | None = None,
     rng: np.random.Generator | int | None = None,
-) -> KLFitResult[PrecisionT]:
+) -> KLFitResult:
     """Fit mixture weights to minimize KL divergence."""
     match method:
         case "forward_kl_constrained":

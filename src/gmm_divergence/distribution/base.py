@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from typing import Generic, TypeAlias
+from typing import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence.typing import PrecisionT, PrecisionT_co
+from gmm_divergence.typing import FloatArray
 
 GaussianComponentArrays: TypeAlias = tuple[
-    npt.NDArray[PrecisionT],
-    npt.NDArray[PrecisionT],
-    npt.NDArray[PrecisionT],
+    FloatArray,
+    FloatArray,
+    FloatArray,
 ]
 
 
-class Distribution(ABC, Generic[PrecisionT_co]):
+class Distribution(ABC):
     """Base class for probability distributions used in divergence computations."""
 
     @abstractmethod
-    def logpdf(self, x: npt.ArrayLike) -> npt.NDArray[PrecisionT_co]:
+    def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Compute the log probability density at the given points."""
         ...
 
@@ -28,7 +28,7 @@ class Distribution(ABC, Generic[PrecisionT_co]):
         self,
         n_samples: int,
         rng: np.random.Generator | int | None = None,
-    ) -> npt.NDArray[PrecisionT_co]:
+    ) -> FloatArray:
         """Generate samples from the distribution."""
         ...
 
@@ -39,11 +39,10 @@ class Distribution(ABC, Generic[PrecisionT_co]):
         ...
 
     @property
-    @abstractmethod
-    def dtype(self) -> type[PrecisionT_co]:
+    def dtype(self) -> type[np.float64]:
         """Return the data type of the distribution parameters."""
-        ...
+        return np.float64
 
-    def pdf(self, x: npt.ArrayLike) -> npt.NDArray[PrecisionT_co]:
+    def pdf(self, x: npt.ArrayLike) -> FloatArray:
         """Compute the probability density at the given points."""
         return np.exp(self.logpdf(x))

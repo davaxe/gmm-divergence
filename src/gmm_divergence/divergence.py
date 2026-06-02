@@ -4,11 +4,10 @@ import logging
 from typing import TYPE_CHECKING, Literal, overload
 
 from gmm_divergence.distribution import Gaussian, GaussianMixture
-from gmm_divergence.methods.exact import kl_exact
-from gmm_divergence.methods.gaussian_approx import kl_gaussian_approximation
-from gmm_divergence.methods.monte_carlo import kl_monte_carlo
-from gmm_divergence.methods.unscented import kl_unscented
-from gmm_divergence.typing import PrecisionT
+from gmm_divergence.estimators.exact import kl_exact
+from gmm_divergence.estimators.gaussian_approx import kl_gaussian_approximation
+from gmm_divergence.estimators.monte_carlo import kl_monte_carlo
+from gmm_divergence.estimators.unscented import kl_unscented
 
 if TYPE_CHECKING:
     import numpy as np
@@ -21,13 +20,13 @@ logger = logging.getLogger(__name__)
 
 KLMethod = Literal["monte_carlo", "unscented", "gaussian_approximation", "exact"]
 
-GaussianFamily = Gaussian[PrecisionT] | GaussianMixture[PrecisionT]
+GaussianFamily = Gaussian | GaussianMixture
 
 
 @overload
 def kl_divergence(
-    p: Gaussian[PrecisionT],
-    q: Gaussian[PrecisionT],
+    p: Gaussian,
+    q: Gaussian,
     /,
     *,
     method: Literal["exact"] = "exact",
@@ -36,8 +35,8 @@ def kl_divergence(
 
 @overload
 def kl_divergence(
-    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    q: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    p: Gaussian | GaussianMixture,
+    q: Gaussian | GaussianMixture,
     /,
     *,
     method: Literal["gaussian_approximation"] = "gaussian_approximation",
@@ -47,8 +46,8 @@ def kl_divergence(
 
 @overload
 def kl_divergence(
-    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
-    q: Distribution[PrecisionT],
+    p: Gaussian | GaussianMixture,
+    q: Distribution,
     /,
     *,
     method: Literal["unscented"] = ...,
@@ -57,8 +56,8 @@ def kl_divergence(
 
 @overload
 def kl_divergence(
-    p: Distribution[PrecisionT],
-    q: Distribution[PrecisionT],
+    p: Distribution,
+    q: Distribution,
     /,
     *,
     method: Literal["monte_carlo"] = "monte_carlo",
@@ -69,8 +68,8 @@ def kl_divergence(
 
 
 def kl_divergence(
-    p: Distribution[PrecisionT],
-    q: Distribution[PrecisionT],
+    p: Distribution,
+    q: Distribution,
     /,
     *,
     method: KLMethod = "monte_carlo",
