@@ -35,6 +35,8 @@ class MixtureMapping:
 
 @dataclass(frozen=True, slots=True)
 class CombinedGaussianMixture:
+    """Wrapper dataclass for a combined GaussianMixture."""
+
     mixture: GaussianMixture
     mapping: MixtureMapping
 

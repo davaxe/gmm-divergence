@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-KLMethod = Literal["monte_carlo", "unscented", "gaussian_approximation", "exact"]
+KLMethod = Literal["monte_carlo", "unscented", "gaussian_approximation", "closed_form"]
 
 GaussianFamily = Gaussian | GaussianMixture
 
@@ -29,7 +29,7 @@ def kl_divergence(
     q: Gaussian,
     /,
     *,
-    method: Literal["exact"] = "exact",
+    method: Literal["closed_form"] = "closed_form",
 ) -> DivergenceResult: ...
 
 
@@ -138,7 +138,7 @@ def kl_divergence(
                 q,
                 approximation=approximation,
             )
-        case "exact":
+        case "closed_form":
             if not isinstance(p, Gaussian) or not isinstance(q, Gaussian):
                 msg = "Exact KL computation requires Gaussian inputs."
                 raise TypeError(msg)

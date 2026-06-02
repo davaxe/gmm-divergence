@@ -31,11 +31,11 @@ def test_mc_converges_to_analytical_normal_kl() -> None:
     estimate = kl_divergence(p, q, samples=samples, method="monte_carlo").value
     estimate_sample_internal = kl_divergence(p, q, num_samples=200_000, method="monte_carlo").value
     assert estimate == pytest.approx(
-        kl_divergence(p.get_component(0), q.get_component(0), method="exact").value,
+        kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value,
         abs=0.01,
     )
     assert estimate_sample_internal == pytest.approx(
-        kl_divergence(p.get_component(0), q.get_component(0), method="exact").value,
+        kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value,
         abs=0.01,
     )
 
@@ -58,7 +58,7 @@ def test_uncented_converges_to_analytical_normal_kl() -> None:
     )
     estimate = kl_divergence(p, q, method="unscented").value
     assert estimate == pytest.approx(
-        kl_divergence(p.get_component(0), q.get_component(0), method="exact").value,
+        kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value,
         abs=0.01,
     )
 
@@ -81,7 +81,7 @@ def test_gaussian_approximation_converges_to_analytical_normal_kl() -> None:
     )
     estimate = kl_divergence(p, q, method="gaussian_approximation").value
     assert estimate == pytest.approx(
-        kl_divergence(p.get_component(0), q.get_component(0), method="exact").value,
+        kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value,
         abs=0.01,
     )
 
@@ -120,7 +120,7 @@ def test_kl_methods_accept_gaussian_and_mixture_inputs(
     p = gaussian_p if p_kind == "gaussian" else mixture_p
     q = gaussian_q if q_kind == "gaussian" else mixture_q
 
-    expected = kl_divergence(gaussian_p, gaussian_q, method="exact").value
+    expected = kl_divergence(gaussian_p, gaussian_q, method="closed_form").value
     if method == "monte_carlo":
         samples = np.random.default_rng(2027).multivariate_normal(
             mean=mean_p,
