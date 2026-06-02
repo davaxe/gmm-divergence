@@ -1,3 +1,3 @@
-from gmm_divergence.fitting.constrained import fit_forward_kl_weights_constrained
+from gmm_divergence.fitting.weights import fit_mixture_weights_simplex, fit_mixture_weights_softmax
 
-__all__ = ["fit_forward_kl_weights_constrained"]
+__all__ = ["fit_mixture_weights_simplex", "fit_mixture_weights_softmax"]

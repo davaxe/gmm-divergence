@@ -39,6 +39,7 @@ build = [
 ]
 dev = [
     "scipy-stubs>=1.15.3.0",
+
 ]
 test = [
     "pytest>=8.3.5",
@@ -84,6 +85,7 @@ pydocstyle = { convention = "numpy" }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "INP001", "S101", "PLC2701"]
+"examples/**/*.py" = ["D", "INP001", "S101", "PLC2701"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"

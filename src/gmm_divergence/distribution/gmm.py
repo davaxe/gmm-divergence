@@ -12,8 +12,6 @@ from gmm_divergence.distribution.gaussian import Gaussian
 from gmm_divergence.utils import logsumexp
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from gmm_divergence.typing import FloatArray
 
 
@@ -84,54 +82,6 @@ class GaussianMixture(Distribution):
         means = np.asarray(means, dtype=np.float64)
         covariances = np.asarray(covariances, dtype=np.float64)
         return cls(weights=weights, means=means, covariances=covariances)
-
-    @classmethod
-    def from_distributions(
-        cls,
-        weights: npt.ArrayLike,
-        distributions: Sequence[Gaussian | GaussianMixture],
-    ) -> GaussianMixture:
-        """Create a Gaussian mixture by combining Gaussians and/or mixtures."""
-        if not distributions:
-            msg = "At least one distribution is required."
-            raise ValueError(msg)
-
-        weights = np.asarray(weights, dtype=np.float64)
-
-        if weights.ndim != 1:
-            msg = "Weights must be a 1D array."
-            raise ValueError(msg)
-
-        if len(weights) != len(distributions):
-            msg = "Number of weights must match number of distributions."
-            raise ValueError(msg)
-
-        dims = {d.dim for d in distributions}
-        if len(dims) != 1:
-            msg = "All distributions must have the same dimensionality."
-            raise ValueError(msg)
-
-        weights_list: list[float] = (weights / weights.sum()).tolist()
-
-        def as_mixture(
-            d: Gaussian | GaussianMixture,
-        ) -> GaussianMixture:
-            if isinstance(d, GaussianMixture):
-                return d
-            return cls.from_arrays(
-                weights=[1.0],
-                means=[d.mean],
-                covariances=[d.covariance],
-            )
-
-        mixtures = [as_mixture(d) for d in distributions]
-        return cls.from_arrays(
-            weights=np.concatenate([
-                w * m.weights for w, m in zip(weights_list, mixtures, strict=True)
-            ]),
-            means=np.concatenate([m.means for m in mixtures]),
-            covariances=np.concatenate([m.covariances for m in mixtures]),
-        )
 
     @property
     @override

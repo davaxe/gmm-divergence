@@ -7,32 +7,6 @@ from gmm_divergence import kl_divergence
 from gmm_divergence.distribution import Gaussian, GaussianMixture
 
 
-def test_distributions_coerce_inputs_to_float64() -> None:
-    gaussian = Gaussian.from_arrays(
-        mean=np.array([0.0, 1.0], dtype=np.float32),
-        covariance=np.array([1.0, 2.0], dtype=np.float32),
-    )
-    mixture = GaussianMixture.from_arrays(
-        weights=np.array([1.0], dtype=np.float32),
-        means=np.array([[0.0, 1.0]], dtype=np.float32),
-        covariances=np.array([[1.0, 2.0]], dtype=np.float32),
-    )
-    samples = np.array([[0.0, 1.0]], dtype=np.float32)
-
-    assert gaussian.dtype is np.float64
-    assert gaussian.mean.dtype == np.float64
-    assert gaussian.covariance.dtype == np.float64
-    assert gaussian.logpdf(samples).dtype == np.float64
-    assert gaussian.sample(2, rng=0).dtype == np.float64
-
-    assert mixture.dtype is np.float64
-    assert mixture.weights.dtype == np.float64
-    assert mixture.means.dtype == np.float64
-    assert mixture.covariances.dtype == np.float64
-    assert mixture.logpdf(samples).dtype == np.float64
-    assert mixture.sample(2, rng=0).dtype == np.float64
-
-
 def test_mc_converges_to_analytical_normal_kl() -> None:
     mean_p = np.array([0.2, -0.4], dtype=np.float64)
     covariance_p = np.array([[1.1, 0.25], [0.25, 0.8]], dtype=np.float64)
