@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence.methods._components import as_gaussian_components
+from gmm_divergence.estimators._components import as_gaussian_components
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:

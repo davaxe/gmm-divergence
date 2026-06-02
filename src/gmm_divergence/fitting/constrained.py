@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import LinearConstraint, minimize
 
-from gmm_divergence.distribution.gaussian import Gaussian
+from gmm_divergence.distribution.gmm import GaussianMixture
 from gmm_divergence.divergence import kl_divergence
 from gmm_divergence.results import KLFitResult
 from gmm_divergence.typing import PrecisionT
@@ -15,7 +15,7 @@ from gmm_divergence.utils import logsumexp, resolve_samples
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from gmm_divergence.distribution.gmm import GaussianMixture
+    from gmm_divergence.distribution.gaussian import Gaussian
 
 
 def fit_forward_kl_weights_constrained(
@@ -73,30 +73,3 @@ def fit_forward_kl_weights_constrained(
         scipy_result=result,
         fitted_mixture=fitted_mixture,
     )
-
-
-if __name__ == "__main__":
-    from gmm_divergence.distribution.gaussian import Gaussian
-    from gmm_divergence.distribution.gmm import GaussianMixture
-
-    target = GaussianMixture.from_arrays(
-        weights=[0.5, 0.5],
-        means=[[0, 0], [1, 1]],
-        covariances=[np.eye(2), np.eye(2)],
-    )
-    components = [
-        Gaussian.from_arrays(
-            mean=[0, 0],
-            covariance=np.eye(2),
-        ),
-        Gaussian.from_arrays(
-            mean=[1, 1],
-            covariance=np.eye(2),
-        ),
-    ]
-    r = fit_forward_kl_weights_constrained(
-        target=target, components=components, num_samples=100_000, rng=42
-    )
-    print(r.weights)
-    print(r.weights.sum())
-    print(r.fitted_mixture)
