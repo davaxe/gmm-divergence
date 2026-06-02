@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.2.6",
+    "scipy>=1.15.3",
     "typing-extensions>=4.13.2",
 ]
 
@@ -35,6 +36,9 @@ dependencies = [
 build = [
     "build>=1.5.0",
     "twine>=6.2.0",
+]
+dev = [
+    "scipy-stubs>=1.15.3.0",
 ]
 test = [
     "pytest>=8.3.5",

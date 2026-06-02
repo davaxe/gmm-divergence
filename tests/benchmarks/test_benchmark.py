@@ -47,7 +47,7 @@ def make_gmm(
     seed: int,
     n_components: int,
     n_features: int,
-    covariance_type: str,
+    covariance_shape: str,
 ) -> GaussianMixture[np.float64]:
     rng = np.random.default_rng(seed)
 
@@ -56,27 +56,26 @@ def make_gmm(
 
     means = rng.normal(size=(n_components, n_features))
 
-    if covariance_type == "full":
+    if covariance_shape == "full":
         covariances = make_spd_covariances(
             rng,
             n_components=n_components,
             n_features=n_features,
         )
-    elif covariance_type == "diag":
+    elif covariance_shape == "diag":
         covariances = make_diag_covariances(
             rng,
             n_components=n_components,
             n_features=n_features,
         )
     else:
-        msg = f"Unsupported covariance_type: {covariance_type}"
+        msg = f"Unsupported covariance_shape: {covariance_shape}"
         raise ValueError(msg)
 
-    return GaussianMixture.create(
+    return GaussianMixture.from_arrays(
         weights=weights,
         means=means,
         covariances=covariances,
-        covariance_type=covariance_type,
     )
 
 
@@ -84,25 +83,25 @@ def make_gmm(
 @pytest.mark.parametrize("n_components", [1, 4, 16])
 @pytest.mark.parametrize("n_features", [2, 8, 32])
 @pytest.mark.parametrize("num_samples", [100, 1_000, 10_000])
-@pytest.mark.parametrize("covariance_type", ["full", "diag"])
+@pytest.mark.parametrize("covariance_shape", ["full", "diag"])
 def test_kl_monte_carlo_with_internal_sampling(
     benchmark: BenchmarkFixture,
     n_components: int,
     n_features: int,
     num_samples: int,
-    covariance_type: str,
+    covariance_shape: str,
 ) -> None:
     p = make_gmm(
         seed=1,
         n_components=n_components,
         n_features=n_features,
-        covariance_type=covariance_type,
+        covariance_shape=covariance_shape,
     )
     q = make_gmm(
         seed=2,
         n_components=n_components,
         n_features=n_features,
-        covariance_type=covariance_type,
+        covariance_shape=covariance_shape,
     )
 
     benchmark(

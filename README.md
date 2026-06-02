@@ -9,7 +9,7 @@ This package is under active development. APIs, estimators, and numerical behavi
 The package currently includes:
 
 - A typed Gaussian mixture representation
-- Density and log-density evaluation for full and diagonal covariance mixtures
+- Density and log-density evaluation for Gaussian mixtures
 - Sampling from Gaussian mixtures
 - KL divergence estimators based on Monte Carlo sampling and unscented sigma points
 

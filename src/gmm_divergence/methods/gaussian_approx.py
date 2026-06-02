@@ -5,6 +5,8 @@ from typing import TYPE_CHECKING, Literal
 import numpy as np
 import numpy.typing as npt
 
+from gmm_divergence.distribution import Gaussian
+from gmm_divergence.methods._components import as_gaussian_components
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
@@ -15,12 +17,12 @@ Approximation = Literal["nearest", "moment_matching"]
 
 
 def kl_gaussian_approximation(
-    p: GaussianMixture[PrecisionT],
-    q: GaussianMixture[PrecisionT],
+    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    q: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
     /,
     approximation: Approximation = "moment_matching",
 ) -> DivergenceResult:
-    """Estimate KL divergence by approximating each mixture with a single Gaussian."""
+    """Estimate KL divergence by approximating each distribution with a Gaussian."""
     if approximation == "moment_matching":
         mean_p, cov_p = _moment_matching_approximation(p)
         mean_q, cov_q = _moment_matching_approximation(q)
@@ -34,44 +36,39 @@ def kl_gaussian_approximation(
 
 
 def _moment_matching_approximation(
-    gmm: GaussianMixture[PrecisionT],
+    distribution: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
 ) -> tuple[npt.NDArray[PrecisionT], npt.NDArray[PrecisionT]]:
     """Compute mean and covariance of the Gaussian approximation."""
-    weights = gmm.weights / np.sum(gmm.weights)
-    mean = np.sum(weights[:, None] * gmm.means, axis=0)
-    if gmm.covariance_type == "diag":
-        cov = np.sum(
-            weights[:, None] * (gmm.covariances + (gmm.means - mean) * (gmm.means - mean).T),
-            axis=0,
-        )
-    elif gmm.covariance_type == "full":
-        cov = np.sum(
-            weights[:, None, None]
-            * (gmm.covariances + (gmm.means - mean)[:, :, None] * (gmm.means - mean)[:, None, :]),
-            axis=0,
-        )
-    else:
-        msg = f"Unsupported covariance type: {gmm.covariance_type}"
-        raise ValueError(msg)
+    if isinstance(distribution, Gaussian):
+        return distribution.mean, distribution.covariance
+
+    weights = distribution.weights / np.sum(distribution.weights)
+    mean = np.sum(weights[:, None] * distribution.means, axis=0)
+    mean_delta = distribution.means - mean
+    cov = np.sum(
+        weights[:, None, None]
+        * (distribution.covariances + mean_delta[:, :, None] * mean_delta[:, None, :]),
+        axis=0,
+    )
     return mean, cov
 
 
 def _nearest_component_approximation(
-    p: GaussianMixture[PrecisionT], q: GaussianMixture[PrecisionT], /
+    p: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    q: Gaussian[PrecisionT] | GaussianMixture[PrecisionT],
+    /,
 ) -> float:
     """Find the component of q closest to p in KL divergence."""
+    _weights_p, means_p, covariances_p = as_gaussian_components(p)
+    _weights_q, means_q, covariances_q = as_gaussian_components(q)
     min_kl = np.inf
-    for a in range(q.n_components):
-        for b in range(p.n_components):
+    for a in range(means_q.shape[0]):
+        for b in range(means_p.shape[0]):
             kl = _kl_single_gaussian(
-                mean_p=p.means[b],
-                cov_p=p.covariances[b]
-                if p.covariance_type == "full"
-                else np.diag(p.covariances[b]),
-                mean_q=q.means[a],
-                cov_q=q.covariances[a]
-                if q.covariance_type == "full"
-                else np.diag(q.covariances[a]),
+                mean_p=means_p[b],
+                cov_p=covariances_p[b],
+                mean_q=means_q[a],
+                cov_q=covariances_q[a],
             )
             min_kl = min(min_kl, kl)
     return min_kl
