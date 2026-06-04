@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -144,6 +144,27 @@ class GaussianMixture(Distribution):
             f"covariances_shape={self.covariances.shape}"
             f")"
         )
+
+    @overload
+    def as_gaussian(self, *, only_if_single: Literal[True]) -> Gaussian | None: ...
+
+    @overload
+    def as_gaussian(self, *, only_if_single: Literal[False] = False) -> Gaussian: ...
+
+    def as_gaussian(self, *, only_if_single: bool = False) -> Gaussian | None:
+        """Return a Gaussian approximation of the mixture using moment matching."""
+        if only_if_single and self.n_components > 1:
+            return None
+        if self.n_components == 1:
+            return self.get_component(0)
+        weights = self.weights / np.sum(self.weights)
+        mean = np.sum(weights[:, None] * self.means, axis=0)
+        diff = self.means - mean
+        cov = np.sum(
+            weights[:, None, None] * (self.covariances + diff[:, :, None] * diff[:, None, :]),
+            axis=0,
+        )
+        return Gaussian(mean=mean, covariance=cov)
 
 
 def sample_gmm(

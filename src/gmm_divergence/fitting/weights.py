@@ -143,7 +143,42 @@ def fit_mixture_weights_softmax(
     tol: float = 1e-8,
     max_iterations: int = 1000,
 ) -> KLFitResult:
-    """Fit mixture weights by minimizing forward KL with unconstrained logits."""
+    r"""Fit mixture weights by minimizing forward KL using softmax logits.
+
+    Fits nonnegative mixture weights for `components` by minimizing a Monte Carlo
+    estimate of
+
+    $$
+    D_{\mathrm{KL}}(p \| q_w),
+    $$
+
+    where `p` is the `target` distribution and `q_w` is the weighted mixture of
+    the provided components. The weights are parameterized by unconstrained
+    logits and optimized with L-BFGS-B.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Reference distribution to approximate.
+    components : sequence of Gaussian or GaussianMixture
+        Candidate mixture components whose weights are fitted.
+    num_samples : int, default=10_000
+        Number of samples drawn from `target` when `samples` is not provided.
+    rng : numpy.random.Generator or int, optional
+        Random number generator or seed used when sampling is required.
+    samples : array-like, optional
+        Precomputed samples from `target`. If provided, no new samples are drawn.
+    tol : float, default=1e-8
+        Optimization tolerance.
+    max_iterations : int, default=1000
+        Maximum number of optimizer iterations.
+
+    Returns
+    -------
+    KLFitResult
+        Result object containing the fitted weights, fitted mixture, estimated
+        KL divergence, optimization objective, and optimizer metadata.
+    """
     samples_arr = resolve_samples(target, num_samples, samples, rng)
     resolved_num_samples, _dim = samples_arr.shape
     q_component = _validate_components(components)
@@ -181,7 +216,41 @@ def fit_mixture_weights_simplex(
     tol: float = 1e-8,
     max_iterations: int = 1000,
 ) -> KLFitResult:
-    """Fit mixture weights by minimizing forward KL with constrained weights."""
+    r"""Fit mixture weights by minimizing forward KL on the probability simplex.
+
+    Fits mixture weights for `components` by minimizing a Monte Carlo estimate of
+
+    $$
+    D_{\mathrm{KL}}(p \| q_w),
+    $$
+
+    where `p` is the `target` distribution and `q_w` is the weighted mixture of
+    the provided components. The weights are optimized directly under simplex
+    constraints: nonnegative weights summing to one.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Reference distribution to approximate.
+    components : sequence of Gaussian or GaussianMixture
+        Candidate mixture components whose weights are fitted.
+    num_samples : int, default=10_000
+        Number of samples drawn from `target` when `samples` is not provided.
+    rng : numpy.random.Generator or int, optional
+        Random number generator or seed used when sampling is required.
+    samples : array-like, optional
+        Precomputed samples from `target`. If provided, no new samples are drawn.
+    tol : float, default=1e-8
+        Optimization tolerance.
+    max_iterations : int, default=1000
+        Maximum number of optimizer iterations.
+
+    Returns
+    -------
+    KLFitResult
+        Result object containing the fitted weights, fitted mixture, estimated
+        KL divergence, optimization objective, and optimizer metadata.
+    """
     samples_arr = resolve_samples(target, num_samples, samples, rng)
     resolved_num_samples, _dim = samples_arr.shape
 
@@ -231,7 +300,42 @@ def fit_mixture_weights_em(
     max_iterations: int = 1000,
     tol: float = 1e-8,
 ) -> KLFitResult:
-    """Fit mixture weights by minimizing forward KL with EM algorithm."""
+    r"""Fit mixture weights by minimizing forward KL using EM updates.
+
+    Fits mixture weights for `components` by minimizing a Monte Carlo estimate of
+
+    $$
+    D_{\mathrm{KL}}(p \| q_w),
+    $$
+
+    where `p` is the `target` distribution and `q_w` is the weighted mixture of
+    the provided components. The component weights are updated using
+    responsibility-style EM iterations while keeping the component parameters
+    fixed.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Reference distribution to approximate.
+    components : sequence of Gaussian or GaussianMixture
+        Candidate mixture components whose weights are fitted.
+    num_samples : int, default=10_000
+        Number of samples drawn from `target` when `samples` is not provided.
+    rng : numpy.random.Generator or int, optional
+        Random number generator or seed used when sampling is required.
+    samples : array-like, optional
+        Precomputed samples from `target`. If provided, no new samples are drawn.
+    max_iterations : int, default=1000
+        Maximum number of EM iterations.
+    tol : float, default=1e-8
+        Convergence tolerance on the change in mixture weights.
+
+    Returns
+    -------
+    KLFitResult
+        Result object containing the fitted weights, fitted mixture, estimated
+        KL divergence, optimization objective, and convergence metadata.
+    """
     samples_arr = resolve_samples(target, num_samples, samples, rng)
     num_samples, _dim = samples_arr.shape
     q_component = _validate_components(components)

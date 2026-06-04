@@ -15,7 +15,44 @@ if TYPE_CHECKING:
 
 
 def kl_unscented(p: Gaussian | GaussianMixture, q: Distribution, /) -> DivergenceResult:
-    """Estimate KL divergence with unscented sigma points."""
+    r"""Estimate KL divergence using unscented sigma points.
+
+    Estimates
+
+    $$
+    D_{\mathrm{KL}}(p \| q)
+    =
+    \mathbb{E}_{x \sim p}
+    \left[
+        \log p(x) - \log q(x)
+    \right]
+    $$
+
+    by evaluating the log-density ratio at deterministic sigma points generated
+    from the Gaussian components of `p`. This is similar to monte carlo, but
+    with deterministic points chosen to capture the mean and covariance
+    structure of `p` more effectively.
+
+    Parameters
+    ----------
+    p : Gaussian or GaussianMixture
+        Reference distribution used to generate the sigma points.
+    q : Distribution
+        Approximating distribution evaluated at the sigma points.
+
+    Returns
+    -------
+    DivergenceResult
+        Result object containing the unscented estimate of the KL divergence.
+        The reported number of samples equals the total number of sigma points.
+
+    References
+    ----------
+    - Hershey, John R., and Peder A. Olsen. "Approximating the Kullback
+        Leibler divergence between Gaussian mixture models." 2007 IEEE International
+        Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
+        IEEE, 2007.
+    """
     weights, means, covariances = as_gaussian_components(p)
     sigma_points = _sigma_points(means, covariances)
     n_components, n_sigma, dim = sigma_points.shape

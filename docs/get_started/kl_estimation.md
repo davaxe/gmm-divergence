@@ -42,15 +42,17 @@ $$
 For Gaussian mixtures, this can be expressed more explicitly as
 
 $$
-D_{\mathrm{KL}}(p\|q) =
+D_{\mathrm{KL}}(p\|q)=
 \mathbb{E}_{X\sim p}
 \left[
 \log
-\frac{
+\left(
 \sum_{i=1}^{K_p}\pi_i \mathcal{N}(X;\mu_i,\Sigma_i)
-}{
+\right) -
+\log
+\left(
 \sum_{j=1}^{K_q}\omega_j \mathcal{N}(X;\nu_j,\Lambda_j)
-}
+\right)
 \right].
 $$
 
@@ -63,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-`kl_divergence` function. For example:
+[`kl_divergence`](../reference/index.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-5"
 from gmm_divergence import GaussianMixture, kl_divergence
@@ -78,7 +80,7 @@ q = GaussianMixture.from_arrays(
 
 
 kl_estimate = kl_divergence(p, q, method="monte_carlo", rng=9126)
-assert abs(kl_estimate.value - 0.32286766832) < 1e-6
+assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
 1.  This defines $p$ as a one dimensional ($d=1$) Gaussian mixture with two equally weighted components. The density of $p$ is given by

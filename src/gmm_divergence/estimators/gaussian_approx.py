@@ -21,7 +21,46 @@ def kl_gaussian_approximation(
     /,
     approximation: Approximation = "moment_matching",
 ) -> DivergenceResult:
-    """Estimate KL divergence by approximating each distribution with a Gaussian."""
+    r"""Estimate KL divergence using Gaussian approximations.
+
+    Approximates `p` and `q` as Gaussian distributions and computes
+
+    $$
+    D_{\mathrm{KL}}(p \| q).
+    $$
+
+    This is a crude but computationally efficient method that can be used as a
+    quick heuristic or as a baseline for more sophisticated estimators.
+
+    Parameters
+    ----------
+    p : Gaussian or GaussianMixture
+        Reference distribution.
+    q : Gaussian or GaussianMixture
+        Approximating distribution.
+    approximation : {"nearest", "moment_matching"}
+        Approximation strategy to use.
+
+        - `"moment_matching"`:
+          Replace each distribution by a single Gaussian with matching mean and
+          covariance, then compute the Gaussian KL divergence.
+        - `"nearest"`:
+          Compute pairwise KL divergences between Gaussian components and return
+          the smallest value.
+
+    Returns
+    -------
+    DivergenceResult
+        Result object containing the approximate KL divergence and the
+        approximation method used.
+
+    References
+    ----------
+    - Hershey, John R., and Peder A. Olsen. "Approximating the Kullback
+        Leibler divergence between Gaussian mixture models." 2007 IEEE International
+        Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
+        IEEE, 2007.
+    """
     if approximation == "moment_matching":
         mean_p, cov_p = _moment_matching_approximation(p)
         mean_q, cov_q = _moment_matching_approximation(q)
@@ -29,9 +68,7 @@ def kl_gaussian_approximation(
             value=_kl_single_gaussian(mean_p, cov_p, mean_q, cov_q),
             method="moment_matching",
         )
-    return DivergenceResult(
-        value=_nearest_component_approximation(p, q), method="nearest_component"
-    )
+    return DivergenceResult(value=_nearest_component_approximation(p, q), method="nearest")
 
 
 def _moment_matching_approximation(

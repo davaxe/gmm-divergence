@@ -7,25 +7,31 @@ extra_javascript = [
     "javascripts/mathjax.js",
     "https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"
 ]
-#site_url = "https://www.example.com/"
+site_url = "https://davaxe.github.io/gmm-divergence/"
 nav = [
   { "Get started" = [
       "index.md",
       { "KL estimation" = "get_started/kl_estimation.md" },
-      { "Fitting mixture weights" = "get_started/fit_weights.md" }
+      { "Mixture optimization" = "get_started/fit_weights.md" }
   ]
   },
   { "API reference" = [
       "reference/index.md",
+      { "Kl estimators" = "reference/kl_estimators.md" },
+      { "Mixture weight fitting" = "reference/fit_weights.md" }
   ]
   },
 ]
+
+[project.extra.version]
+provider = "mike"
 
 [project.theme]
 variant = "modern"
 language = "en"
 features = [
     "navigation.tabs",
+    "navigation.tabs.sticky",
     "announce.dismiss",
     "content.code.annotate",
     "content.code.copy",
@@ -37,6 +43,8 @@ features = [
     # "navigation.indexes",
     "navigation.instant",
     "navigation.instant.prefetch",
+    "navigation.instant.progress",
+    "navigation.instant.preview",
     "navigation.path",
     "navigation.sections",
     "navigation.top",
@@ -97,14 +105,14 @@ paths = ["src/gmm_divergence"]
 allow_inspection = true
 docstring_section_style = "list"
 docstring_style = "auto"
-inherited_members = false
+inherited_members = true
 line_length = 80
 separate_signature = true
 show_root_heading = true
 show_symbol_type_heading = true
 show_signature_annotations = true
 show_bases = true
-show_source = false
+show_source = true
 show_symbol_type_toc = true
 signature_crossrefs = true
 show_if_no_docstring = false
