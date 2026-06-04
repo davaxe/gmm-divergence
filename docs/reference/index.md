@@ -2,6 +2,6 @@
 icon: lucide/book-marked
 ---
 
-# API reference
+# API reference 
 
 ## ::: gmm_divergence

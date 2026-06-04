@@ -57,9 +57,12 @@ def kl_closed_form(p: Gaussian, q: Gaussian) -> DivergenceResult:
         raise ValueError(msg)
     dim = p.dim
     inv_cov_q = np.linalg.inv(q.covariance)
-    trace_term = np.trace(inv_cov_q @ p.covariance)
+    trace_term = float(np.trace(inv_cov_q @ p.covariance))
     mean_diff = q.mean - p.mean
-    quadratic_term = mean_diff.T @ inv_cov_q @ mean_diff
-    log_det_ratio = np.log(np.linalg.det(q.covariance) / np.linalg.det(p.covariance))
-    kl_value = 0.5 * (trace_term + quadratic_term - dim + log_det_ratio)
-    return DivergenceResult(value=kl_value, method="exact")
+    quadratic_term = float(mean_diff @ inv_cov_q @ mean_diff)
+    _sign_q, logdet_q = np.linalg.slogdet(q.covariance)
+    _sign_p, logdet_p = np.linalg.slogdet(p.covariance)
+    log_det_ratio = float(logdet_q - logdet_p)
+    return DivergenceResult(
+        value=0.5 * (trace_term + quadratic_term - dim + log_det_ratio), method="closed_form"
+    )

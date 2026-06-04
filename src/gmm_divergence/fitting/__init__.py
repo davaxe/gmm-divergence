@@ -11,14 +11,8 @@ optimized:
   Uses an unconstrained softmax parameterization with L-BFGS-B.
 - ``fit_mixture_weights_simplex``:
   Optimizes the weights directly on the simplex with SLSQP constraints.
-- ``fit_mixture_weights_em``:
-  Uses EM-style responsibility updates with fixed component parameters.
 """
 
-from gmm_divergence.fitting.weights import (
-    fit_mixture_weights_em,
-    fit_mixture_weights_simplex,
-    fit_mixture_weights_softmax,
-)
+from gmm_divergence.fitting.weights import fit_mixture_weights_simplex, fit_mixture_weights_softmax
 
-__all__ = ["fit_mixture_weights_em", "fit_mixture_weights_simplex", "fit_mixture_weights_softmax"]
+__all__ = ["fit_mixture_weights_simplex", "fit_mixture_weights_softmax"]

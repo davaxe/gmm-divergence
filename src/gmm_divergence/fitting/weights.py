@@ -8,166 +8,127 @@ from scipy.optimize import Bounds, LinearConstraint, minimize
 
 from gmm_divergence.distribution.combine import combine_gaussians
 from gmm_divergence.divergence import kl_divergence
+from gmm_divergence.fitting._objective import FitObjective, build_objective, softmax
 from gmm_divergence.results import KLFitResult
-from gmm_divergence.utils import logsumexp, resolve_samples
+from gmm_divergence.utils import resolve_samples
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
+    from collections.abc import Sequence
 
     from scipy.optimize import OptimizeResult
 
     from gmm_divergence.distribution.gaussian import Gaussian
     from gmm_divergence.distribution.gmm import GaussianMixture
-    from gmm_divergence.typing import FloatArray
+    from gmm_divergence.typing import FloatArray, Weights
 
 
-def _softmax(theta: npt.NDArray[np.float64]) -> npt.NDArray[np.float64]:
-    """Numerically stable softmax."""
-    z = theta - np.max(theta)
-    exp_z = np.exp(z)
-    return (exp_z / np.sum(exp_z)).astype(np.float64)
-
-
-def _validate_components(
-    components: Sequence[Gaussian | GaussianMixture],
-) -> int:
-    """Validate components and return their count."""
-    q_component = len(components)
+def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture]) -> int:
+    """Validate candidate distributions and return their count."""
+    q_component = len(q_i)
     if q_component == 0:
-        msg = "components must contain at least one component."
+        msg = "q_i must contain at least one distribution."
+        raise ValueError(msg)
+    if len({q.dim for q in q_i}) != 1:
+        msg = "All q_i distributions must have the same dimensionality."
         raise ValueError(msg)
     return q_component
 
 
-def _component_logpdf_matrix(
-    components: Sequence[Gaussian | GaussianMixture],
-    samples: npt.NDArray[np.float64],
-) -> npt.NDArray[np.float64]:
-    """Evaluate each component log-density at each sample."""
-    log_q = np.empty((samples.shape[0], len(components)), dtype=np.float64)
+def _resolve_q_samples(
+    q_i: Sequence[Gaussian | GaussianMixture],
+    q_sampling: npt.ArrayLike | int | None,
+    rng: np.random.Generator | int | None,
+) -> FloatArray:
+    """Return provided q samples or draw samples from each component."""
+    if isinstance(q_sampling, int) or q_sampling is None:
+        n_samples = q_sampling or 10_000
+        rng = np.random.default_rng(rng)
+        return np.asarray([q.sample(n_samples, rng=rng) for q in q_i], dtype=np.float64)
 
-    for i, qi in enumerate(components):
-        log_q[:, i] = qi.logpdf(samples)
-
-    return log_q
-
-
-def _softmax_objective_and_jacobian_fn(
-    components: Sequence[Gaussian | GaussianMixture],
-    samples: npt.NDArray[np.float64],
-) -> Callable[[npt.NDArray[np.float64]], tuple[float, npt.NDArray[np.float64]]]:
-    """Return objective function and Jacobian for optimizing mixture logits."""
-    log_q: FloatArray = _component_logpdf_matrix(components, samples)
-
-    def objective_and_jacobian(
-        theta: npt.NDArray[np.float64],
-    ) -> tuple[float, npt.NDArray[np.float64]]:
-        weights = _softmax(theta)
-        log_w = np.log(weights)
-        log_terms = log_w[None, :] + log_q
-        log_qw = logsumexp(log_terms, axis=1)
-        objective = -float(np.mean(log_qw))
-        r = np.exp(log_terms - log_qw[:, None])
-        gradient = weights - np.mean(r, axis=0).astype(np.float64)
-
-        return objective, gradient.astype(np.float64)
-
-    return objective_and_jacobian
-
-
-def _simplex_objective_and_jacobian_fn(
-    components: Sequence[Gaussian | GaussianMixture],
-    samples: npt.NDArray[np.float64],
-) -> Callable[[npt.NDArray[np.float64]], tuple[float, npt.NDArray[np.float64]]]:
-    """Return objective function and Jacobian for optimizing simplex weights."""
-    log_q: FloatArray = _component_logpdf_matrix(components, samples)
-
-    def objective_and_jacobian(
-        w: npt.NDArray[np.float64],
-    ) -> tuple[float, npt.NDArray[np.float64]]:
-        w_safe = np.maximum(w, 1e-300)
-        log_w = np.log(w_safe)
-        log_terms = log_w[None, :] + log_q
-        log_qw = logsumexp(log_terms, axis=1)
-        objective = -float(np.mean(log_qw))
-        r = np.exp(log_terms - log_qw[:, None])
-        gradient = -np.mean(r / w_safe[None, :], axis=0).astype(np.float64)
-
-        return objective, gradient.astype(np.float64)
-
-    return objective_and_jacobian
+    q_sampling = np.asarray(q_sampling, dtype=np.float64)
+    if q_sampling.ndim != 3 or q_sampling.shape[0] != len(q_i):
+        msg = (
+            "Expected q_sampling with shape "
+            f"({len(q_i)}, n_samples, n_features), got {q_sampling.shape}."
+        )
+        raise ValueError(msg)
+    return q_sampling
 
 
 def _construct_kl_fit_result_from_weights(
     *,
-    target: Gaussian | GaussianMixture,
-    components: Sequence[Gaussian | GaussianMixture],
-    weights: npt.NDArray[np.float64],
-    objective: float,
-    num_samples: int,
-    samples: npt.NDArray[np.float64],
+    p: Gaussian | GaussianMixture,
+    q_i: Sequence[Gaussian | GaussianMixture],
+    weights: Weights,
+    fit_objective: FitObjective,
+    objective_value: float,
+    p_samples: FloatArray,
+    reverse_diagnostic_sampling: int,
+    alpha: float,
     rng: np.random.Generator | int | None,
     scipy_result: OptimizeResult | None = None,
     iterations: int | None = None,
     converged: bool | None = None,
 ) -> KLFitResult:
     """Construct a KLFitResult from fitted mixture weights."""
-    fitted_mixture = combine_gaussians(
-        weights=weights,
-        sources=components,
-        include_mapping=True,
-    )
+    fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
     return KLFitResult(
         weights=fitted_mixture.mixture.weights.astype(np.float64),
-        objective=objective,
-        estimated_kl=kl_divergence(
-            target,
-            fitted_mixture.mixture,
-            rng=rng,
-            num_samples=num_samples,
-            samples=samples,
+        fit_objective=fit_objective,
+        objective_value=objective_value,
+        forward_kl=kl_divergence(p, fitted_mixture.mixture, rng=rng, sampling=p_samples),
+        reverse_kl=kl_divergence(
+            fitted_mixture.mixture, p, rng=rng, sampling=reverse_diagnostic_sampling
         ),
         scipy_result=scipy_result,
         fitted_mixture=fitted_mixture,
+        alpha=alpha if fit_objective == "bidirectional" else None,
         iterations=iterations,
         converged=converged,
     )
 
 
 def fit_mixture_weights_softmax(
-    target: Gaussian | GaussianMixture,
-    components: Sequence[Gaussian | GaussianMixture],
-    num_samples: int = 10_000,
+    p: Gaussian | GaussianMixture,
+    q_i: Sequence[Gaussian | GaussianMixture],
     rng: np.random.Generator | int | None = None,
-    samples: npt.ArrayLike | None = None,
+    p_sampling: npt.ArrayLike | int = 10_000,
+    q_sampling: npt.ArrayLike | int = 10_000,
+    objective: FitObjective = "forward",
+    alpha: float = 0.5,
     tol: float = 1e-8,
     max_iterations: int = 1000,
 ) -> KLFitResult:
     r"""Fit mixture weights by minimizing forward KL using softmax logits.
 
-    Fits nonnegative mixture weights for `components` by minimizing a Monte Carlo
+    Fits nonnegative mixture weights for `q_i` by minimizing a Monte Carlo
     estimate of
 
     $$
     D_{\mathrm{KL}}(p \| q_w),
     $$
 
-    where `p` is the `target` distribution and `q_w` is the weighted mixture of
-    the provided components. The weights are parameterized by unconstrained
+    where `p` is the reference distribution and `q_w` is the weighted mixture of
+    the provided `q_i`. The weights are parameterized by unconstrained
     logits and optimized with L-BFGS-B.
 
     Parameters
     ----------
-    target : Gaussian or GaussianMixture
+    p : Gaussian or GaussianMixture
         Reference distribution to approximate.
-    components : sequence of Gaussian or GaussianMixture
-        Candidate mixture components whose weights are fitted.
-    num_samples : int, default=10_000
-        Number of samples drawn from `target` when `samples` is not provided.
+    q_i : sequence of Gaussian or GaussianMixture
+        Candidate distributions whose weights are fitted.
     rng : numpy.random.Generator or int, optional
         Random number generator or seed used when sampling is required.
-    samples : array-like, optional
-        Precomputed samples from `target`. If provided, no new samples are drawn.
+    p_sampling : int or array-like, default=10_000
+        Number of samples drawn from `p`, or precomputed samples from `p`.
+    q_sampling : int or array-like, default=10_000
+        Number of samples drawn from each `q_i`, or precomputed samples with
+        shape `(len(q_i), n_samples, n_features)`.
+    objective : {"forward", "reverse", "bidirectional"}, default="forward"
+        KL objective used to fit the mixture weights.
+    alpha : float, default=0.5
+        Relative weighting used by the bidirectional objective.
     tol : float, default=1e-8
         Optimization tolerance.
     max_iterations : int, default=1000
@@ -176,30 +137,42 @@ def fit_mixture_weights_softmax(
     Returns
     -------
     KLFitResult
-        Result object containing the fitted weights, fitted mixture, estimated
-        KL divergence, optimization objective, and optimizer metadata.
+        Result object containing the fitted weights, fitted mixture, fit
+        objective, optimizer objective value, forward/reverse KL diagnostics,
+        and optimizer metadata.
     """
-    samples_arr = resolve_samples(target, num_samples, samples, rng)
-    resolved_num_samples, _dim = samples_arr.shape
-    q_component = _validate_components(components)
+    resolved_p_samples = resolve_samples(p, p_sampling, rng)
+    resolved_num_p_samples, _dim = resolved_p_samples.shape
+    q_component = _validate_q_i(q_i)
+    resolved_q_samples = None
+    if objective in {"reverse", "bidirectional"}:
+        resolved_q_samples = _resolve_q_samples(q_i, q_sampling, rng)
     theta0 = np.zeros(q_component, dtype=np.float64)
     result = minimize(
-        _softmax_objective_and_jacobian_fn(components, samples_arr),
+        build_objective(
+            parameterization="softmax",
+            objective=objective,
+            p=p,
+            q_i=q_i,
+            p_samples=resolved_p_samples,
+            q_samples=resolved_q_samples,
+            alpha=alpha,
+        ),
         theta0,
         method="L-BFGS-B",
         jac=True,
         tol=tol,
-        options={
-            "maxiter": max_iterations,
-        },
+        options={"maxiter": max_iterations},
     )
     return _construct_kl_fit_result_from_weights(
-        target=target,
-        components=components,
-        weights=_softmax(result.x),
-        objective=float(result.fun),
-        num_samples=resolved_num_samples,
-        samples=samples_arr,
+        p=p,
+        q_i=q_i,
+        weights=softmax(result.x),
+        fit_objective=objective,
+        objective_value=float(result.fun),
+        p_samples=resolved_p_samples,
+        reverse_diagnostic_sampling=resolved_num_p_samples,
+        alpha=alpha,
         rng=rng,
         scipy_result=result,
         iterations=result.nit,
@@ -208,38 +181,46 @@ def fit_mixture_weights_softmax(
 
 
 def fit_mixture_weights_simplex(
-    target: Gaussian | GaussianMixture,
-    components: Sequence[Gaussian | GaussianMixture],
-    num_samples: int = 10_000,
+    p: Gaussian | GaussianMixture,
+    q_i: Sequence[Gaussian | GaussianMixture],
+    *,
     rng: np.random.Generator | int | None = None,
-    samples: npt.ArrayLike | None = None,
+    p_sampling: npt.ArrayLike | int = 10_000,
+    q_sampling: npt.ArrayLike | int = 10_000,
+    objective: FitObjective = "forward",
+    alpha: float = 0.5,
     tol: float = 1e-8,
     max_iterations: int = 1000,
 ) -> KLFitResult:
     r"""Fit mixture weights by minimizing forward KL on the probability simplex.
 
-    Fits mixture weights for `components` by minimizing a Monte Carlo estimate of
+    Fits mixture weights for `q_i` by minimizing a Monte Carlo estimate of
 
     $$
     D_{\mathrm{KL}}(p \| q_w),
     $$
 
-    where `p` is the `target` distribution and `q_w` is the weighted mixture of
-    the provided components. The weights are optimized directly under simplex
+    where `p` is the reference distribution and `q_w` is the weighted mixture of
+    the provided `q_i`. The weights are optimized directly under simplex
     constraints: nonnegative weights summing to one.
 
     Parameters
     ----------
-    target : Gaussian or GaussianMixture
+    p : Gaussian or GaussianMixture
         Reference distribution to approximate.
-    components : sequence of Gaussian or GaussianMixture
-        Candidate mixture components whose weights are fitted.
-    num_samples : int, default=10_000
-        Number of samples drawn from `target` when `samples` is not provided.
+    q_i : sequence of Gaussian or GaussianMixture
+        Candidate distributions whose weights are fitted.
     rng : numpy.random.Generator or int, optional
         Random number generator or seed used when sampling is required.
-    samples : array-like, optional
-        Precomputed samples from `target`. If provided, no new samples are drawn.
+    p_sampling : int or array-like, default=10_000
+        Number of samples drawn from `p`, or precomputed samples from `p`.
+    q_sampling : int or array-like, default=10_000
+        Number of samples drawn from each `q_i`, or precomputed samples with
+        shape `(len(q_i), n_samples, n_features)`.
+    objective : {"forward", "reverse", "bidirectional"}, default="forward"
+        KL objective used to fit the mixture weights.
+    alpha : float, default=0.5
+        Relative weighting used by the bidirectional objective.
     tol : float, default=1e-8
         Optimization tolerance.
     max_iterations : int, default=1000
@@ -248,13 +229,16 @@ def fit_mixture_weights_simplex(
     Returns
     -------
     KLFitResult
-        Result object containing the fitted weights, fitted mixture, estimated
-        KL divergence, optimization objective, and optimizer metadata.
+        Result object containing the fitted weights, fitted mixture, fit
+        objective, optimizer objective value, forward/reverse KL diagnostics,
+        and optimizer metadata.
     """
-    samples_arr = resolve_samples(target, num_samples, samples, rng)
-    resolved_num_samples, _dim = samples_arr.shape
-
-    q_component = _validate_components(components)
+    resolved_p_samples = resolve_samples(p, p_sampling, rng)
+    resolved_num_p_samples, _dim = resolved_p_samples.shape
+    q_component = _validate_q_i(q_i)
+    resolved_q_samples = None
+    if objective in {"reverse", "bidirectional"}:
+        resolved_q_samples = _resolve_q_samples(q_i, q_sampling, rng)
     w0 = np.full(q_component, 1 / q_component, dtype=np.float64)
     constraint = LinearConstraint(
         A=np.ones((1, q_component), dtype=np.float64),
@@ -262,122 +246,37 @@ def fit_mixture_weights_simplex(
         ub=np.array([1.0], dtype=np.float64),
     )
     bounds = Bounds(
-        lb=np.zeros(q_component, dtype=np.float64),
-        ub=np.ones(q_component, dtype=np.float64),
+        lb=np.zeros(q_component, dtype=np.float64), ub=np.ones(q_component, dtype=np.float64)
     )
     result = minimize(
-        _simplex_objective_and_jacobian_fn(components, samples_arr),
+        build_objective(
+            parameterization="simplex",
+            objective=objective,
+            p=p,
+            q_i=q_i,
+            p_samples=resolved_p_samples,
+            q_samples=resolved_q_samples,
+            alpha=alpha,
+        ),
         w0,
         method="SLSQP",
         jac=True,
         constraints=constraint,
         bounds=bounds,
         tol=tol,
-        options={
-            "maxiter": max_iterations,
-        },
+        options={"maxiter": max_iterations},
     )
     return _construct_kl_fit_result_from_weights(
-        target=target,
-        components=components,
+        p=p,
+        q_i=q_i,
         weights=result.x.astype(np.float64),
-        objective=float(result.fun),
-        num_samples=resolved_num_samples,
-        samples=samples_arr,
+        fit_objective=objective,
+        objective_value=float(result.fun),
+        p_samples=resolved_p_samples,
+        reverse_diagnostic_sampling=resolved_num_p_samples,
+        alpha=alpha,
         rng=rng,
         scipy_result=result,
         iterations=result.nit,
         converged=result.success,
-    )
-
-
-def fit_mixture_weights_em(
-    target: Gaussian | GaussianMixture,
-    components: Sequence[Gaussian | GaussianMixture],
-    num_samples: int = 10_000,
-    rng: np.random.Generator | int | None = None,
-    samples: npt.ArrayLike | None = None,
-    max_iterations: int = 1000,
-    tol: float = 1e-8,
-) -> KLFitResult:
-    r"""Fit mixture weights by minimizing forward KL using EM updates.
-
-    Fits mixture weights for `components` by minimizing a Monte Carlo estimate of
-
-    $$
-    D_{\mathrm{KL}}(p \| q_w),
-    $$
-
-    where `p` is the `target` distribution and `q_w` is the weighted mixture of
-    the provided components. The component weights are updated using
-    responsibility-style EM iterations while keeping the component parameters
-    fixed.
-
-    Parameters
-    ----------
-    target : Gaussian or GaussianMixture
-        Reference distribution to approximate.
-    components : sequence of Gaussian or GaussianMixture
-        Candidate mixture components whose weights are fitted.
-    num_samples : int, default=10_000
-        Number of samples drawn from `target` when `samples` is not provided.
-    rng : numpy.random.Generator or int, optional
-        Random number generator or seed used when sampling is required.
-    samples : array-like, optional
-        Precomputed samples from `target`. If provided, no new samples are drawn.
-    max_iterations : int, default=1000
-        Maximum number of EM iterations.
-    tol : float, default=1e-8
-        Convergence tolerance on the change in mixture weights.
-
-    Returns
-    -------
-    KLFitResult
-        Result object containing the fitted weights, fitted mixture, estimated
-        KL divergence, optimization objective, and convergence metadata.
-    """
-    samples_arr = resolve_samples(target, num_samples, samples, rng)
-    num_samples, _dim = samples_arr.shape
-    q_component = _validate_components(components)
-    log_q = _component_logpdf_matrix(components, samples_arr)
-    log_w = np.full(q_component, -np.log(q_component), dtype=np.float64)
-    objective = float("inf")
-    it: int = 0
-    weights = np.exp(log_w).astype(np.float64)
-    for i in range(1, max_iterations + 1):
-        log_terms = log_w[None, :] + log_q
-        log_qw = logsumexp(log_terms, axis=1)
-        objective = -float(np.mean(log_qw))
-        log_r = log_terms - log_qw[:, None]
-        new_log_w = logsumexp(log_r, axis=0) - np.log(num_samples)
-        new_log_w -= logsumexp(new_log_w)
-        new_weights = np.exp(new_log_w)
-        delta = np.linalg.norm(new_weights - weights, ord=1)
-
-        log_w = new_log_w
-        weights = new_weights
-        it = i
-        if delta < tol:
-            break
-
-    weights = np.exp(log_w).astype(np.float64)
-    weights[~np.isfinite(weights)] = 0.0
-
-    weight_sum = weights.sum()
-    if not np.isfinite(weight_sum) or weight_sum <= 0.0:
-        msg = "EM weight fitting produced invalid weights."
-        raise RuntimeError(msg)
-
-    weights /= weight_sum
-    return _construct_kl_fit_result_from_weights(
-        target=target,
-        components=components,
-        weights=weights,
-        objective=objective,
-        num_samples=num_samples,
-        samples=samples_arr,
-        rng=rng,
-        scipy_result=None,
-        iterations=it,
-        converged=it < max_iterations - 1,
     )

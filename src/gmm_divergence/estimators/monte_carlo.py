@@ -17,8 +17,7 @@ def kl_monte_carlo(
     q: Distribution,
     /,
     *,
-    num_samples: int = 10_000,
-    samples: npt.ArrayLike | None = None,
+    sampling: npt.ArrayLike | int = 10_000,
     rng: np.random.Generator | int | None = None,
 ) -> DivergenceResult:
     r"""Estimate KL divergence using Monte Carlo sampling.
@@ -42,10 +41,8 @@ def kl_monte_carlo(
         Reference distribution to sample from.
     q : Distribution
         Approximating distribution evaluated at the sampled points.
-    num_samples : int, default=10_000
-        Number of samples drawn from `p` when `samples` is not provided.
-    samples : array-like, optional
-        Precomputed samples from `p`. If provided, no new samples are drawn.
+    sampling : int or array-like, default=10_000
+        Number of samples drawn from `p`, or precomputed samples from `p`.
     rng : numpy.random.Generator or int, optional
         Random number generator or seed used when sampling is required.
 
@@ -61,9 +58,9 @@ def kl_monte_carlo(
         Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
         IEEE, 2007.
     """
-    samples = resolve_samples(p, num_samples, samples, rng)
+    sampling = resolve_samples(p, sampling, rng)
     return DivergenceResult(
-        value=float(np.mean(p.logpdf(samples) - q.logpdf(samples))),
+        value=float(np.mean(p.logpdf(sampling) - q.logpdf(sampling))),
         method="monte_carlo",
-        num_samples=num_samples,
+        num_samples=sampling.shape[0],
     )

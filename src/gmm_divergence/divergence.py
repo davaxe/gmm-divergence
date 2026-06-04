@@ -25,11 +25,7 @@ GaussianFamily = Gaussian | GaussianMixture
 
 @overload
 def kl_divergence(
-    p: Gaussian,
-    q: Gaussian,
-    /,
-    *,
-    method: Literal["closed_form"] = "closed_form",
+    p: Gaussian, q: Gaussian, /, *, method: Literal["closed_form"] = "closed_form"
 ) -> DivergenceResult: ...
 
 
@@ -46,11 +42,7 @@ def kl_divergence(
 
 @overload
 def kl_divergence(
-    p: Gaussian | GaussianMixture,
-    q: Distribution,
-    /,
-    *,
-    method: Literal["unscented"] = ...,
+    p: Gaussian | GaussianMixture, q: Distribution, /, *, method: Literal["unscented"] = ...
 ) -> DivergenceResult: ...
 
 
@@ -61,8 +53,7 @@ def kl_divergence(
     /,
     *,
     method: Literal["monte_carlo"] = "monte_carlo",
-    num_samples: int = 10_000,
-    samples: npt.ArrayLike | None = None,
+    sampling: npt.ArrayLike | int = 10_000,
     rng: np.random.Generator | int | None = None,
 ) -> DivergenceResult: ...
 
@@ -73,8 +64,7 @@ def kl_divergence(
     /,
     *,
     method: EstimationMethod = "monte_carlo",
-    num_samples: int = 10_000,
-    samples: npt.ArrayLike | None = None,
+    sampling: npt.ArrayLike | int = 10_000,
     rng: np.random.Generator | int | None = None,
     approximation: Literal["nearest", "moment_matching"] = "moment_matching",
     force_closed_form: bool = False,
@@ -129,7 +119,7 @@ def kl_divergence(
             $$
 
             This method is general but stochastic. Accuracy depends on
-            `num_samples` and the random seed.
+            `sampling` and the random seed.
 
         - `"unscented"`:
             Use the Unscented Transform to approximate the KL divergence.
@@ -139,12 +129,9 @@ def kl_divergence(
             matching moments) and compute the KL divergence between the
             approximations.
 
-    num_samples : int, default=10_000
-        Number of samples used when `method="monte_carlo"`.
-        Ignored by closed-form methods.
-    samples : array-like, optional
-        Optional precomputed samples from `p`. If provided, these samples are
-        used instead of drawing new samples.
+    sampling : int or array-like, default=10_000
+        Number of samples drawn from `p`, or precomputed samples from `p`.
+        Used when `method="monte_carlo"` and ignored by closed-form methods.
     rng : numpy.random.Generator, int, optional
         Random number generator or seed used when sampling is required.
     approximation : {"nearest", "moment_matching"}
@@ -198,7 +185,7 @@ def kl_divergence(
 
     ```python
     samples = p.sample(50_000, rng=0)
-    result = kl_divergence(p, q, samples=samples)
+    result = kl_divergence(p, q, sampling=samples)
     ```
     """
     _validate_same_dimension(p, q)
@@ -207,13 +194,7 @@ def kl_divergence(
         return exact_result
 
     return _kl_divergence_by_method(
-        p,
-        q,
-        method=method,
-        num_samples=num_samples,
-        samples=samples,
-        rng=rng,
-        approximation=approximation,
+        p, q, method=method, sampling=sampling, rng=rng, approximation=approximation
     )
 
 
@@ -224,10 +205,7 @@ def _validate_same_dimension(p: Distribution, q: Distribution) -> None:
 
 
 def _maybe_compute_closed_form(
-    p: Distribution,
-    q: Distribution,
-    *,
-    force_closed_form: bool,
+    p: Distribution, q: Distribution, *, force_closed_form: bool
 ) -> DivergenceResult | None:
     p_single, q_single = _single_gaussian(p), _single_gaussian(q)
 
@@ -248,20 +226,13 @@ def _kl_divergence_by_method(
     q: Distribution,
     *,
     method: EstimationMethod,
-    num_samples: int,
-    samples: npt.ArrayLike | None,
+    sampling: npt.ArrayLike | int,
     rng: np.random.Generator | int | None,
     approximation: Literal["nearest", "moment_matching"],
 ) -> DivergenceResult:
     match method:
         case "monte_carlo":
-            return kl_monte_carlo(
-                p,
-                q,
-                num_samples=num_samples,
-                samples=samples,
-                rng=rng,
-            )
+            return kl_monte_carlo(p, q, sampling=sampling, rng=rng)
         case "unscented":
             return kl_unscented(
                 _require_gaussian_or_mixture(p, method, name="p"),
@@ -277,17 +248,11 @@ def _kl_divergence_by_method(
 
         case "closed_form":
             return kl_closed_form(
-                _require_gaussian(p, method, name="p"),
-                _require_gaussian(q, method, name="q"),
+                _require_gaussian(p, method, name="p"), _require_gaussian(q, method, name="q")
             )
 
 
-def _require_gaussian(
-    d: Distribution,
-    method: EstimationMethod,
-    *,
-    name: str,
-) -> Gaussian:
+def _require_gaussian(d: Distribution, method: EstimationMethod, *, name: str) -> Gaussian:
     if not isinstance(d, Gaussian):
         msg = f"Method '{method}' requires '{name}' to be a Gaussian, got {type(d).__name__}."
         raise TypeError(msg)
@@ -295,10 +260,7 @@ def _require_gaussian(
 
 
 def _require_gaussian_or_mixture(
-    d: Distribution,
-    method: EstimationMethod,
-    *,
-    name: str,
+    d: Distribution, method: EstimationMethod, *, name: str
 ) -> Gaussian | GaussianMixture:
     if not isinstance(d, (Gaussian, GaussianMixture)):
         msg = (
@@ -313,5 +275,5 @@ def _single_gaussian(d: Distribution) -> Gaussian | None:
     if isinstance(d, Gaussian):
         return d
     if isinstance(d, GaussianMixture):
-        return d.as_gaussian(only_if_single=True)
+        return d.as_gaussian(require_single=True)
     return None

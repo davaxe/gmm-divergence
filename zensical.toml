@@ -11,8 +11,9 @@ site_url = "https://davaxe.github.io/gmm-divergence/"
 nav = [
   { "Get started" = [
       "index.md",
-      { "KL estimation" = "get_started/kl_estimation.md" },
-      { "Mixture optimization" = "get_started/fit_weights.md" }
+      { "Getting started" = "getting_started.md" },
+      { "KL estimation" = "kl_estimation.md" },
+      { "Mixture optimization" = "fit_weights.md" }
   ]
   },
   { "API reference" = [
@@ -22,6 +23,10 @@ nav = [
   ]
   },
 ]
+
+[project.theme.icon]
+logo = "lucide/waypoints"
+repo = "fontawesome/brands/github"
 
 [project.extra.version]
 provider = "mike"
