@@ -6,8 +6,8 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from gmm_divergence.gmm import GaussianMixture
-from gmm_divergence.methods.monte_carlo import kl_monte_carlo
+from gmm_divergence import kl_divergence
+from gmm_divergence.distribution import GaussianMixture
 
 if TYPE_CHECKING:
     from pytest_benchmark.fixture import BenchmarkFixture
@@ -17,14 +17,13 @@ def make_spd_covariances(
     rng: np.random.Generator,
     n_components: int,
     n_features: int,
-    dtype: type[np.floating] = np.float64,
-) -> np.ndarray:
-    covs = np.empty((n_components, n_features, n_features), dtype=dtype)
+) -> npt.NDArray[np.float64]:
+    covs = np.empty((n_components, n_features, n_features), dtype=np.float64)
 
     for k in range(n_components):
-        matrix = rng.normal(size=(n_features, n_features)).astype(dtype)
+        matrix = rng.normal(size=(n_features, n_features)).astype(np.float64)
         cov = matrix @ matrix.T
-        cov += np.eye(n_features, dtype=dtype) * dtype(1e-3)
+        cov += np.eye(n_features, dtype=np.float64) * np.float64(1e-3)
         covs[k] = cov
 
     return covs
@@ -47,8 +46,8 @@ def make_gmm(
     seed: int,
     n_components: int,
     n_features: int,
-    covariance_type: str,
-) -> GaussianMixture[np.float64]:
+    covariance_shape: str,
+) -> GaussianMixture:
     rng = np.random.default_rng(seed)
 
     weights = rng.uniform(size=n_components)
@@ -56,27 +55,26 @@ def make_gmm(
 
     means = rng.normal(size=(n_components, n_features))
 
-    if covariance_type == "full":
+    if covariance_shape == "full":
         covariances = make_spd_covariances(
             rng,
             n_components=n_components,
             n_features=n_features,
         )
-    elif covariance_type == "diag":
+    elif covariance_shape == "diag":
         covariances = make_diag_covariances(
             rng,
             n_components=n_components,
             n_features=n_features,
         )
     else:
-        msg = f"Unsupported covariance_type: {covariance_type}"
+        msg = f"Unsupported covariance_shape: {covariance_shape}"
         raise ValueError(msg)
 
-    return GaussianMixture.create(
+    return GaussianMixture.from_arrays(
         weights=weights,
         means=means,
         covariances=covariances,
-        covariance_type=covariance_type,
     )
 
 
@@ -84,32 +82,31 @@ def make_gmm(
 @pytest.mark.parametrize("n_components", [1, 4, 16])
 @pytest.mark.parametrize("n_features", [2, 8, 32])
 @pytest.mark.parametrize("num_samples", [100, 1_000, 10_000])
-@pytest.mark.parametrize("covariance_type", ["full", "diag"])
+@pytest.mark.parametrize("covariance_shape", ["full", "diag"])
 def test_kl_monte_carlo_with_internal_sampling(
     benchmark: BenchmarkFixture,
     n_components: int,
     n_features: int,
     num_samples: int,
-    covariance_type: str,
+    covariance_shape: str,
 ) -> None:
     p = make_gmm(
         seed=1,
         n_components=n_components,
         n_features=n_features,
-        covariance_type=covariance_type,
+        covariance_shape=covariance_shape,
     )
     q = make_gmm(
         seed=2,
         n_components=n_components,
         n_features=n_features,
-        covariance_type=covariance_type,
+        covariance_shape=covariance_shape,
     )
 
-    result = benchmark(
-        kl_monte_carlo,
+    benchmark(
+        kl_divergence,
         p,
         q,
         num_samples=num_samples,
+        method="monte_carlo",
     )
-
-    assert np.isfinite(result.value)

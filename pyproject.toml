@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a1"
+version = "0.0.1a2"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
@@ -25,17 +25,37 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=2.2.6",
+    "scipy>=1.15.3",
     "typing-extensions>=4.13.2",
 ]
+
+[project.urls]
+"Repository" = "https://github.com/davaxe/gmm-divergence"
 
 [dependency-groups]
 build = [
     "build>=1.5.0",
     "twine>=6.2.0",
 ]
+docs = [
+    "mkdocstrings[python]>=1.0.4",
+    "zensical>=0.0.43",
+    "mike @ git+https://github.com/squidfunk/mike.git",
+]
 test = [
     "pytest>=8.3.5",
     "pytest-benchmark>=5.2.3",
+]
+typecheck = [
+    "pyrefly>=1.0.0",
+]
+dev = [
+    "scipy-stubs>=1.15.3.0",
+    { include-group = "build" },
+    { include-group = "docs" },
+    { include-group = "test" },
+    { include-group = "typecheck" },
+
 ]
 
 [build-system]
@@ -74,9 +94,25 @@ pydocstyle = { convention = "numpy" }
 
 [tool.ruff.lint.per-file-ignores]
 "tests/**/*.py" = ["D", "INP001", "S101", "PLC2701"]
+"examples/**/*.py" = ["D", "INP001", "S101", "PLC2701"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.basedpyright]
+pythonVersion = "3.10"
+pythonPlatform = "All"
+typeCheckingMode = "recommended"
+include = ["src", "tests"]
+reportAny = false
+reportUnknownMemberType = false
+
+[tool.pyrefly]
+project-includes = ["src/**/*.py", "tests/**/*.py"]
+search-path = ["src"]
+python-interpreter-path = ".venv/bin/python"
+python-version = "3.10"
+min-severity = "warn"
