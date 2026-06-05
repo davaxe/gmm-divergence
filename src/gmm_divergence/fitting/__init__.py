@@ -13,6 +13,31 @@ optimized:
   Optimizes the weights directly on the simplex with SLSQP constraints.
 """
 
+from gmm_divergence.fitting.config import (
+    BidirectionalKL,
+    FitObjective,
+    FitParameterization,
+    ForwardKL,
+    MomentMatching,
+    ReverseKL,
+    SimplexSLSQP,
+    SoftmaxLBFGSB,
+    WeightFitMethod,
+    WeightFitObjective,
+)
 from gmm_divergence.fitting.weights import fit_mixture_weights_simplex, fit_mixture_weights_softmax
 
-__all__ = ["fit_mixture_weights_simplex", "fit_mixture_weights_softmax"]
+__all__ = [
+    "BidirectionalKL",
+    "FitObjective",
+    "FitParameterization",
+    "ForwardKL",
+    "MomentMatching",
+    "ReverseKL",
+    "SimplexSLSQP",
+    "SoftmaxLBFGSB",
+    "WeightFitMethod",
+    "WeightFitObjective",
+    "fit_mixture_weights_simplex",
+    "fit_mixture_weights_softmax",
+]

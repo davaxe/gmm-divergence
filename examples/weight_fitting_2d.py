@@ -8,13 +8,22 @@ import numpy as np
 from matplotlib.lines import Line2D
 from scipy.stats import multivariate_normal
 
-from gmm_divergence import Gaussian, GaussianMixture, KLFitResult, fit_mixture_weights
+from gmm_divergence import (
+    BidirectionalKL,
+    ForwardKL,
+    Gaussian,
+    GaussianMixture,
+    KLFitResult,
+    MomentMatching,
+    ReverseKL,
+    fit_mixture_weights,
+)
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.collections import QuadMesh
 
-    from gmm_divergence.fit import FitObjective
+    from gmm_divergence.fitting import FitObjective
     from gmm_divergence.typing import FloatArray
 
 
@@ -174,19 +183,28 @@ def fit_weight_objectives(
 
     for objective in FIT_OBJECTIVES:
         result = fit_mixture_weights(
-            p,
-            q_i,
-            method="softmax-lbfgsb",
-            objective=objective,  # pyright: ignore[reportArgumentType]
-            p_sampling=samples,
-            q_sampling=samples,
-            rng=rng,
-            alpha=BIDIRECTIONAL_ALPHA,
+            p, q_i, objective=fit_objective_config(objective, samples, rng)
         )
 
         fits.append(ObjectiveFit(objective=objective, result=result))
 
     return fits
+
+
+def fit_objective_config(
+    objective: FitObjective, samples: int, rng: int
+) -> ForwardKL | ReverseKL | BidirectionalKL | MomentMatching:
+    match objective:
+        case "forward":
+            return ForwardKL(sampling=samples, rng=rng)
+        case "reverse":
+            return ReverseKL(p_sampling=samples, q_sampling=samples, rng=rng)
+        case "bidirectional":
+            return BidirectionalKL(
+                p_sampling=samples, q_sampling=samples, alpha=BIDIRECTIONAL_ALPHA, rng=rng
+            )
+        case "moment_matching":
+            return MomentMatching(fit_second_moments=True)
 
 
 def objective_display_name(objective: FitObjective) -> str:

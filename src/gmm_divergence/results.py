@@ -12,7 +12,7 @@ if TYPE_CHECKING:
     from scipy.optimize import OptimizeResult
 
     from gmm_divergence.distribution.combine import CombinedGaussianMixture
-    from gmm_divergence.fitting._objective import FitObjective
+    from gmm_divergence.fitting.config import FitObjective
     from gmm_divergence.typing import Weights
 
 

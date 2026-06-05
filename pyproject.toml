@@ -52,8 +52,6 @@ typecheck = [
 ]
 example = [
     "matplotlib>=3.10.9",
-    "pandas>=2.3.3",
-    "seaborn>=0.13.2",
 ]
 dev = [
     "scipy-stubs>=1.15.3.0",

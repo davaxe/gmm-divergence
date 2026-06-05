@@ -1,98 +1,46 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, TypeVar
 
-from typing_extensions import TypedDict
-
+from gmm_divergence._dispatch import MethodSpec, Registry
 from gmm_divergence.fitting import weights as wfit
-from gmm_divergence.fitting._objective import FitObjective, FitParameterization
+from gmm_divergence.fitting.config import (
+    BidirectionalKL,
+    ForwardKL,
+    MomentMatching,
+    ReverseKL,
+    SimplexSLSQP,
+    SoftmaxLBFGSB,
+    WeightFitMethod,
+    WeightFitObjective,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
-
-    import numpy as np
-    import numpy.typing as npt
 
     from gmm_divergence.distribution.gaussian import Gaussian
     from gmm_divergence.distribution.gmm import GaussianMixture
     from gmm_divergence.results import KLFitResult
 
-__all__ = ["FitObjective", "FitParameterization"]
+OptionsT = TypeVar("OptionsT")
 
-FitMethod = Literal["softmax-lbfgsb", "simplex-slsqp"]
+_OPTIMIZER_REGISTRY = Registry(
+    label="fit optimizer",
+    specs=(
+        MethodSpec(name="softmax-lbfgsb", option_type=SoftmaxLBFGSB, default=SoftmaxLBFGSB()),
+        MethodSpec(name="simplex-slsqp", option_type=SimplexSLSQP, default=SimplexSLSQP()),
+    ),
+)
 
-
-class _CommonArgs(TypedDict):
-    p: Gaussian | GaussianMixture
-    q_i: Sequence[Gaussian | GaussianMixture]
-    p_sampling: npt.ArrayLike | int
-    q_sampling: npt.ArrayLike | int
-    objective: FitObjective
-    alpha: float
-    rng: np.random.Generator | int | None
-    tol: float
-    max_iterations: int
-
-
-@overload
-def fit_mixture_weights(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    /,
-    *,
-    method: FitMethod = "softmax-lbfgsb",
-    objective: Literal["moment_matching"] = "moment_matching",
-    tol: float = 1e-8,
-    max_iterations: int = 1000,
-) -> KLFitResult: ...
-
-
-@overload
-def fit_mixture_weights(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    /,
-    *,
-    method: FitMethod = "softmax-lbfgsb",
-    p_sampling: npt.ArrayLike | int = 10_000,
-    objective: Literal["forward"] = "forward",
-    rng: np.random.Generator | int | None = None,
-    tol: float = 1e-8,
-    max_iterations: int = 1000,
-) -> KLFitResult: ...
-
-
-@overload
-def fit_mixture_weights(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    /,
-    *,
-    method: FitMethod = "softmax-lbfgsb",
-    p_sampling: npt.ArrayLike | int = 10_000,
-    q_sampling: npt.ArrayLike | int = 10_000,
-    objective: Literal["reverse"] = "reverse",
-    rng: np.random.Generator | int | None = None,
-    tol: float = 1e-8,
-    max_iterations: int = 1000,
-) -> KLFitResult: ...
-
-
-@overload
-def fit_mixture_weights(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    /,
-    *,
-    method: FitMethod = "softmax-lbfgsb",
-    p_sampling: npt.ArrayLike | int = 10_000,
-    q_sampling: npt.ArrayLike | int = 10_000,
-    objective: Literal["bidirectional"] = "bidirectional",
-    alpha: float = 0.5,
-    rng: np.random.Generator | int | None = None,
-    tol: float = 1e-8,
-    max_iterations: int = 1000,
-) -> KLFitResult: ...
+_OBJECTIVE_REGISTRY = Registry(
+    label="fit objective",
+    specs=(
+        MethodSpec(name="forward", option_type=ForwardKL, default=ForwardKL()),
+        MethodSpec(name="reverse", option_type=ReverseKL, default=ReverseKL()),
+        MethodSpec(name="bidirectional", option_type=BidirectionalKL, default=BidirectionalKL()),
+        MethodSpec(name="moment_matching", option_type=MomentMatching, default=MomentMatching()),
+    ),
+)
 
 
 def fit_mixture_weights(
@@ -100,14 +48,8 @@ def fit_mixture_weights(
     q_i: Sequence[Gaussian | GaussianMixture],
     /,
     *,
-    method: FitMethod = "softmax-lbfgsb",
-    p_sampling: npt.ArrayLike | int = 10_000,
-    q_sampling: npt.ArrayLike | int = 10_000,
-    objective: FitObjective = "forward",
-    alpha: float = 0.5,
-    rng: np.random.Generator | int | None = None,
-    tol: float = 1e-8,
-    max_iterations: int = 1000,
+    method: WeightFitMethod = "softmax-lbfgsb",
+    objective: WeightFitObjective = "forward",
 ) -> KLFitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
 
@@ -117,7 +59,7 @@ def fit_mixture_weights(
     q_w(x) = \sum_i w_i q_i(x)
     $$
 
-    approximates the reference distribution `p` according to the selected KL
+    approximates the reference distribution `p` according to the selected
     objective.
 
     Parameters
@@ -126,21 +68,14 @@ def fit_mixture_weights(
         Reference distribution.
     q_i : sequence of Gaussian or GaussianMixture
         Candidate distributions whose weights are fitted.
-    method : {"softmax-lbfgsb", "simplex-slsqp"}
-        Optimization method and parameterization used for the weights.
-    p_sampling, q_sampling : int or array-like
-        Number of samples to draw, or precomputed samples. `q_sampling` is used
-        by reverse and bidirectional objectives.
-    objective : {"forward", "reverse", "bidirectional"}, default="forward"
-        KL objective used for fitting.
-    alpha : float, default=0.5
-        Forward-objective weight used by the bidirectional objective.
-    rng : numpy.random.Generator or int, optional
-        Random number generator or seed used when sampling is required.
-    tol : float, default=1e-8
-        Optimization tolerance.
-    max_iterations : int
-        Maximum number of optimizer iterations.
+    method : str or optimizer configuration, default="softmax-lbfgsb"
+        Optimizer used for the weights. Passing a string runs that optimizer
+        with defaults. Use `SoftmaxLBFGSB(...)` or `SimplexSLSQP(...)` for
+        optimizer-specific options.
+    objective : str or objective configuration, default="forward"
+        Objective used for fitting. Passing a string runs that objective with
+        defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
+        or `MomentMatching(...)` for objective-specific options.
 
     Returns
     -------
@@ -148,19 +83,36 @@ def fit_mixture_weights(
         Result containing the fitted weights, fitted mixture, fit objective,
         objective value, forward/reverse KL diagnostics, and optimizer metadata.
     """
-    common_kwargs: _CommonArgs = {
-        "p": p,
-        "q_i": q_i,
-        "p_sampling": p_sampling,
-        "q_sampling": q_sampling,
-        "objective": objective,
-        "alpha": alpha,
-        "rng": rng,
-        "tol": tol,
-        "max_iterations": max_iterations,
-    }
-    match method:
+    method_spec, optimizer = _OPTIMIZER_REGISTRY.resolve(method)
+    _objective_spec, objective_config = _OBJECTIVE_REGISTRY.resolve(objective)
+
+    match method_spec.name:
         case "softmax-lbfgsb":
-            return wfit.fit_mixture_weights_softmax(**common_kwargs)
+            optimizer = _cast_options(optimizer, SoftmaxLBFGSB)
+            objective_config = _cast_fit_objective(objective_config)
+            return wfit.fit_mixture_weights_softmax(
+                p, q_i, objective=objective_config, optimizer=optimizer
+            )
         case "simplex-slsqp":
-            return wfit.fit_mixture_weights_simplex(**common_kwargs)
+            optimizer = _cast_options(optimizer, SimplexSLSQP)
+            objective_config = _cast_fit_objective(objective_config)
+            return wfit.fit_mixture_weights_simplex(
+                p, q_i, objective=objective_config, optimizer=optimizer
+            )
+        case _:
+            msg = "Unhandled fit optimizer registry entry."
+            raise AssertionError(msg)
+
+
+def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
+    if not isinstance(options, option_type):
+        msg = "Dispatcher returned an option object with the wrong type."
+        raise TypeError(msg)
+    return options
+
+
+def _cast_fit_objective(options: object) -> wfit.FitObjectiveConfig:
+    if not isinstance(options, (ForwardKL, ReverseKL, BidirectionalKL, MomentMatching)):
+        msg = "Dispatcher returned an objective object with the wrong type."
+        raise TypeError(msg)
+    return options

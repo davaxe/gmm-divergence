@@ -2,12 +2,19 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 
 from gmm_divergence.distribution.gaussian import Gaussian
 from gmm_divergence.distribution.gmm import GaussianMixture
+from gmm_divergence.fitting.config import (
+    BidirectionalKL,
+    FitParameterization,
+    ForwardKL,
+    MomentMatching,
+    ReverseKL,
+)
 from gmm_divergence.typing import FloatArray
 from gmm_divergence.utils import logsumexp
 
@@ -17,8 +24,6 @@ if TYPE_CHECKING:
 
 GaussianLike = Gaussian | GaussianMixture
 ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
-FitObjective = Literal["forward", "reverse", "bidirectional", "moment_matching"]
-FitParameterization = Literal["simplex", "softmax"]
 
 
 def softmax(theta: FloatArray) -> Weights:
@@ -237,27 +242,13 @@ class _MomentMatching:
     p_moments: FloatArray
     q_moments: FloatArray
 
-    @property
-    def n_components(self) -> int:
-        return int(self.q_moments.shape[0])
-
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         weights = np.asarray(weights, dtype=np.float64)
 
-        if weights.ndim != 1:
-            msg = f"Expected weights to be one-dimensional, got shape {weights.shape}."
-            raise ValueError(msg)
-
-        if weights.shape[0] != self.n_components:
-            msg = f"Expected {self.n_components} weights, got {weights.shape[0]}."
-            raise ValueError(msg)
-
         mixture_moments = weights @ self.q_moments
         residual = mixture_moments - self.p_moments
-
         value = float(residual @ residual)
         grad = 2.0 * (self.q_moments @ residual)
-
         return value, grad.astype(np.float64)
 
 
@@ -279,7 +270,7 @@ def _raw_moment_vector(distribution: GaussianLike, *, second_moments: bool = Fal
 
 
 def moment_matching(
-    p: GaussianLike, q_components: Sequence[GaussianLike], *, second_moments: bool = False
+    p: GaussianLike, q_components: Sequence[GaussianLike], *, second_moments: bool = True
 ) -> ObjectiveFn:
     """Build a simplex objective for moment matching."""
     p_moments = _raw_moment_vector(p, second_moments=second_moments)
@@ -360,72 +351,65 @@ def softmax_bidirectional_kl(
 
 def _build_softmax_objective(
     *,
-    objective: FitObjective,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,
     q_samples: FloatArray | None,
-    alpha: float,
 ) -> ObjectiveFn:
     match objective:
-        case "forward":
+        case ForwardKL():
             return softmax_forward_kl(p, q_i, p_samples)
-        case "reverse":
+        case ReverseKL():
             if q_samples is None:
                 msg = "q_samples is required for reverse KL."
                 raise ValueError(msg)
             return softmax_reverse_kl(p, q_i, q_samples)
-        case "bidirectional":
+        case BidirectionalKL(alpha=alpha):
             return softmax_bidirectional_kl(
                 p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha
             )
-        case "moment_matching":
-            return with_softmax(moment_matching(p, q_i))
+        case MomentMatching(fit_second_moments=fit_second_moments):
+            return with_softmax(moment_matching(p, q_i, second_moments=fit_second_moments))
 
 
 def _build_simplex_objective(
     *,
-    objective: FitObjective,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,
     q_samples: FloatArray | None,
-    alpha: float,
 ) -> ObjectiveFn:
     match objective:
-        case "forward":
+        case ForwardKL():
             return forward_kl(p, q_i, p_samples)
-        case "reverse":
+        case ReverseKL():
             if q_samples is None:
                 msg = "q_samples is required for reverse KL."
                 raise ValueError(msg)
             return reverse_kl(p, q_i, q_samples)
-        case "bidirectional":
+        case BidirectionalKL(alpha=alpha):
             return bidirectional_kl(p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha)
-        case "moment_matching":
-            return moment_matching(p, q_i)
+        case MomentMatching(fit_second_moments=fit_second_moments):
+            return moment_matching(p, q_i, second_moments=fit_second_moments)
 
 
 def build_objective(
     *,
     parameterization: FitParameterization,
-    objective: FitObjective,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,
     q_samples: FloatArray | None,
-    alpha: float,
 ) -> ObjectiveFn:
-    kwargs = {
-        "objective": objective,
-        "p": p,
-        "q_i": q_i,
-        "p_samples": p_samples,
-        "q_samples": q_samples,
-        "alpha": alpha,
-    }
     match parameterization:
         case "softmax":
-            return _build_softmax_objective(**kwargs)  # pyright: ignore[reportArgumentType]
+            return _build_softmax_objective(
+                objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
+            )
         case "simplex":
-            return _build_simplex_objective(**kwargs)  # pyright: ignore[reportArgumentType]
+            return _build_simplex_objective(
+                objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
+            )

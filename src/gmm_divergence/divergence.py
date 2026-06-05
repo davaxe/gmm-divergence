@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-import logging
-from typing import TYPE_CHECKING, Literal, overload
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
 
+from gmm_divergence._dispatch import MethodSpec, Registry
 from gmm_divergence.distribution import Gaussian, GaussianMixture
 from gmm_divergence.estimators.closed_form import kl_closed_form
-from gmm_divergence.estimators.gaussian_approx import kl_gaussian_approximation
+from gmm_divergence.estimators.gaussian_approx import Approximation, kl_gaussian_approximation
 from gmm_divergence.estimators.monte_carlo import kl_monte_carlo
 from gmm_divergence.estimators.unscented import kl_unscented
 
@@ -16,58 +17,56 @@ if TYPE_CHECKING:
     from gmm_divergence.distribution.base import Distribution
     from gmm_divergence.results import DivergenceResult
 
-logger = logging.getLogger(__name__)
 
-EstimationMethod = Literal["monte_carlo", "unscented", "gaussian_approximation", "closed_form"]
+@dataclass(frozen=True, slots=True)
+class MonteCarlo:
+    """Monte Carlo KL estimator configuration."""
 
-GaussianFamily = Gaussian | GaussianMixture
+    sampling: npt.ArrayLike | int = 10_000
+    rng: np.random.Generator | int | None = None
 
 
-@overload
+@dataclass(frozen=True, slots=True)
+class Unscented:
+    """Unscented-transform KL estimator configuration."""
+
+
+@dataclass(frozen=True, slots=True)
+class GaussianApproximation:
+    """Gaussian-approximation KL estimator configuration."""
+
+    approximation: Approximation = "moment_matching"
+
+
+@dataclass(frozen=True, slots=True)
+class ClosedForm:
+    """Closed-form Gaussian KL configuration."""
+
+
+EstimationMethod: TypeAlias = Literal[
+    "monte_carlo", "unscented", "gaussian_approximation", "closed_form"
+]
+KLMethod: TypeAlias = EstimationMethod | MonteCarlo | Unscented | GaussianApproximation | ClosedForm
+OptionsT = TypeVar("OptionsT")
+
+
+_KL_REGISTRY = Registry(
+    label="KL",
+    specs=(
+        MethodSpec(name="monte_carlo", option_type=MonteCarlo, default=MonteCarlo()),
+        MethodSpec(name="unscented", option_type=Unscented, default=Unscented()),
+        MethodSpec(
+            name="gaussian_approximation",
+            option_type=GaussianApproximation,
+            default=GaussianApproximation(),
+        ),
+        MethodSpec(name="closed_form", option_type=ClosedForm, default=ClosedForm()),
+    ),
+)
+
+
 def kl_divergence(
-    p: Gaussian, q: Gaussian, /, *, method: Literal["closed_form"] = "closed_form"
-) -> DivergenceResult: ...
-
-
-@overload
-def kl_divergence(
-    p: Gaussian | GaussianMixture,
-    q: Gaussian | GaussianMixture,
-    /,
-    *,
-    method: Literal["gaussian_approximation"] = "gaussian_approximation",
-    approximation: Literal["nearest", "moment_matching"] = ...,
-) -> DivergenceResult: ...
-
-
-@overload
-def kl_divergence(
-    p: Gaussian | GaussianMixture, q: Distribution, /, *, method: Literal["unscented"] = ...
-) -> DivergenceResult: ...
-
-
-@overload
-def kl_divergence(
-    p: Distribution,
-    q: Distribution,
-    /,
-    *,
-    method: Literal["monte_carlo"] = "monte_carlo",
-    sampling: npt.ArrayLike | int = 10_000,
-    rng: np.random.Generator | int | None = None,
-) -> DivergenceResult: ...
-
-
-def kl_divergence(
-    p: Distribution,
-    q: Distribution,
-    /,
-    *,
-    method: EstimationMethod = "monte_carlo",
-    sampling: npt.ArrayLike | int = 10_000,
-    rng: np.random.Generator | int | None = None,
-    approximation: Literal["nearest", "moment_matching"] = "moment_matching",
-    force_closed_form: bool = False,
+    p: Distribution, q: Distribution, /, *, method: KLMethod = "monte_carlo"
 ) -> DivergenceResult:
     r"""Compute the Kullback--Leibler divergence between two distributions.
 
@@ -85,69 +84,15 @@ def kl_divergence(
     Here, `p` is treated as the reference distribution and `q` as the
     approximating distribution.
 
-    !!! warning "Not all methods support all distribution types"
-        Some estimation methods require specific distribution types. The monte
-        Carlo method is the most general, while other methods may require
-        Gaussian or Gaussian mixture distributions.
-
     Parameters
     ----------
     p, q : Distribution
         The two distributions to compare. They must have the same dimensionality.
-    method : EstimationMethod, default="monte_carlo"
-        Method used to compute or estimate the KL divergence.
-
-        Supported methods are:
-
-        - `"closed_form"`:
-            Use an analytical formula when available. This is the preferred method
-            for distribution pairs with a known KL expression, such as two
-            Gaussian distributions.
-
-        - `"monte_carlo"`:
-            Estimate the KL divergence using samples from `p`:
-
-            $$
-            D_{\mathrm{KL}}(p \| q)
-            \approx
-            \frac{1}{N}
-            \sum_{i=1}^{N}
-            \left[
-                \log p(x_i) - \log q(x_i)
-            \right],
-            \qquad x_i \sim p.
-            $$
-
-            This method is general but stochastic. Accuracy depends on
-            `sampling` and the random seed.
-
-        - `"unscented"`:
-            Use the Unscented Transform to approximate the KL divergence.
-
-        - `"gaussian_approximation"`:
-            Approximate both distributions as single Gaussians (e.g., by
-            matching moments) and compute the KL divergence between the
-            approximations.
-
-    sampling : int or array-like, default=10_000
-        Number of samples drawn from `p`, or precomputed samples from `p`.
-        Used when `method="monte_carlo"` and ignored by closed-form methods.
-    rng : numpy.random.Generator, int, optional
-        Random number generator or seed used when sampling is required.
-    approximation : {"nearest", "moment_matching"}
-        Strategy used when "gaussian_approximation" method is selected:
-
-        - `"nearest"`:
-          Approximate the KL as the nearest (smallest) available closed-form KL
-          between any pair of components from `p` and `q`.
-
-        - `"moment_matching"`:
-          Approximate unsupported distributions by matching moments, mean and
-          covariance, before computing the KL divergence.
-
-    force_closed_form : bool, default=False
-        If `True`, require a closed-form expression. Raises an error if no
-        analytical expression is available.
+    method : str or KL method configuration, default="monte_carlo"
+        Method used to compute or estimate the KL divergence. Passing a string
+        runs that method with its defaults. Use a method configuration object,
+        such as `MonteCarlo(sampling=50_000, rng=0)`, for method-specific
+        options.
 
     Returns
     -------
@@ -175,27 +120,45 @@ def kl_divergence(
     print(result.value)
     ```
 
-    Require a closed-form expression (only available if both `p` and `q` are Gaussians):
+    Require a closed-form expression:
 
     ```python
     result = kl_divergence(p, q, method="closed_form")
     ```
 
-    Use precomputed samples:
+    Configure Monte Carlo sampling:
 
     ```python
     samples = p.sample(50_000, rng=0)
-    result = kl_divergence(p, q, sampling=samples)
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
     ```
     """
     _validate_same_dimension(p, q)
-    exact_result = _maybe_compute_closed_form(p, q, force_closed_form=force_closed_form)
-    if exact_result is not None:
-        return exact_result
+    spec, options = _KL_REGISTRY.resolve(method)
+    match spec.name:
+        case "monte_carlo":
+            options = _cast_options(options, MonteCarlo)
+            return kl_monte_carlo(p, q, sampling=options.sampling, rng=options.rng)
+        case "unscented":
+            p = _require_unscented_input(p, spec.name)
+            return kl_unscented(p, q)
+        case "gaussian_approximation":
+            options = _cast_options(options, GaussianApproximation)
+            p, q = _require_gaussian_family_pair(p, q, spec.name)
+            return kl_gaussian_approximation(p, q, approximation=options.approximation)
+        case "closed_form":
+            p, q = _require_gaussian_pair(p, q, spec.name)
+            return kl_closed_form(p, q)
+        case _:
+            msg = "Unhandled KL method registry entry."
+            raise AssertionError(msg)
 
-    return _kl_divergence_by_method(
-        p, q, method=method, sampling=sampling, rng=rng, approximation=approximation
-    )
+
+def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
+    if not isinstance(options, option_type):
+        msg = "Dispatcher returned an option object with the wrong type."
+        raise TypeError(msg)
+    return options
 
 
 def _validate_same_dimension(p: Distribution, q: Distribution) -> None:
@@ -204,76 +167,37 @@ def _validate_same_dimension(p: Distribution, q: Distribution) -> None:
         raise ValueError(msg)
 
 
-def _maybe_compute_closed_form(
-    p: Distribution, q: Distribution, *, force_closed_form: bool
-) -> DivergenceResult | None:
-    p_single, q_single = _single_gaussian(p), _single_gaussian(q)
-
-    if p_single is None or q_single is None:
-        return None
-
-    if force_closed_form:
-        return kl_closed_form(p_single, q_single)
-
-    logger.warning(
-        "Both distributions are Gaussian. Consider using method='exact' for a closed-form solution."
-    )
-    return None
-
-
-def _kl_divergence_by_method(
-    p: Distribution,
-    q: Distribution,
-    *,
-    method: EstimationMethod,
-    sampling: npt.ArrayLike | int,
-    rng: np.random.Generator | int | None,
-    approximation: Literal["nearest", "moment_matching"],
-) -> DivergenceResult:
-    match method:
-        case "monte_carlo":
-            return kl_monte_carlo(p, q, sampling=sampling, rng=rng)
-        case "unscented":
-            return kl_unscented(
-                _require_gaussian_or_mixture(p, method, name="p"),
-                _require_gaussian_or_mixture(q, method, name="q"),
-            )
-
-        case "gaussian_approximation":
-            return kl_gaussian_approximation(
-                _require_gaussian_or_mixture(p, method, name="p"),
-                _require_gaussian_or_mixture(q, method, name="q"),
-                approximation=approximation,
-            )
-
-        case "closed_form":
-            return kl_closed_form(
-                _require_gaussian(p, method, name="p"), _require_gaussian(q, method, name="q")
-            )
-
-
-def _require_gaussian(d: Distribution, method: EstimationMethod, *, name: str) -> Gaussian:
-    if not isinstance(d, Gaussian):
-        msg = f"Method '{method}' requires '{name}' to be a Gaussian, got {type(d).__name__}."
-        raise TypeError(msg)
-    return d
-
-
-def _require_gaussian_or_mixture(
-    d: Distribution, method: EstimationMethod, *, name: str
-) -> Gaussian | GaussianMixture:
-    if not isinstance(d, (Gaussian, GaussianMixture)):
+def _require_gaussian_pair(
+    p: Distribution, q: Distribution, method: str
+) -> tuple[Gaussian, Gaussian]:
+    if not isinstance(p, Gaussian) or not isinstance(q, Gaussian):
         msg = (
-            f"Method '{method}' requires '{name}' to be a Gaussian or GaussianMixture, "
-            f"got {type(d).__name__}."
+            f"KL method '{method}' requires p and q to be Gaussian; "
+            f"got {type(p).__name__} and {type(q).__name__}."
         )
         raise TypeError(msg)
-    return d
+    return p, q
 
 
-def _single_gaussian(d: Distribution) -> Gaussian | None:
-    if isinstance(d, Gaussian):
-        return d
-    if isinstance(d, GaussianMixture):
-        return d.as_gaussian(require_single=True)
-    return None
+def _require_gaussian_family_pair(
+    p: Distribution, q: Distribution, method: str
+) -> tuple[Gaussian | GaussianMixture, Gaussian | GaussianMixture]:
+    if not isinstance(p, (Gaussian, GaussianMixture)) or not isinstance(
+        q, (Gaussian, GaussianMixture)
+    ):
+        msg = (
+            f"KL method '{method}' requires p and q to be Gaussian or GaussianMixture; "
+            f"got {type(p).__name__} and {type(q).__name__}."
+        )
+        raise TypeError(msg)
+    return p, q
+
+
+def _require_unscented_input(p: Distribution, method: str) -> Gaussian | GaussianMixture:
+    if not isinstance(p, (Gaussian, GaussianMixture)):
+        msg = (
+            f"KL method '{method}' requires p to be Gaussian or GaussianMixture; "
+            f"got {type(p).__name__}."
+        )
+        raise TypeError(msg)
+    return p

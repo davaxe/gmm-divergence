@@ -3,8 +3,17 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gmm_divergence import kl_divergence
+from gmm_divergence import GaussianApproximation, MonteCarlo, kl_divergence
 from gmm_divergence.distribution import Gaussian, GaussianMixture
+
+UNKNOWN_KL_METHOD_MESSAGE = (
+    r"Unknown KL method 'exact'\. Supported methods are: "
+    r"closed_form, gaussian_approximation, monte_carlo, unscented\."
+)
+CLOSED_FORM_MIXTURE_MESSAGE = (
+    r"KL method 'closed_form' requires p and q to be Gaussian; "
+    r"got GaussianMixture and Gaussian\."
+)
 
 
 def test_mc_converges_to_analytical_normal_kl() -> None:
@@ -18,8 +27,8 @@ def test_mc_converges_to_analytical_normal_kl() -> None:
     samples = np.random.default_rng(2027).multivariate_normal(
         mean=mean_p, cov=covariance_p, size=200_000
     )
-    estimate = kl_divergence(p, q, sampling=samples, method="monte_carlo").value
-    estimate_sample_internal = kl_divergence(p, q, sampling=200_000, method="monte_carlo").value
+    estimate = kl_divergence(p, q, method=MonteCarlo(sampling=samples)).value
+    estimate_sample_internal = kl_divergence(p, q, method=MonteCarlo(sampling=200_000)).value
     assert estimate == pytest.approx(
         kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value, abs=0.01
     )
@@ -85,11 +94,45 @@ def test_kl_methods_accept_gaussian_and_mixture_inputs(
         samples = np.random.default_rng(2027).multivariate_normal(
             mean=mean_p, cov=covariance_p, size=200_000
         )
-        estimate = kl_divergence(p, q, sampling=samples, method="monte_carlo").value
+        estimate = kl_divergence(p, q, method=MonteCarlo(sampling=samples)).value
         assert estimate == pytest.approx(expected, abs=0.01)
     elif method == "unscented":
         estimate = kl_divergence(p, q, method="unscented").value
         assert estimate == pytest.approx(expected, abs=1e-12)
     else:
-        estimate = kl_divergence(p, q, method="gaussian_approximation").value
+        estimate = kl_divergence(p, q, method=GaussianApproximation()).value
         assert estimate == pytest.approx(expected, abs=1e-12)
+
+
+def test_kl_string_method_uses_defaults() -> None:
+    p = Gaussian.from_arrays(mean=[0.0], covariance=[[1.0]])
+    q = Gaussian.from_arrays(mean=[1.0], covariance=[[1.0]])
+
+    result = kl_divergence(p, q, method="monte_carlo")
+
+    assert result.method == "monte_carlo"
+    assert result.num_samples == 10_000
+
+
+def test_kl_rejects_unknown_method() -> None:
+    p = Gaussian.from_arrays(mean=[0.0], covariance=[[1.0]])
+    q = Gaussian.from_arrays(mean=[1.0], covariance=[[1.0]])
+
+    with pytest.raises(ValueError, match=UNKNOWN_KL_METHOD_MESSAGE):
+        _ = kl_divergence(p, q, method="exact")  # pyright: ignore[reportArgumentType]
+
+
+def test_kl_closed_form_rejects_mixture_inputs() -> None:
+    p = GaussianMixture.from_arrays(weights=[1.0], means=[[0.0]], covariances=[[[1.0]]])
+    q = Gaussian.from_arrays(mean=[1.0], covariance=[[1.0]])
+
+    with pytest.raises(TypeError, match=CLOSED_FORM_MIXTURE_MESSAGE):
+        _ = kl_divergence(p, q, method="closed_form")
+
+
+def test_kl_rejects_legacy_dispatcher_kwargs() -> None:
+    p = Gaussian.from_arrays(mean=[0.0], covariance=[[1.0]])
+    q = Gaussian.from_arrays(mean=[1.0], covariance=[[1.0]])
+
+    with pytest.raises(TypeError):
+        kl_divergence(p, q, sampling=100)  # pyright: ignore[reportCallIssue]

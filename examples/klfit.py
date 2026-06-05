@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 import numpy as np
 
-from gmm_divergence import Gaussian, fit_mixture_weights
+from gmm_divergence import ForwardKL, Gaussian, fit_mixture_weights
 
 DATA_PATH = Path(__file__).parent / "data32dim.npz"
 
@@ -49,7 +49,9 @@ def main() -> None:
         if i != target_index
     ]
     component_labels = [str(label) for i, label in enumerate(labels) if i != target_index]
-    res = fit_mixture_weights(target, components, rng=0, method="softmax-lbfgsb")
+    res = fit_mixture_weights(
+        target, components, method="softmax-lbfgsb", objective=ForwardKL(rng=0)
+    )
     _ = sys.stdout.write(f"{res.display(source_labels=component_labels)}\n")
 
 

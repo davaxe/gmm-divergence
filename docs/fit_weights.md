@@ -168,7 +168,7 @@ The [`fit_mixture_weights`](../reference/index.md#gmm_divergence.fit_mixture_wei
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
-from gmm_divergence import GaussianMixture, fit_mixture_weights
+from gmm_divergence import ForwardKL, GaussianMixture, fit_mixture_weights
 
 p = GaussianMixture.from_arrays(
     weights=[0.6, 0.4], means=[[0.0], [2.0]], covariances=[[[0.5]], [[0.5]]]
@@ -178,7 +178,7 @@ q1 = GaussianMixture.from_arrays(weights=[1.0], means=[[0.0]], covariances=[[[0.
 
 q2 = GaussianMixture.from_arrays(weights=[1.0], means=[[2.0]], covariances=[[[0.5]]])
 
-result = fit_mixture_weights(p, [q1, q2], method="softmax-lbfgsb", rng=9126)
+result = fit_mixture_weights(p, [q1, q2], method="softmax-lbfgsb", objective=ForwardKL(rng=9126))
 
 assert result.converged
 assert abs(result.weights[0] - 0.6) < 1e-2

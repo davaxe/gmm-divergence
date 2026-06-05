@@ -3,7 +3,20 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from gmm_divergence import GaussianMixture, fit_mixture_weights
+from gmm_divergence import (
+    BidirectionalKL,
+    ForwardKL,
+    GaussianMixture,
+    ReverseKL,
+    SimplexSLSQP,
+    SoftmaxLBFGSB,
+    fit_mixture_weights,
+)
+
+UNKNOWN_FIT_METHOD_MESSAGE = (
+    r"Unknown fit optimizer method 'bad'\. "
+    r"Supported methods are: simplex-slsqp, softmax-lbfgsb\."
+)
 
 
 def _p_and_q_i() -> tuple[GaussianMixture, list[GaussianMixture]]:
@@ -20,7 +33,7 @@ def _p_and_q_i() -> tuple[GaussianMixture, list[GaussianMixture]]:
 def test_fit_mixture_weights_result_reports_fit_objective_and_diagnostics() -> None:
     p, q_i = _p_and_q_i()
 
-    result = fit_mixture_weights(p, q_i, objective="forward", p_sampling=500, rng=9126)
+    result = fit_mixture_weights(p, q_i, objective=ForwardKL(sampling=500, rng=9126))
 
     assert result.fit_objective == "forward"
     assert result.alpha is None
@@ -35,7 +48,7 @@ def test_fit_mixture_weights_accepts_reverse_objective() -> None:
     p, q_i = _p_and_q_i()
 
     result = fit_mixture_weights(
-        p, q_i, objective="reverse", p_sampling=500, q_sampling=500, rng=9126
+        p, q_i, objective=ReverseKL(p_sampling=500, q_sampling=500, rng=9126)
     )
 
     assert result.converged
@@ -48,10 +61,61 @@ def test_fit_mixture_weights_accepts_forward_reverse_objective() -> None:
     p, q_i = _p_and_q_i()
 
     result = fit_mixture_weights(
-        p, q_i, objective="bidirectional", p_sampling=500, q_sampling=500, rng=9126
+        p, q_i, objective=BidirectionalKL(p_sampling=500, q_sampling=500, rng=9126)
     )
 
     assert result.converged
     assert result.fit_objective == "bidirectional"
     assert result.alpha == pytest.approx(0.5)
     np.testing.assert_allclose(result.weights, [0.6, 0.4], atol=0.08)
+
+
+def test_fit_string_method_and_objective_use_defaults() -> None:
+    p, q_i = _p_and_q_i()
+
+    result = fit_mixture_weights(p, q_i, method="softmax-lbfgsb", objective="forward")
+
+    assert result.converged
+    assert result.fit_objective == "forward"
+
+
+def test_fit_accepts_configured_optimizer() -> None:
+    p, q_i = _p_and_q_i()
+
+    result = fit_mixture_weights(
+        p,
+        q_i,
+        method=SimplexSLSQP(tol=1e-8, max_iterations=1000),
+        objective=ForwardKL(sampling=500, rng=9126),
+    )
+
+    assert result.converged
+    np.testing.assert_allclose(result.weights, [0.6, 0.4], atol=0.08)
+
+
+def test_fit_accepts_configured_softmax_optimizer() -> None:
+    p, q_i = _p_and_q_i()
+
+    result = fit_mixture_weights(
+        p,
+        q_i,
+        method=SoftmaxLBFGSB(tol=1e-8, max_iterations=1000),
+        objective=ForwardKL(sampling=500, rng=9126),
+    )
+
+    assert result.converged
+    np.testing.assert_allclose(result.weights, [0.6, 0.4], atol=0.08)
+
+
+def test_fit_rejects_unknown_method() -> None:
+    p, q_i = _p_and_q_i()
+
+    with pytest.raises(ValueError, match=UNKNOWN_FIT_METHOD_MESSAGE):
+        _ = fit_mixture_weights(p, q_i, method="bad")  # pyright: ignore[reportArgumentType]
+
+
+def test_fit_rejects_legacy_dispatcher_kwargs() -> None:
+    p, q_i = _p_and_q_i()
+
+    with pytest.raises(TypeError):
+        fit_mixture_weights(p, q_i, p_sampling=500)  # pyright: ignore[reportCallIssue]

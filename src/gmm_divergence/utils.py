@@ -57,7 +57,7 @@ def as_weights(
         raise ValueError(msg)
 
     weights_arr = cast("Weights", weights_arr / weight_sum if normalize else weights_arr.copy())
-    _ = weights_arr.setflags(write=writable)
+    weights_arr.setflags(write=writable)
     return weights_arr
 
 
@@ -83,10 +83,10 @@ def as_covariance(
         )
         raise ValueError(msg)
     else:
-        covariance_arr = covariance_arr.copy()
+        covariance_arr = cast("Covariance", covariance_arr.copy())
 
     _validate_covariance_values(covariance_arr, name=name)
-    _ = covariance_arr.setflags(write=writable)
+    covariance_arr.setflags(write=writable)
     return covariance_arr
 
 
@@ -116,10 +116,10 @@ def as_covariances(
         )
         raise ValueError(msg)
     else:
-        covariances_arr = covariances_arr.copy()
+        covariances_arr = cast("Covariances", covariances_arr.copy())
 
     _validate_covariance_values(covariances_arr, name=name)
-    _ = covariances_arr.setflags(write=writable)
+    covariances_arr.setflags(write=writable)
     return covariances_arr
 
 

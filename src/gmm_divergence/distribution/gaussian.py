@@ -80,7 +80,7 @@ class Gaussian(GaussianFamily):
         d = self.mean.shape[0]
         chol = self.chol()
         diff = x - self.mean
-        rhs = diff.T
+        rhs = cast("FloatArray", diff.T)
         y = cast("FloatArray", np.linalg.solve(chol, rhs).T)
         mahalanobis = np.sum(y**2, axis=-1)
         log_det = 2 * np.sum(np.log(np.diag(chol)))

@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 import pytest
 
-from gmm_divergence import kl_divergence
+from gmm_divergence import MonteCarlo, kl_divergence
 from gmm_divergence.distribution import GaussianMixture
 
 if TYPE_CHECKING:
@@ -53,4 +53,4 @@ def test_kl_monte_carlo_with_internal_sampling(
 ) -> None:
     p = make_gmm(seed=1, n_components=n_components, n_features=n_features)
     q = make_gmm(seed=2, n_components=n_components, n_features=n_features)
-    benchmark(kl_divergence, p, q, sampling=num_samples, method="monte_carlo")
+    benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=num_samples))

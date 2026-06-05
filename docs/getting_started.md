@@ -34,9 +34,9 @@ q = GaussianMixture.from_arrays(
 Use `kl_divergence` to estimate \(D_{\mathrm{KL}}(p \| q)\):
 
 ```python
-from gmm_divergence import kl_divergence
+from gmm_divergence import MonteCarlo, kl_divergence
 
-result = kl_divergence(p, q, method="monte_carlo", rng=9126)
+result = kl_divergence(p, q, method=MonteCarlo(rng=9126))
 print(result.value)
 ```
 
@@ -56,7 +56,7 @@ log_density = p.logpdf(samples)
 Use `fit_mixture_weights` to combine candidate mixtures against a reference distribution:
 
 ```python
-from gmm_divergence import fit_mixture_weights
+from gmm_divergence import ForwardKL, fit_mixture_weights
 
 p = GaussianMixture.from_arrays(
     weights=[0.6, 0.4], means=[[0.0], [2.0]], covariances=[[[0.5]], [[0.5]]]
@@ -66,7 +66,7 @@ left = GaussianMixture.from_arrays(weights=[1.0], means=[[0.0]], covariances=[[[
 
 right = GaussianMixture.from_arrays(weights=[1.0], means=[[2.0]], covariances=[[[0.5]]])
 
-fit = fit_mixture_weights(p, [left, right], rng=9126)
+fit = fit_mixture_weights(p, [left, right], objective=ForwardKL(rng=9126))
 print(fit.weights)
 ```
 

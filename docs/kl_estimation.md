@@ -68,7 +68,7 @@ To estimate the KL divergence between two Gaussian mixtures using the
 [`kl_divergence`](../reference/index.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-5"
-from gmm_divergence import GaussianMixture, kl_divergence
+from gmm_divergence import GaussianMixture, MonteCarlo, kl_divergence
 
 p = GaussianMixture.from_arrays(  # (1)!
     weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
@@ -79,7 +79,7 @@ q = GaussianMixture.from_arrays(
 )
 
 
-kl_estimate = kl_divergence(p, q, method="monte_carlo", rng=9126)
+kl_estimate = kl_divergence(p, q, method=MonteCarlo(rng=9126))
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
