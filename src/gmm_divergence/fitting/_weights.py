@@ -3,13 +3,13 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
-import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
-from gmm_divergence.distribution.combine import combine_gaussians
+from gmm_divergence._core._sampling import resolve_sample_batches, resolve_samples
+from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.divergence import MonteCarlo, kl_divergence
-from gmm_divergence.fitting._objective import build_objective, softmax
-from gmm_divergence.fitting.config import (
+from gmm_divergence.fitting._objectives import build_objective, softmax
+from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitObjective,
     FitParameterization,
@@ -20,16 +20,15 @@ from gmm_divergence.fitting.config import (
     SoftmaxLBFGSB,
 )
 from gmm_divergence.results import KLFitResult
-from gmm_divergence.utils import resolve_samples
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from scipy.optimize import OptimizeResult
 
-    from gmm_divergence.distribution.gaussian import Gaussian
-    from gmm_divergence.distribution.gmm import GaussianMixture
-    from gmm_divergence.typing import FloatArray, Weights
+    from gmm_divergence._core._types import FloatArray, Weights
+    from gmm_divergence.distributions._gaussian import Gaussian
+    from gmm_divergence.distributions._mixture import GaussianMixture
 
 
 FitObjectiveConfig: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
@@ -51,27 +50,6 @@ def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
         msg = f"p and q_i distributions must have the same dimensionality, got {p_dim} and {q_dim}."
         raise ValueError(msg)
     return q_component
-
-
-def _resolve_q_samples(
-    q_i: Sequence[Gaussian | GaussianMixture],
-    q_sampling: npt.ArrayLike | int | None,
-    rng: np.random.Generator | int | None,
-) -> FloatArray:
-    """Return provided q samples or draw samples from each component."""
-    if isinstance(q_sampling, int) or q_sampling is None:
-        n_samples = q_sampling or 10_000
-        rng = np.random.default_rng(rng)
-        return np.asarray([q.sample(n_samples, rng=rng) for q in q_i], dtype=np.float64)
-
-    q_sampling = np.asarray(q_sampling, dtype=np.float64)
-    if q_sampling.ndim != 3 or q_sampling.shape[0] != len(q_i):
-        msg = (
-            "Expected q_sampling with shape "
-            f"({len(q_i)}, n_samples, n_features), got {q_sampling.shape}."
-        )
-        raise ValueError(msg)
-    return q_sampling
 
 
 def _objective_name(objective: FitObjectiveConfig) -> FitObjective:
@@ -107,9 +85,9 @@ def _resolve_objective_samples(
         case ForwardKL(sampling=sampling, rng=rng):
             return resolve_samples(p, sampling, rng), None
         case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), _resolve_q_samples(q_i, q_sampling, rng)
+            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
         case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), _resolve_q_samples(q_i, q_sampling, rng)
+            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
         case MomentMatching():
             return resolve_samples(p, 10_000, None), None
 

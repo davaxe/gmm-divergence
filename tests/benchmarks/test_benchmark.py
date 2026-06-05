@@ -7,7 +7,7 @@ import numpy.typing as npt
 import pytest
 
 from gmm_divergence import MonteCarlo, kl_divergence
-from gmm_divergence.distribution import GaussianMixture
+from gmm_divergence.distributions import GaussianMixture
 
 if TYPE_CHECKING:
     from pytest_benchmark.fixture import BenchmarkFixture

@@ -7,7 +7,7 @@ import numpy as np
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.distribution import Gaussian
+    from gmm_divergence.distributions import Gaussian
 
 
 def kl_closed_form(p: Gaussian, q: Gaussian) -> DivergenceResult:

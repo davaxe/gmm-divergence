@@ -7,14 +7,15 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import override
 
-from gmm_divergence.distribution.base import GaussianComponentArrays, GaussianFamily
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.utils import as_covariances, as_weights, logsumexp
+from gmm_divergence._core._numeric import logsumexp
+from gmm_divergence._core._validation import as_covariances, as_weights
+from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
+from gmm_divergence.distributions._gaussian import Gaussian
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from gmm_divergence.typing import Covariances, FloatArray, Weights
+    from gmm_divergence._core._types import Covariances, FloatArray, Weights
 
 
 @dataclass(frozen=True, slots=True, repr=False)

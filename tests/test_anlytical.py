@@ -4,7 +4,7 @@ import numpy as np
 import pytest
 
 from gmm_divergence import GaussianApproximation, MonteCarlo, kl_divergence
-from gmm_divergence.distribution import Gaussian, GaussianMixture
+from gmm_divergence.distributions import Gaussian, GaussianMixture
 
 UNKNOWN_KL_METHOD_MESSAGE = (
     r"Unknown KL method 'exact'\. Supported methods are: "

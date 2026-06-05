@@ -3,18 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
-import scipy
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from gmm_divergence.distribution.base import Distribution
-    from gmm_divergence.typing import Covariance, Covariances, FloatArray, Weights
-
-
-def logsumexp(a: FloatArray, axis: int = -1) -> FloatArray:
-    """Compute log-sum-exp."""
-    return np.asarray(scipy.special.logsumexp(a, axis=axis), dtype=np.float64)
+    from gmm_divergence._core._types import Covariance, Covariances, FloatArray, Weights
 
 
 def as_weights(
@@ -137,46 +130,3 @@ def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None
     except np.linalg.LinAlgError as exc:
         msg = f"{name} must be positive definite."
         raise ValueError(msg) from exc
-
-
-def resolve_samples(
-    distribution: Distribution,
-    samples: npt.ArrayLike | int,
-    rng: np.random.Generator | int | None = None,
-) -> FloatArray:
-    """Return provided samples or draw samples from the distribution."""
-    dim = distribution.dim
-    if not isinstance(samples, int):
-        samples = np.asarray(samples, dtype=np.float64)
-        if samples.ndim != 2 or samples.shape[1] != dim:
-            msg = f"Expected samples of shape (n_samples, n_features), got {samples.shape}"
-            raise ValueError(msg)
-        return samples
-    return distribution.sample(n_samples=samples or 10_000, rng=rng)
-
-
-def pairwise_kl(means: FloatArray, covariances: Covariances) -> FloatArray:
-    """Compute pairwise KL divergence between Gaussian components.
-
-    Parameters
-    ----------
-    means : FloatArray
-        An array of shape (N, D) containing N mean vectors of dimension D.
-    covariances : Covariances
-        An array of shape (N, D, D) containing N covariance matrices of
-        dimension D x D.
-
-    Returns
-    -------
-    FloatArray
-        An array of shape (N, N) where the entry at (i, j) is the KL divergence
-        from the i-th Gaussian component to the j-th Gaussian component.
-    """
-    dim = means.shape
-    inv_cov = np.linalg.inv(covariances)
-    _, logdet = np.linalg.slogdet(covariances)  # (N,)
-    logdet_term = logdet[None, :] - logdet[:, None]  # (N, N)
-    trace_term = np.einsum("jkl,ilk->ij", inv_cov, covariances)  # (N, N)
-    diff = means[None, :, :] - means[:, None, :]  # (N, N, D)
-    quad_term = np.einsum("ijd,jde,ije->ij", diff, inv_cov, diff)  # (N, N)
-    return 0.5 * (logdet_term - dim + trace_term + quad_term)

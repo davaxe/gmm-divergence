@@ -1,56 +1,28 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar
+from typing import TYPE_CHECKING, TypeVar
 
-from gmm_divergence._dispatch import MethodSpec, Registry
-from gmm_divergence.distribution import Gaussian, GaussianMixture
-from gmm_divergence.estimators.closed_form import kl_closed_form
-from gmm_divergence.estimators.gaussian_approx import Approximation, kl_gaussian_approximation
-from gmm_divergence.estimators.monte_carlo import kl_monte_carlo
-from gmm_divergence.estimators.unscented import kl_unscented
+from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence.distributions import Gaussian, GaussianMixture
+from gmm_divergence.divergence._options import (
+    ClosedForm,
+    GaussianApproximation,
+    KLMethod,
+    MonteCarlo,
+    Unscented,
+)
+from gmm_divergence.divergence.methods._closed_form import kl_closed_form
+from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
+from gmm_divergence.divergence.methods._monte_carlo import kl_monte_carlo
+from gmm_divergence.divergence.methods._unscented import kl_unscented
 
 if TYPE_CHECKING:
-    import numpy as np
-    import numpy.typing as npt
-
-    from gmm_divergence.distribution.base import Distribution
+    from gmm_divergence.distributions._base import Distribution
     from gmm_divergence.results import DivergenceResult
 
-
-@dataclass(frozen=True, slots=True)
-class MonteCarlo:
-    """Monte Carlo KL estimator configuration."""
-
-    sampling: npt.ArrayLike | int = 10_000
-    rng: np.random.Generator | int | None = None
-
-
-@dataclass(frozen=True, slots=True)
-class Unscented:
-    """Unscented-transform KL estimator configuration."""
-
-
-@dataclass(frozen=True, slots=True)
-class GaussianApproximation:
-    """Gaussian-approximation KL estimator configuration."""
-
-    approximation: Approximation = "moment_matching"
-
-
-@dataclass(frozen=True, slots=True)
-class ClosedForm:
-    """Closed-form Gaussian KL configuration."""
-
-
-EstimationMethod: TypeAlias = Literal[
-    "monte_carlo", "unscented", "gaussian_approximation", "closed_form"
-]
-KLMethod: TypeAlias = EstimationMethod | MonteCarlo | Unscented | GaussianApproximation | ClosedForm
 OptionsT = TypeVar("OptionsT")
 
-
-_KL_REGISTRY = Registry(
+KL_REGISTRY = Registry(
     label="KL",
     specs=(
         MethodSpec(name="monte_carlo", option_type=MonteCarlo, default=MonteCarlo()),
@@ -134,7 +106,7 @@ def kl_divergence(
     ```
     """
     _validate_same_dimension(p, q)
-    spec, options = _KL_REGISTRY.resolve(method)
+    spec, options = KL_REGISTRY.resolve(method)
     match spec.name:
         case "monte_carlo":
             options = _cast_options(options, MonteCarlo)

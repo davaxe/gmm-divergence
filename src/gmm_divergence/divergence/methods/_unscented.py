@@ -7,10 +7,10 @@ import numpy as np
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.distribution.base import Distribution
-    from gmm_divergence.distribution.gaussian import Gaussian
-    from gmm_divergence.distribution.gmm import GaussianMixture
-    from gmm_divergence.typing import Covariances, FloatArray
+    from gmm_divergence._core._types import Covariances, FloatArray
+    from gmm_divergence.distributions._base import Distribution
+    from gmm_divergence.distributions._gaussian import Gaussian
+    from gmm_divergence.distributions._mixture import GaussianMixture
 
 
 def kl_unscented(p: Gaussian | GaussianMixture, q: Distribution, /) -> DivergenceResult:

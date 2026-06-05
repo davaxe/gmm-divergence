@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import override
 
-from gmm_divergence.typing import Covariances, FloatArray, Weights
+from gmm_divergence._core._types import Covariances, FloatArray, Weights
 
 GaussianComponentArrays: TypeAlias = tuple[Weights, FloatArray, Covariances]
 

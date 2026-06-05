@@ -12,13 +12,13 @@ entrypoint, and mixture-weight fitting helper:
 
 from importlib.metadata import version
 
-from gmm_divergence.distribution.combine import (
+from gmm_divergence.distributions import (
     CombinedGaussianMixture,
+    Gaussian,
+    GaussianMixture,
     MixtureMapping,
     combine_gaussians,
 )
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.distribution.gmm import GaussianMixture
 from gmm_divergence.divergence import (
     ClosedForm,
     GaussianApproximation,
@@ -26,14 +26,14 @@ from gmm_divergence.divergence import (
     Unscented,
     kl_divergence,
 )
-from gmm_divergence.fit import fit_mixture_weights
-from gmm_divergence.fitting.config import (
+from gmm_divergence.fitting import (
     BidirectionalKL,
     ForwardKL,
     MomentMatching,
     ReverseKL,
     SimplexSLSQP,
     SoftmaxLBFGSB,
+    fit_mixture_weights,
 )
 from gmm_divergence.results import DivergenceResult, KLFitResult
 

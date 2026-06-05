@@ -5,11 +5,11 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
+from gmm_divergence._core._sampling import resolve_samples
 from gmm_divergence.results import DivergenceResult
-from gmm_divergence.utils import resolve_samples
 
 if TYPE_CHECKING:
-    from gmm_divergence.distribution.base import Distribution
+    from gmm_divergence.distributions._base import Distribution
 
 
 def kl_monte_carlo(

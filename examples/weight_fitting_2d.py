@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from matplotlib.axes import Axes
     from matplotlib.collections import QuadMesh
 
+    from gmm_divergence._core._types import FloatArray
     from gmm_divergence.fitting import FitObjective
-    from gmm_divergence.typing import FloatArray
 
 
 FIT_OBJECTIVES: tuple[FitObjective, ...] = (

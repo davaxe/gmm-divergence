@@ -1,19 +1,18 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal
+from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence.distribution import Gaussian
-from gmm_divergence.estimators.closed_form import kl_closed_form
+from gmm_divergence._core._numeric import pairwise_kl
+from gmm_divergence.distributions import Gaussian
+from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.results import DivergenceResult
-from gmm_divergence.utils import pairwise_kl
 
 if TYPE_CHECKING:
-    from gmm_divergence.distribution.base import GaussianFamily
-    from gmm_divergence.distribution.gmm import GaussianMixture
-
-Approximation = Literal["nearest", "moment_matching"]
+    from gmm_divergence.distributions._base import GaussianFamily
+    from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.divergence._options import Approximation
 
 
 def kl_gaussian_approximation(

@@ -6,13 +6,13 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from typing_extensions import override
 
-from gmm_divergence.distribution.base import GaussianComponentArrays, GaussianFamily
-from gmm_divergence.utils import as_covariance
+from gmm_divergence._core._validation import as_covariance
+from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from gmm_divergence.typing import Covariance, FloatArray
+    from gmm_divergence._core._types import Covariance, FloatArray
 
 
 @dataclass(frozen=True, slots=True, repr=False)

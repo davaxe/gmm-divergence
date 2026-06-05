@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
-from gmm_divergence._dispatch import MethodSpec, Registry
-from gmm_divergence.fitting import weights as wfit
-from gmm_divergence.fitting.config import (
+import gmm_divergence.fitting._weights as wfit
+from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence.fitting._options import (
     BidirectionalKL,
     ForwardKL,
     MomentMatching,
@@ -18,8 +18,8 @@ from gmm_divergence.fitting.config import (
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from gmm_divergence.distribution.gaussian import Gaussian
-    from gmm_divergence.distribution.gmm import GaussianMixture
+    from gmm_divergence.distributions._gaussian import Gaussian
+    from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.results import KLFitResult
 
 OptionsT = TypeVar("OptionsT")

@@ -11,9 +11,9 @@ from typing_extensions import override
 if TYPE_CHECKING:
     from scipy.optimize import OptimizeResult
 
-    from gmm_divergence.distribution.combine import CombinedGaussianMixture
-    from gmm_divergence.fitting.config import FitObjective
-    from gmm_divergence.typing import Weights
+    from gmm_divergence._core._types import Weights
+    from gmm_divergence.distributions._combine import CombinedGaussianMixture
+    from gmm_divergence.fitting._options import FitObjective
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +33,7 @@ class KLFitResult:
     """Result of fitting a Gaussian mixture to minimize KL divergence.
 
     Primary result when using
-    [`fit_mixture_weights`][gmm_divergence.fit.fit_mixture_weights]
+    [`fit_mixture_weights`][gmm_divergence.fitting.fit_mixture_weights]
     and related functions.
     """
 

@@ -1,10 +1,10 @@
-from gmm_divergence.distribution.combine import (
+from gmm_divergence.distributions._combine import (
     CombinedGaussianMixture,
     MixtureMapping,
     combine_gaussians,
 )
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.distribution.gmm import GaussianMixture
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
 
 __all__ = [
     "CombinedGaussianMixture",

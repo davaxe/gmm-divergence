@@ -6,20 +6,20 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.distribution.gmm import GaussianMixture
-from gmm_divergence.fitting.config import (
+from gmm_divergence._core._numeric import logsumexp
+from gmm_divergence._core._types import FloatArray
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
+from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitParameterization,
     ForwardKL,
     MomentMatching,
     ReverseKL,
 )
-from gmm_divergence.typing import FloatArray
-from gmm_divergence.utils import logsumexp
 
 if TYPE_CHECKING:
-    from gmm_divergence.typing import Weights
+    from gmm_divergence._core._types import Weights
 
 
 GaussianLike = Gaussian | GaussianMixture

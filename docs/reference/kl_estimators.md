@@ -2,8 +2,8 @@
 icon: lucide/equal-approximately
 ---
 
-# KL divergence estimators
+# KL divergence
 
-## ::: gmm_divergence.estimators
+## ::: gmm_divergence.divergence
     options:
         show_root_full_path: true

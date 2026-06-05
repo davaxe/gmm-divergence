@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.distribution.gmm import GaussianMixture
-from gmm_divergence.utils import as_weights
+from gmm_divergence._core._validation import as_weights
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
