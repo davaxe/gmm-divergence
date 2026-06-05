@@ -68,11 +68,11 @@ def fit_mixture_weights(
         Reference distribution.
     q_i : sequence of Gaussian or GaussianMixture
         Candidate distributions whose weights are fitted.
-    method : str or optimizer configuration, default="softmax-lbfgsb"
+    method : str or optimizer configuration, optional
         Optimizer used for the weights. Passing a string runs that optimizer
         with defaults. Use `SoftmaxLBFGSB(...)` or `SimplexSLSQP(...)` for
         optimizer-specific options.
-    objective : str or objective configuration, default="forward"
+    objective : str or WeightFitObjective configuration, optional
         Objective used for fitting. Passing a string runs that objective with
         defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
         or `MomentMatching(...)` for objective-specific options.
@@ -82,6 +82,7 @@ def fit_mixture_weights(
     KLFitResult
         Result containing the fitted weights, fitted mixture, fit objective,
         objective value, forward/reverse KL diagnostics, and optimizer metadata.
+
     """
     method_spec, optimizer = _OPTIMIZER_REGISTRY.resolve(method)
     _objective_spec, objective_config = _OBJECTIVE_REGISTRY.resolve(objective)

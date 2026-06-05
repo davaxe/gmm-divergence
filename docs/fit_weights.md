@@ -154,7 +154,10 @@ $$
 Another alternative is to consider a bidirectional KL divergence, which combines the forward and reverse KL divergences:
 
 $$
-D_{\mathrm{biKL}}^{\alpha}(p, q_{\mathbf{w}}) = \alpha D_{\mathrm{KL}}(p \| q_{\mathbf{w}}) + (1-\alpha) D_{\mathrm{KL}}(q_{\mathbf{w}} \| p), \quad \alpha \in \[0,1\].
+D_{\mathrm{biKL}}^{\alpha}(p, q_{\mathbf{w}}) =
+\alpha D_{\mathrm{KL}}(p \| q_{\mathbf{w}})
++ (1-\alpha) D_{\mathrm{KL}}(q_{\mathbf{w}} \| p),
+\quad 0 \le \alpha \le 1.
 $$
 
 The optimization problem would essentially be a weighted combination of the two
@@ -164,7 +167,7 @@ sampling.
 
 ## Example
 
-The [`fit_mixture_weights`](../reference/index.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_mixture_weights`](../reference/fit_weights.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -198,5 +201,5 @@ the optimized objective depends on the selected fit direction.
     The `fit_mixture_weights` function also supports fitting mixture weights
     using the reverse KL divergence and the bidirectional KL divergence by
     setting the `objective` parameter. See the [API
-    reference](../reference/index.md#gmm_divergence.fit_mixture_weights) for
+    reference](../reference/fit_weights.md#gmm_divergence.fit_mixture_weights) for
     details.

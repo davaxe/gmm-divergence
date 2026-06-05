@@ -104,6 +104,8 @@ def kl_divergence(
     samples = p.sample(50_000, rng=0)
     result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
     ```
+
+
     """
     _validate_same_dimension(p, q)
     spec, options = KL_REGISTRY.resolve(method)

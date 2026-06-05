@@ -18,9 +18,19 @@ nav = [
   },
   { "API reference" = [
       "reference/index.md",
-      { "Distributions" = "reference/distributions.md" },
-      { "KL divergence" = "reference/kl_estimators.md" },
-      { "Mixture weight fitting" = "reference/fit_weights.md" }
+      { "Distributions" = [
+          "reference/distributions.md",
+          { "Details" = "reference/distribution_details.md" }
+      ] },
+      { "KL divergence" = [
+          "reference/kl_estimators.md",
+          { "Configuration" = "reference/kl_configuration.md" }
+      ] },
+      { "Mixture weight fitting" = [
+          "reference/fit_weights.md",
+          { "Configuration" = "reference/fit_configuration.md" }
+      ] },
+      { "Results" = "reference/results.md" }
   ]
   },
 ]

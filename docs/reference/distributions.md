@@ -4,7 +4,10 @@ icon: lucide/boxes
 
 # Distributions
 
-## ::: gmm_divergence.distributions
-    options:
-        show_root_full_path: true
+Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 
+## ::: gmm_divergence.Gaussian
+
+## ::: gmm_divergence.GaussianMixture
+
+## ::: gmm_divergence.combine_gaussians

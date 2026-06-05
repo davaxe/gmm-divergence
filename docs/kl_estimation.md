@@ -65,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-[`kl_divergence`](../reference/index.md#gmm_divergence.kl_divergence) function. For example:
+[`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-5"
 from gmm_divergence import GaussianMixture, MonteCarlo, kl_divergence
@@ -93,7 +93,7 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
         The `GaussianMixture.from_arrays` constructor is a more flexible way to construct Gaussian mixtures from arrays of weights, means, and covariances.
     
 !!! note "Other methods"
-    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/index.md#gmm_divergence.kl_divergence) for details.
+    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) for details.
 
 !!! note "Single gaussian special case"
     If $p$ and $q$ are single Gaussians (i.e. $K_p = K_q = 1$), then the KL divergence has a closed-form expression and can be computed exactly.
