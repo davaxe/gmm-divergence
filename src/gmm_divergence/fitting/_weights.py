@@ -3,9 +3,11 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
+import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
 from gmm_divergence._core._sampling import resolve_sample_batches, resolve_samples
+from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.divergence import MonteCarlo, kl_divergence
 from gmm_divergence.fitting._objectives import build_objective, softmax
@@ -128,47 +130,25 @@ def _construct_kl_fit_result_from_weights(
     )
 
 
-def fit_mixture_weights_softmax(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    *,
-    objective: FitObjectiveConfig,
-    optimizer: SoftmaxLBFGSB,
-) -> KLFitResult:
-    r"""Fit mixture weights using softmax logits and L-BFGS-B."""
-    return _fit_mixture_weights(
-        p=p, q_i=q_i, objective=objective, optimizer=optimizer, parameterization="softmax"
-    )
-
-
-def fit_mixture_weights_simplex(
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    *,
-    objective: FitObjectiveConfig,
-    optimizer: SimplexSLSQP,
-) -> KLFitResult:
-    r"""Fit mixture weights directly on the simplex using SLSQP."""
-    return _fit_mixture_weights(
-        p=p, q_i=q_i, objective=objective, optimizer=optimizer, parameterization="simplex"
-    )
-
-
-def _fit_mixture_weights(
+def fit_mixture_weights(
     *,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     objective: FitObjectiveConfig,
     optimizer: FitOptimizerConfig,
     parameterization: FitParameterization,
-    weights_init: Weights | None = None,
+    x0: npt.ArrayLike | None = None,
 ) -> KLFitResult:
     q_component = _validate_q_i(q_i, p.dim)
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
     resolved_num_p_samples = int(resolved_p_samples.shape[0])
 
     if parameterization == "softmax":
-        x0 = weights_init if weights_init is not None else np.zeros(q_component, dtype=np.float64)
+        x0 = (
+            np.array(x0, dtype=np.float64)
+            if x0 is not None
+            else np.zeros(q_component, dtype=np.float64)
+        )
         scipy_method = "L-BFGS-B"
         constraints = ()
         bounds = None
@@ -178,8 +158,8 @@ def _fit_mixture_weights(
 
     else:
         x0 = (
-            weights_init
-            if weights_init is not None
+            as_weights(x0, expected_length=q_component, name="Initial weights")
+            if x0 is not None
             else np.full(q_component, 1.0 / q_component, dtype=np.float64)
         )
         scipy_method = "SLSQP"
@@ -222,5 +202,5 @@ def _fit_mixture_weights(
         reverse_diagnostic_sampling=resolved_num_p_samples,
         scipy_result=result,
         iterations=result.nit,
-        converged=result.success,
+        converged=bool(result.success),
     )

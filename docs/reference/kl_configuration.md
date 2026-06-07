@@ -13,3 +13,5 @@ Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 ## ::: gmm_divergence.GaussianApproximation
 
 ## ::: gmm_divergence.ClosedForm
+
+## ::: gmm_divergence.Variational

@@ -76,7 +76,7 @@ def as_covariance(
         )
         raise ValueError(msg)
     else:
-        covariance_arr = cast("Covariance", covariance_arr.copy())
+        covariance_arr = covariance_arr.copy()
 
     _validate_covariance_values(covariance_arr, name=name)
     covariance_arr.setflags(write=writable)
@@ -109,7 +109,7 @@ def as_covariances(
         )
         raise ValueError(msg)
     else:
-        covariances_arr = cast("Covariances", covariances_arr.copy())
+        covariances_arr = covariances_arr.copy()
 
     _validate_covariance_values(covariances_arr, name=name)
     covariances_arr.setflags(write=writable)

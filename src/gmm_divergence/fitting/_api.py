@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 import numpy as np
+import numpy.typing as npt
 
 import gmm_divergence.fitting._weights as wfit
 from gmm_divergence._core._dispatch import MethodSpec, Registry
@@ -52,6 +53,7 @@ def fit_mixture_weights(
     *,
     method: WeightFitMethod = "softmax-lbfgsb",
     objective: WeightFitObjective = "forward",
+    x0: npt.ArrayLike | None = None,
 ) -> KLFitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
 
@@ -78,6 +80,9 @@ def fit_mixture_weights(
         Objective used for fitting. Passing a string runs that objective with
         defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
         or `MomentMatching(...)` for objective-specific options.
+    x0 : array-like, optional
+        Initial weights for the optimized variables. If `None`, the optimizer's
+        default initialization is used.
 
     Returns
     -------
@@ -93,14 +98,24 @@ def fit_mixture_weights(
         case "softmax-lbfgsb":
             optimizer = _cast_options(optimizer, SoftmaxLBFGSB)
             objective_config = _cast_fit_objective(objective_config)
-            return wfit.fit_mixture_weights_softmax(
-                p, q_i, objective=objective_config, optimizer=optimizer
+            return wfit.fit_mixture_weights(
+                p=p,
+                q_i=q_i,
+                objective=objective_config,
+                optimizer=optimizer,
+                parameterization="softmax",
+                x0=x0,
             )
         case "simplex-slsqp":
             optimizer = _cast_options(optimizer, SimplexSLSQP)
             objective_config = _cast_fit_objective(objective_config)
-            return wfit.fit_mixture_weights_simplex(
-                p, q_i, objective=objective_config, optimizer=optimizer
+            return wfit.fit_mixture_weights(
+                p=p,
+                q_i=q_i,
+                objective=objective_config,
+                optimizer=optimizer,
+                parameterization="simplex",
+                x0=x0,
             )
         case _:
             msg = "Unhandled fit optimizer registry entry."

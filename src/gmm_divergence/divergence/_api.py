@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 from gmm_divergence._core._dispatch import MethodSpec, Registry
-from gmm_divergence.distributions import Gaussian, GaussianMixture
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.divergence._options import (
     ClosedForm,
     GaussianApproximation,

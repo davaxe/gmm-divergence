@@ -130,15 +130,12 @@ class GaussianMixture(GaussianFamily):
             msg = f"Component indices must be in the range [0, {self.n_components})."
             raise IndexError(msg)
 
-        new_weights = self.weights[indices]
-        if renormalize:
-            weight_sum = np.sum(new_weights)
-            if weight_sum == 0:
-                msg = "Selected components have zero total weight, cannot renormalize."
-                raise ValueError(msg)
-            new_weights /= weight_sum
         return GaussianMixture(
-            weights=new_weights, means=self.means[indices], covariances=self.covariances[indices]
+            weights=self.weights[indices]
+            if not renormalize
+            else as_weights(self.weights[indices], expected_length=indices.shape[0]),
+            means=self.means[indices],
+            covariances=self.covariances[indices],
         )
 
     @override

@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
-from gmm_divergence.distributions import Gaussian
+from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.results import DivergenceResult
 
