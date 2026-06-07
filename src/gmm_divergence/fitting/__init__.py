@@ -1,4 +1,4 @@
-from gmm_divergence.fitting._api import fit_mixture_weights
+from gmm_divergence.fitting._api import fit_mixture_weights, prune_mixture
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitObjective,
@@ -24,4 +24,5 @@ __all__ = [
     "WeightFitMethod",
     "WeightFitObjective",
     "fit_mixture_weights",
+    "prune_mixture",
 ]

@@ -32,6 +32,8 @@ class GaussianMixture(GaussianFamily):
     _chol: FloatArray | None = field(default=None, init=False, repr=False)
     """Cached Cholesky factors."""
 
+    _log_dets: FloatArray | None = field(default=None, init=False, repr=False)
+
     def __post_init__(self) -> None:
         """Validate the shapes of weights, means, and covariances."""
         object.__setattr__(self, "means", np.asarray(self.means, dtype=np.float64))
@@ -96,6 +98,16 @@ class GaussianMixture(GaussianFamily):
         object.__setattr__(self, "_chol", chol)
         return chol
 
+    def log_dets(self) -> FloatArray:
+        """Compute or retrieve the cached log-determinants of the covariances."""
+        if self._log_dets is not None:
+            return self._log_dets
+
+        chol = self.chol()
+        log_dets = 2.0 * np.sum(np.log(np.diagonal(chol, axis1=1, axis2=2)), axis=1)
+        object.__setattr__(self, "_log_dets", log_dets)
+        return log_dets
+
     @override
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian mixture."""
@@ -108,6 +120,26 @@ class GaussianMixture(GaussianFamily):
             raise IndexError(msg)
 
         return Gaussian(mean=self.means[index], covariance=self.covariances[index])
+
+    def select_components(
+        self, indices: npt.ArrayLike, *, renormalize: bool = True
+    ) -> GaussianMixture:
+        """Return a new Gaussian mixture containing only the specified components."""
+        indices = np.asarray(indices, dtype=np.intp)
+        if np.any(indices < 0) or np.any(indices >= self.n_components):
+            msg = f"Component indices must be in the range [0, {self.n_components})."
+            raise IndexError(msg)
+
+        new_weights = self.weights[indices]
+        if renormalize:
+            weight_sum = np.sum(new_weights)
+            if weight_sum == 0:
+                msg = "Selected components have zero total weight, cannot renormalize."
+                raise ValueError(msg)
+            new_weights /= weight_sum
+        return GaussianMixture(
+            weights=new_weights, means=self.means[indices], covariances=self.covariances[indices]
+        )
 
     @override
     def __repr__(self) -> str:
@@ -167,29 +199,24 @@ def sample_gmm(
 
 
 def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
-    """Evaluate the log-density of a Gaussian mixture."""
+    """Evaluate the log-density of a Gaussian mixture without an explicit Python loop."""
     x = np.asarray(x, dtype=np.float64)
 
     if x.ndim == 1:
         x = x[None, :]
 
-    n_samples, n_features = x.shape
-    n_components = gmm.weights.shape[0]
-
-    log_weights = np.log(gmm.weights)
-    chol = gmm.chol()
-    log_probs = np.empty((n_samples, n_components), dtype=np.float64)
+    _, n_features = x.shape
+    log_weights = np.log(gmm.weights)  # (K,)
+    chol = gmm.chol()  # (K, D, D)
+    log_dets = gmm.log_dets()  # (K,)
+    diff = x[None, :, :] - gmm.means[:, None, :]  # (K, N, D)
+    rhs = np.swapaxes(diff, 1, 2)  # (K, D, N)
+    y = np.linalg.solve(chol, rhs)  # (K, D, N)
+    mahal = np.sum(y * y, axis=1)  # (K, N)
     constant = n_features * np.log(2.0 * np.pi)
-
-    for k in range(n_components):
-        diff = x - gmm.means[k]
-        y = cast("npt.NDArray[np.float64]", np.linalg.solve(chol[k], diff.T))
-        mahal = np.sum(y * y, axis=0)
-        log_det = 2.0 * np.sum(np.log(np.diag(chol[k])))
-        log_gaussian = -0.5 * (constant + log_det + mahal)
-        log_probs[:, k] = log_weights[k] + log_gaussian
-
-    return logsumexp(log_probs, axis=1)
+    log_gaussian = -0.5 * (constant + log_dets[:, None] + mahal)  # (K, N)
+    log_probs = log_weights[:, None] + log_gaussian  # (K, N)
+    return logsumexp(log_probs.T, axis=1)  # (N,)
 
 
 def gmm_pdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:

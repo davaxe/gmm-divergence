@@ -161,13 +161,14 @@ def _fit_mixture_weights(
     objective: FitObjectiveConfig,
     optimizer: FitOptimizerConfig,
     parameterization: FitParameterization,
+    weights_init: Weights | None = None,
 ) -> KLFitResult:
     q_component = _validate_q_i(q_i, p.dim)
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
     resolved_num_p_samples = int(resolved_p_samples.shape[0])
 
     if parameterization == "softmax":
-        x0 = np.zeros(q_component, dtype=np.float64)
+        x0 = weights_init if weights_init is not None else np.zeros(q_component, dtype=np.float64)
         scipy_method = "L-BFGS-B"
         constraints = ()
         bounds = None
@@ -176,7 +177,11 @@ def _fit_mixture_weights(
             return softmax(values)
 
     else:
-        x0 = np.full(q_component, 1 / q_component, dtype=np.float64)
+        x0 = (
+            weights_init
+            if weights_init is not None
+            else np.full(q_component, 1.0 / q_component, dtype=np.float64)
+        )
         scipy_method = "SLSQP"
         constraints = LinearConstraint(
             A=np.ones((1, q_component), dtype=np.float64),

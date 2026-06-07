@@ -19,13 +19,7 @@ from gmm_divergence.distributions import (
     MixtureMapping,
     combine_gaussians,
 )
-from gmm_divergence.divergence import (
-    ClosedForm,
-    GaussianApproximation,
-    MonteCarlo,
-    Unscented,
-    kl_divergence,
-)
+from gmm_divergence.divergence import ClosedForm, MonteCarlo, Unscented, kl_divergence
 from gmm_divergence.fitting import (
     BidirectionalKL,
     ForwardKL,
@@ -34,6 +28,7 @@ from gmm_divergence.fitting import (
     SimplexSLSQP,
     SoftmaxLBFGSB,
     fit_mixture_weights,
+    prune_mixture,
 )
 from gmm_divergence.results import DivergenceResult, KLFitResult
 
@@ -44,7 +39,6 @@ __all__ = [
     "DivergenceResult",
     "ForwardKL",
     "Gaussian",
-    "GaussianApproximation",
     "GaussianMixture",
     "KLFitResult",
     "MixtureMapping",
@@ -57,5 +51,6 @@ __all__ = [
     "combine_gaussians",
     "fit_mixture_weights",
     "kl_divergence",
+    "prune_mixture",
 ]
 __version__: str = version("gmm-divergence")

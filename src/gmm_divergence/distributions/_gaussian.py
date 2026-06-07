@@ -26,6 +26,8 @@ class Gaussian(GaussianFamily):
     _chol: FloatArray | None = field(default=None, init=False, repr=False)
     """Cached Cholesky factor."""
 
+    _log_det: float | None = field(default=None, init=False, repr=False)
+
     @classmethod
     def from_arrays(cls, mean: npt.ArrayLike, covariance: npt.ArrayLike) -> Gaussian:
         """Create a Gaussian instance from array-like inputs."""
@@ -62,6 +64,16 @@ class Gaussian(GaussianFamily):
         object.__setattr__(self, "_chol", chol)
         return chol
 
+    def log_det(self) -> float:
+        """Compute or retrieve the log-determinant of the covariance."""
+        if self._log_det is not None:
+            return self._log_det
+
+        chol = self.chol()
+        log_det = 2 * np.sum(np.log(np.diag(chol)))
+        object.__setattr__(self, "_log_det", log_det)
+        return log_det
+
     @override
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian."""
@@ -83,7 +95,7 @@ class Gaussian(GaussianFamily):
         rhs = cast("FloatArray", diff.T)
         y = cast("FloatArray", np.linalg.solve(chol, rhs).T)
         mahalanobis = np.sum(y**2, axis=-1)
-        log_det = 2 * np.sum(np.log(np.diag(chol)))
+        log_det = self.log_det()
         return -0.5 * (d * np.log(2 * np.pi) + log_det + mahalanobis)
 
     @override

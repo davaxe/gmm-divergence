@@ -55,7 +55,6 @@ class Unscented:
     """
 
 
-@dataclass(frozen=True, slots=True)
 class GaussianApproximation:
     r"""Gaussian-approximation KL estimator configuration.
 
@@ -86,6 +85,11 @@ class GaussianApproximation:
 
 
 @dataclass(frozen=True, slots=True)
+class Variational:
+    r"""Variational KL estimator configuration."""
+
+
+@dataclass(frozen=True, slots=True)
 class ClosedForm:
     r"""Closed-form Gaussian KL configuration.
 
@@ -110,4 +114,4 @@ class ClosedForm:
 EstimationMethod: TypeAlias = Literal[
     "monte_carlo", "unscented", "gaussian_approximation", "closed_form"
 ]
-KLMethod: TypeAlias = EstimationMethod | MonteCarlo | Unscented | GaussianApproximation | ClosedForm
+KLMethod: TypeAlias = EstimationMethod | MonteCarlo | Unscented | ClosedForm

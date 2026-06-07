@@ -10,11 +10,13 @@ from gmm_divergence.divergence._options import (
     KLMethod,
     MonteCarlo,
     Unscented,
+    Variational,
 )
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
 from gmm_divergence.divergence.methods._monte_carlo import kl_monte_carlo
 from gmm_divergence.divergence.methods._unscented import kl_unscented
+from gmm_divergence.divergence.methods._variational import kl_variational
 
 if TYPE_CHECKING:
     from gmm_divergence.distributions._base import Distribution
@@ -33,6 +35,7 @@ KL_REGISTRY = Registry(
             default=GaussianApproximation(),
         ),
         MethodSpec(name="closed_form", option_type=ClosedForm, default=ClosedForm()),
+        MethodSpec(name="variational", option_type=Variational, default=Variational()),
     ),
 )
 
@@ -123,6 +126,9 @@ def kl_divergence(
         case "closed_form":
             p, q = _require_gaussian_pair(p, q, spec.name)
             return kl_closed_form(p, q)
+        case "variational":
+            p, q = _require_gaussian_family_pair(p, q, spec.name)
+            return kl_variational(p, q)
         case _:
             msg = "Unhandled KL method registry entry."
             raise AssertionError(msg)

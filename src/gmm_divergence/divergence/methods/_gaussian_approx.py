@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence._core._numeric import pairwise_kl
+from gmm_divergence._core._numeric import pairwise_gaussian_kl
 from gmm_divergence.distributions import Gaussian
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.results import DivergenceResult
@@ -65,7 +65,7 @@ def kl_gaussian_approximation(
         p = _moment_matching_approximation(p)
         q = _moment_matching_approximation(q)
         return DivergenceResult(value=kl_closed_form(p, q).value, method="moment_matching")
-    return DivergenceResult(value=_nearest_component_approximation(p, q), method="nearest")
+    return DivergenceResult(value=_nearest_component_pair_approximation(p, q), method="nearest")
 
 
 def _moment_matching_approximation(distribution: Gaussian | GaussianMixture) -> Gaussian:
@@ -83,11 +83,8 @@ def _moment_matching_approximation(distribution: Gaussian | GaussianMixture) -> 
     return Gaussian(mean=mean, covariance=0.5 * (cov + cov.T))
 
 
-def _nearest_component_approximation(p: GaussianFamily, q: GaussianFamily, /) -> float:
-    """Find the component of q closest to p in KL divergence."""
+def _nearest_component_pair_approximation(p: GaussianFamily, q: GaussianFamily) -> float:
     _, means_p, covariances_p = p.component_arrays()
     _, means_q, covariances_q = q.component_arrays()
-    means = np.concatenate([means_p, means_q], axis=0)
-    covariances = np.concatenate([covariances_p, covariances_q], axis=0)
-    kl_matrix = pairwise_kl(means, covariances)
-    return np.min(kl_matrix)
+    kl_matrix = pairwise_gaussian_kl(means_p, covariances_p, means_q, covariances_q)
+    return float(np.min(kl_matrix))

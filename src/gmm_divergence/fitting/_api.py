@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
 
+import numpy as np
+
 import gmm_divergence.fitting._weights as wfit
 from gmm_divergence._core._dispatch import MethodSpec, Registry
 from gmm_divergence.fitting._options import (
@@ -103,6 +105,45 @@ def fit_mixture_weights(
         case _:
             msg = "Unhandled fit optimizer registry entry."
             raise AssertionError(msg)
+
+
+def prune_mixture(
+    mixture: GaussianMixture, *, min_weight: float = 1e-4, renormalize: bool = True
+) -> GaussianMixture:
+    """Prune components of a Gaussian mixture with small weights.
+
+    This is a common post-processing step after fitting to remove components
+    that contribute negligibly to the mixture, improving efficiency and
+    interpretability.
+
+    Parameters
+    ----------
+    mixture : GaussianMixture
+        The mixture to prune.
+    min_weight : float, optional
+        Minimum weight threshold for keeping components. Components with weights
+        below this threshold will be removed. Default is 1e-4.
+    renormalize : bool, optional
+        Whether to renormalize the remaining weights to sum to 1 after pruning.
+
+    Returns
+    -------
+    GaussianMixture
+        The pruned mixture.
+
+    Raises
+    ------
+    ValueError
+        If all components are pruned, or if renormalization fails due to zero
+        total weight after pruning.
+    """
+    weights = mixture.weights
+    keep_mask = weights >= min_weight
+    if not np.any(keep_mask):
+        msg = "All components were pruned, increase min_weight threshold."
+        raise ValueError(msg)
+
+    return mixture.select_components(np.nonzero(keep_mask)[0], renormalize=renormalize)
 
 
 def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
