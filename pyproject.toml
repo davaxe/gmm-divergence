@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a2"
+version = "0.0.1.a2"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
@@ -31,6 +31,7 @@ dependencies = [
 
 [project.urls]
 "Repository" = "https://github.com/davaxe/gmm-divergence"
+"Documentation" = "https://davaxe.github.io/gmm-divergence/"
 
 [dependency-groups]
 build = [
@@ -47,7 +48,10 @@ test = [
     "pytest-benchmark>=5.2.3",
 ]
 typecheck = [
-    "pyrefly>=1.0.0",
+    "basedpyright>=1.0.0",
+]
+example = [
+    "matplotlib>=3.10.9",
 ]
 dev = [
     "scipy-stubs>=1.15.3.0",
@@ -55,7 +59,7 @@ dev = [
     { include-group = "docs" },
     { include-group = "test" },
     { include-group = "typecheck" },
-
+    { include-group = "example" },
 ]
 
 [build-system]
@@ -102,6 +106,13 @@ ban-relative-imports = "all"
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
+[tool.ruff.format]
+quote-style = "double"
+skip-magic-trailing-comma = true
+
+[tool.ruff.lint.isort]
+split-on-trailing-comma = false
+
 [tool.basedpyright]
 pythonVersion = "3.10"
 pythonPlatform = "All"
@@ -109,10 +120,3 @@ typeCheckingMode = "recommended"
 include = ["src", "tests"]
 reportAny = false
 reportUnknownMemberType = false
-
-[tool.pyrefly]
-project-includes = ["src/**/*.py", "tests/**/*.py"]
-search-path = ["src"]
-python-interpreter-path = ".venv/bin/python"
-python-version = "3.10"
-min-severity = "warn"

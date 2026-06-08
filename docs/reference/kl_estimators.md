@@ -2,8 +2,12 @@
 icon: lucide/equal-approximately
 ---
 
-# KL divergence estimators
+# KL divergence
 
-## ::: gmm_divergence.estimators
-    options:
-        show_root_full_path: true
+Symbols are grouped by topic here, but are imported from `gmm_divergence`.
+
+## ::: gmm_divergence.kl_divergence
+
+!!! info "Estimation method and configuration"
+    The estimation method and configuration are specified by the `method` argument
+    passed to `kl_divergence`. See [KL configuration](kl_configuration.md) for details.

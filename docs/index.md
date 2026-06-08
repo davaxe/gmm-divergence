@@ -1,173 +1,50 @@
 ---
-icon: lucide/rocket
+icon: lucide/house
 ---
 
-# Get started
+# Introduction
 
-For full documentation visit [zensical.org](https://zensical.org/docs/).
+`gmm-divergence` provides utilities for working with Gaussian mixture models
+and estimating divergences between them.
 
-## Commands
+The package currently includes:
 
-* [`zensical new`][new] - Create a new project
-* [`zensical serve`][serve] - Start local web server
-* [`zensical build`][build] - Build your site
+- typed Gaussian and Gaussian mixture representations
+- density, log-density, and sampling utilities
+- KL divergence estimators for Gaussian mixtures
+- mixture-weight fitting against a target mixture
 
-  [new]: https://zensical.org/docs/usage/new/
-  [serve]: https://zensical.org/docs/usage/preview/
-  [build]: https://zensical.org/docs/usage/build/
-
-## Examples
-
-### Admonitions
-
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/)
-
-!!! note
-
-    This is a **note** admonition. Use it to provide helpful information.
-
-!!! warning
-
-    This is a **warning** admonition. Be careful!
-
-### Details
-
-> Go to [documentation](https://zensical.org/docs/authoring/admonitions/#collapsible-blocks)
-
-??? info "Click to expand for more info"
-
-    This content is hidden until you click to expand it.
-    Great for FAQs or long explanations.
-
-## Code Blocks
-
-> Go to [documentation](https://zensical.org/docs/authoring/code-blocks/)
-
-``` python hl_lines="2" title="Code blocks"
-def greet(name):
-    print(f"Hello, {name}!") # (1)!
-
-greet("Python")
-```
-
-1.  > Go to [documentation](https://zensical.org/docs/authoring/code-blocks/#code-annotations)
-
-    Code annotations allow to attach notes to lines of code.
-
-Code can also be highlighted inline: `#!python print("Hello, Python!")`.
-
-## Content tabs
-
-> Go to [documentation](https://zensical.org/docs/authoring/content-tabs/)
-
-=== "Python"
-
-    ``` python
-    print("Hello from Python!")
-    ```
-
-=== "Rust"
-
-    ``` rs
-    println!("Hello from Rust!");
-    ```
-
-## Diagrams
-
-> Go to [documentation](https://zensical.org/docs/authoring/diagrams/)
-
-``` mermaid
-graph LR
-  A[Start] --> B{Error?};
-  B -->|Yes| C[Hmm...];
-  C --> D[Debug];
-  D --> B;
-  B ---->|No| E[Yay!];
-```
-
-## Footnotes
-
-> Go to [documentation](https://zensical.org/docs/authoring/footnotes/)
-
-Here's a sentence with a footnote.[^1]
-
-Hover it, to see a tooltip.
-
-[^1]: This is the footnote.
+!!! note "Active development"
+    APIs, estimators, and numerical behavior may change between early releases.
 
 
-## Formatting
+## Next steps
 
-> Go to [documentation](https://zensical.org/docs/authoring/formatting/)
+<div class="grid cards" markdown>
 
-- ==This was marked (highlight)==
-- ^^This was inserted (underline)^^
-- ~~This was deleted (strikethrough)~~
-- H~2~O
-- A^T^A
-- ++ctrl+alt+del++
+- [:material-rocket-launch:{ .lg .middle } __Getting started__](getting_started.md)
 
-## Icons, Emojis
+    ---
 
-> Go to [documentation](https://zensical.org/docs/authoring/icons-emojis/)
+    A quick introduction to the package, its features, and how to get started.
 
-* :sparkles: `:sparkles:`
-* :rocket: `:rocket:`
-* :tada: `:tada:`
-* :memo: `:memo:`
-* :eyes: `:eyes:`
+-  [:lucide-equal-approximately:{ .lg .middle } __Kl estimation__](kl_estimation.md)
 
-## Maths
+    ---
 
-> Go to [documentation](https://zensical.org/docs/authoring/math/)
+    Estimate the KL divergence between two Gaussian mixtures using various numerical methods.
 
-$$
-\cos x=\sum_{k=0}^{\infty}\frac{(-1)^k}{(2k)!}x^{2k}
-$$
+-   [:lucide-chart-no-axes-combined:{ .lg .middle }  __Mixture weight fitting__](fit_weights.md)
 
-!!! warning "Needs configuration"
-    Note that MathJax is included via a `script` tag on this page and is not
-    configured in the generated default configuration to avoid including it
-    in a pages that do not need it. See the documentation for details on how
-    to configure it on all your pages if they are more Maths-heavy than these
-    simple starter pages.
+    ---
 
-<script id="MathJax-script" src="https://unpkg.com/mathjax@3/es5/tex-mml-chtml.js"></script>
-<script>
-  window.MathJax = {
-    tex: {
-      inlineMath: [["\\(", "\\)"]],
-      displayMath: [["\\[", "\\]"]],
-      processEscapes: true,
-      processEnvironments: true
-    },
-    options: {
-      ignoreHtmlClass: ".*|",
-      processHtmlClass: "arithmatex"
-    }
-  };
+    Fit the mixture weights of a Gaussian mixture to minimize KL divergence against a target mixture.
 
-  document$.subscribe(() => {
-    MathJax.startup.output.clearCache()
-    MathJax.typesetClear()
-    MathJax.texReset()
-    MathJax.typesetPromise()
-  })
-</script>
 
-## Task Lists
+-   [:material-api:{ .lg .middle } __API reference__](reference/index.md)
 
-> Go to [documentation](https://zensical.org/docs/authoring/lists/#using-task-lists)
+    ---
 
-* [x] Install Zensical
-* [x] Configure `zensical.toml`
-* [x] Write amazing documentation
-* [ ] Deploy anywhere
+    Jump into the generated Python API docs when you already know the area you want to inspect in code.
 
-## Tooltips
-
-> Go to [documentation](https://zensical.org/docs/authoring/tooltips/)
-
-[Hover me][example]
-
-  [example]: https://example.com "I'm a tooltip!"
+</div>

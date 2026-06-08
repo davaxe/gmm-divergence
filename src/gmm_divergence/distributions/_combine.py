@@ -6,8 +6,9 @@ from typing import TYPE_CHECKING, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence.distribution.gaussian import Gaussian
-from gmm_divergence.distribution.gmm import GaussianMixture
+from gmm_divergence._core._validation import as_weights
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -22,8 +23,7 @@ class MixtureMapping:
     """Component index within the original input mixture for each flattened output component."""
 
     def source_of(self, component_index: int) -> tuple[int, int]:
-        """
-        Return the source input and local component index for a flattened component.
+        """Return source input and local component index for flattened component.
 
         Returns
         -------
@@ -31,6 +31,26 @@ class MixtureMapping:
             `(input_index, local_component_index)`.
         """
         return self.source_index[component_index], self.local_component_index[component_index]
+
+    def component_of(self, input_index: int, local_component_index: int) -> int:
+        """Return the flattened component of given source input and local component.
+
+        Returns
+        -------
+        int
+            The flattened component index corresponding to the specified source
+            input and local component.
+        """
+        mask = (self.source_index == input_index) & (
+            self.local_component_index == local_component_index
+        )
+        if not np.any(mask):
+            msg = (
+                f"No component found for input_index={input_index},"
+                f" local_component_index={local_component_index}"
+            )
+            raise ValueError(msg)
+        return np.where(mask)[0][0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -100,21 +120,8 @@ def combine_gaussians(
     if weights is None:
         weights_ = [1 / len(sources)] * len(sources)
     else:
-        weights_arr = np.asarray(weights, dtype=np.float64)
-
-        if weights_arr.ndim != 1:
-            msg = "weights must be one-dimensional"
-            raise ValueError(msg)
-
-        if len(weights_arr) != len(sources):
-            msg = f"weights must have length {len(sources)}, got {len(weights_arr)}"
-            raise ValueError(msg)
-
-        weight_sum = np.sum(weights_arr)
-        if not np.isfinite(weight_sum) or weight_sum <= 0:
-            msg = "weights must sum to a positive finite value"
-            raise ValueError(msg)
-        weights_ = (weights_arr / weight_sum).tolist()
+        weights_arr = as_weights(weights, expected_length=len(sources), name="weights")
+        weights_ = weights_arr.tolist()
 
     mixtures = [as_mixture(component) for component in sources]
     mixture = GaussianMixture(
@@ -137,9 +144,7 @@ def combine_gaussians(
     return CombinedGaussianMixture(mixture=mixture, mapping=mapping)
 
 
-def as_mixture(
-    distribution: Gaussian | GaussianMixture,
-) -> GaussianMixture:
+def as_mixture(distribution: Gaussian | GaussianMixture) -> GaussianMixture:
     """Convert a Gaussian or GaussianMixture to a GaussianMixture."""
     if isinstance(distribution, Gaussian):
         return GaussianMixture(
