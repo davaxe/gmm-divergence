@@ -527,7 +527,7 @@ wheels = [
 
 [[package]]
 name = "gmm-divergence"
-version = "0.1.0.dev1"
+version = "0.0.1a2"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -546,7 +546,6 @@ dev = [
     { name = "basedpyright" },
     { name = "build" },
     { name = "matplotlib" },
-    { name = "mike" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "pytest" },
     { name = "pytest-benchmark" },
@@ -556,7 +555,6 @@ dev = [
     { name = "zensical" },
 ]
 docs = [
-    { name = "mike" },
     { name = "mkdocstrings", extra = ["python"] },
     { name = "zensical" },
 ]
@@ -587,7 +585,6 @@ dev = [
     { name = "basedpyright", specifier = ">=1.0.0" },
     { name = "build", specifier = ">=1.5.0" },
     { name = "matplotlib", specifier = ">=3.10.9" },
-    { name = "mike", git = "https://github.com/squidfunk/mike.git" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4" },
     { name = "pytest", specifier = ">=8.3.5" },
     { name = "pytest-benchmark", specifier = ">=5.2.3" },
@@ -596,7 +593,6 @@ dev = [
     { name = "zensical", specifier = ">=0.0.43" },
 ]
 docs = [
-    { name = "mike", git = "https://github.com/squidfunk/mike.git" },
     { name = "mkdocstrings", extras = ["python"], specifier = ">=1.0.4" },
     { name = "zensical", specifier = ">=0.0.43" },
 ]
@@ -1054,17 +1050,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/3a/41/580bb4006e3ed0361b8151a01d324fb03f420815446c7def45d02f74c270/mergedeep-1.3.4.tar.gz", hash = "sha256:0096d52e9dad9939c3d975a774666af186eda617e6ca84df4c94dec30004f2a8", size = 4661, upload-time = "2021-02-05T18:55:30.623Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/2c/19/04f9b178c2d8a15b076c8b5140708fa6ffc5601fb6f1e975537072df5b2a/mergedeep-1.3.4-py3-none-any.whl", hash = "sha256:70775750742b25c0d8f36c55aed03d24c3384d17c951b3175d898bd778ef0307", size = 6354, upload-time = "2021-02-05T18:55:29.583Z" },
-]
-
-[[package]]
-name = "mike"
-version = "2.2.0+zensical.0.1.0"
-source = { git = "https://github.com/squidfunk/mike.git#2d4ad799442f4592db8ad53b179bfb33db8c69ac" }
-dependencies = [
-    { name = "jinja2" },
-    { name = "pyparsing" },
-    { name = "verspec" },
-    { name = "zensical" },
 ]
 
 [[package]]
@@ -2068,15 +2053,6 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/53/0c/06f8b233b8fd13b9e5ee11424ef85419ba0d8ba0b3138bf360be2ff56953/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c", size = 433602, upload-time = "2026-05-07T16:13:18.596Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/7f/3e/5db95bcf282c52709639744ca2a8b149baccf648e39c8cc87553df9eae0c/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897", size = 131087, upload-time = "2026-05-07T16:13:17.151Z" },
-]
-
-[[package]]
-name = "verspec"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/e7/44/8126f9f0c44319b2efc65feaad589cadef4d77ece200ae3c9133d58464d0/verspec-0.1.0.tar.gz", hash = "sha256:c4504ca697b2056cdb4bfa7121461f5a0e81809255b41c03dda4ba823637c01e", size = 27123, upload-time = "2020-11-30T02:24:09.646Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a4/ce/3b6fee91c85626eaf769d617f1be9d2e15c1cca027bbdeb2e0d751469355/verspec-0.1.0-py3-none-any.whl", hash = "sha256:741877d5633cc9464c45a469ae2a31e801e6dbbaa85b9675d481cda100f11c31", size = 19640, upload-time = "2020-11-30T02:24:08.387Z" },
 ]
 
 [[package]]
