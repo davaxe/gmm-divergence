@@ -9,9 +9,35 @@ window.MathJax = {
   options: {
     ignoreHtmlClass: ".*|",
     processHtmlClass: "arithmatex"
+  },
+  startup: {
+    typeset: false
   }
-};
+}
 
-document$.subscribe(() => {
-  MathJax.typesetPromise()
-});
+document$.subscribe(({ body }) => {
+  if (!window.MathJax || !MathJax.typesetPromise) {
+    return
+  }
+
+  MathJax.startup.promise.then(() => {
+    MathJax.startup.output.clearCache()
+    MathJax.typesetClear([body])
+    MathJax.texReset()
+    return MathJax.typesetPromise([body])
+  }).catch((err) => {
+    console.error("MathJax rendering failed:", err)
+  })
+})
+
+component$.subscribe(({ ref }) => {
+  if (
+    window.MathJax &&
+    MathJax.typesetPromise &&
+    ref.classList.contains("md-annotation")
+  ) {
+    MathJax.startup.promise
+      .then(() => MathJax.typesetPromise([ref]))
+      .catch((err) => console.error("MathJax annotation rendering failed:", err))
+  }
+})

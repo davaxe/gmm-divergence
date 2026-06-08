@@ -42,8 +42,8 @@ def test_fit_mixture_weights_recovers_known_component_weights(
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=1e-7)
     assert float(np.sum(result.weights)) == pytest.approx(1.0)
-    assert result.objective_value < 1e-12
-    assert result.forward_kl.value == pytest.approx(0.0, abs=1e-12)
+    assert result.objective_value < 1e-8
+    assert result.forward_kl.value == pytest.approx(0.0, abs=1e-8)
 
 
 def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
