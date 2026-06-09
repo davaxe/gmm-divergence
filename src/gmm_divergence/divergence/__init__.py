@@ -1,3 +1,5 @@
+"""Public divergence API."""
+
 from gmm_divergence.divergence._api import kl_divergence
 from gmm_divergence.divergence._options import (
     ClosedForm,

@@ -1,3 +1,5 @@
+"""Public API for fitting mixture weights."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeVar
@@ -5,7 +7,7 @@ from typing import TYPE_CHECKING, TypeVar
 import numpy as np
 import numpy.typing as npt
 
-import gmm_divergence.fitting._weights as wfit
+import gmm_divergence.fitting._fit as wfit
 from gmm_divergence._core._dispatch import MethodSpec, Registry
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
@@ -23,6 +25,7 @@ if TYPE_CHECKING:
 
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.fitting._selector import CandidateSelector
     from gmm_divergence.results import KLFitResult
 
 OptionsT = TypeVar("OptionsT")
@@ -54,6 +57,7 @@ def fit_mixture_weights(
     method: WeightFitMethod = "softmax-lbfgsb",
     objective: WeightFitObjective = "forward",
     x0: npt.ArrayLike | None = None,
+    candidate_selector: CandidateSelector[Gaussian | GaussianMixture] | None = None,
 ) -> KLFitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
 
@@ -105,6 +109,7 @@ def fit_mixture_weights(
                 optimizer=optimizer,
                 parameterization="softmax",
                 x0=x0,
+                candidate_selection=candidate_selector,
             )
         case "simplex-slsqp":
             optimizer = _cast_options(optimizer, SimplexSLSQP)
@@ -116,6 +121,7 @@ def fit_mixture_weights(
                 optimizer=optimizer,
                 parameterization="simplex",
                 x0=x0,
+                candidate_selection=candidate_selector,
             )
         case _:
             msg = "Unhandled fit optimizer registry entry."

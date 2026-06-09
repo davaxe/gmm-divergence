@@ -1,3 +1,5 @@
+"""Options for fitting candidate-mixture weights."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass

@@ -1,3 +1,5 @@
+"""Fit mixture weights to minimize KL divergence."""
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, TypeAlias
@@ -31,6 +33,7 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray, Weights
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.fitting._selector import CandidateSelector
 
 
 FitObjectiveConfig: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
@@ -138,7 +141,11 @@ def fit_mixture_weights(
     optimizer: FitOptimizerConfig,
     parameterization: FitParameterization,
     x0: npt.ArrayLike | None = None,
+    candidate_selection: CandidateSelector[Gaussian | GaussianMixture] | None = None,
 ) -> KLFitResult:
+    if candidate_selection is not None:
+        selection = candidate_selection.select(p, q_i)
+        q_i = [q_i[int(i)] for i in selection.selected_indices]
     q_component = _validate_q_i(q_i, p.dim)
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
     resolved_num_p_samples = int(resolved_p_samples.shape[0])

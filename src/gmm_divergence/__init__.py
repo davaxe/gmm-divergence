@@ -1,17 +1,14 @@
-"""Tools for Gaussian-mixture KL divergence and mixture fitting.
+"""Public package API for Gaussian-mixture divergence and fitting.
 
-The top-level package exports the main distribution classes, KL divergence
-entrypoint, and mixture-weight fitting helper:
+The top-level package provides two complementary access patterns:
 
-- ``Gaussian`` and ``GaussianMixture`` define the supported distributions.
-- ``kl_divergence`` estimates or computes ``D_KL(p || q)``.
-- ``fit_mixture_weights`` fits weights for fixed candidate mixtures.
-- ``CombinedGaussianMixture`` and ``MixtureMapping`` describe mixtures built
-  from multiple source distributions.
+- A curated convenience layer for the most common classes and functions.
+- Stable domain namespaces: ``distributions``, ``divergence``, and ``fitting``.
 """
 
-from importlib.metadata import version
+from importlib.metadata import PackageNotFoundError, version
 
+from gmm_divergence import distributions, divergence, fitting
 from gmm_divergence.distributions import (
     CombinedGaussianMixture,
     Gaussian,
@@ -58,8 +55,15 @@ __all__ = [
     "Unscented",
     "Variational",
     "combine_gaussians",
+    "distributions",
+    "divergence",
     "fit_mixture_weights",
+    "fitting",
     "kl_divergence",
     "prune_mixture",
 ]
-__version__: str = version("gmm-divergence")
+
+try:  # noqa: RUF067
+    __version__: str = version("gmm-divergence")
+except PackageNotFoundError:
+    __version__ = "0.0.0+unknown"

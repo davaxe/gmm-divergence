@@ -78,7 +78,6 @@ q = GaussianMixture.from_arrays(
     weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
 )
 
-
 kl_estimate = kl_divergence(p, q, method=MonteCarlo(rng=9126))
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
@@ -94,15 +93,6 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
     
 !!! note "Other methods"
     The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) for details.
-
-!!! note "Single gaussian special case"
-    If $p$ and $q$ are single Gaussians (i.e. $K_p = K_q = 1$), then the KL divergence has a closed-form expression and can be computed exactly.
-
-    When using the `kl_divergence` function, if both $p$ and $q$ are single Gaussians, then the KL divergence can be computed exactly using the closed-form expression, which is less computationally expensive and more accurate than estimation methods. This is achieved by setting the `method` argument to `"closed_form"`, i.e.
-    
-    ``` python
-    kl_exact = kl_divergence(p, q, method="closed_form")
-    ```
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

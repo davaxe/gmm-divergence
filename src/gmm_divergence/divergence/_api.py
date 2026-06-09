@@ -42,7 +42,12 @@ KL_REGISTRY = Registry(
 
 
 def kl_divergence(
-    p: Distribution, q: Distribution, /, *, method: KLMethod = "monte_carlo"
+    p: Distribution,
+    q: Distribution,
+    /,
+    *,
+    method: KLMethod = "monte_carlo",
+    prefer_closed_form: bool = False,
 ) -> DivergenceResult:
     r"""Compute the Kullback--Leibler divergence between two distributions.
 
@@ -69,6 +74,9 @@ def kl_divergence(
         runs that method with its defaults. Use a method configuration object,
         such as `MonteCarlo(sampling=50_000, rng=0)`, for method-specific
         options.
+    prefer_closed_form : bool, default=False
+        If `True`, the function will attempt use closed form if both inputs are
+        Gaussian, even if the user specified a different method.
 
     Returns
     -------
@@ -113,6 +121,9 @@ def kl_divergence(
     """
     _validate_same_dimension(p, q)
     spec, options = KL_REGISTRY.resolve(method)
+    if prefer_closed_form and isinstance(p, Gaussian) and isinstance(q, Gaussian):
+        return kl_closed_form(p, q)
+
     match spec.name:
         case "monte_carlo":
             options = _cast_options(options, MonteCarlo)

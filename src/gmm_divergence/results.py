@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import Weights
     from gmm_divergence.distributions._combine import CombinedGaussianMixture
     from gmm_divergence.fitting._options import FitObjective
+    from gmm_divergence.fitting._selector import CandidateSelection
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +58,8 @@ class KLFitResult:
     """The number of iterations taken by the optimization routine, if applicable."""
     converged: bool | None = None
     """Whether the optimization routine reported convergence, if applicable."""
+    candidate_selection: CandidateSelection | None = None
+    """The candidate selection results used during fitting, if applicable."""
 
     @override
     def __str__(self) -> str:
