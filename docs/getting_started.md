@@ -31,12 +31,18 @@ Define Gaussian mixtures from component weights, means, and covariances:
 ```python
 import gmm_divergence as gd
 
-p = gd.GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
-q = gd.GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
 )
 ```
 
@@ -47,12 +53,18 @@ Use `kl_divergence` to estimate \(D_{\mathrm{KL}}(p \| q)\):
 ```python
 import gmm_divergence as gd
 
-p = gd.GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
-q = gd.GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
 )
 
 result = gd.kl_divergence(p, q)
@@ -68,8 +80,11 @@ Mixtures can generate samples and evaluate log densities:
 ```python
 import gmm_divergence as gd
 
-p = gd.GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
 samples = p.sample(1000, rng=9126)
@@ -83,13 +98,18 @@ Use `fit_mixture_weights` to combine candidate mixtures against a reference dist
 ```python
 import gmm_divergence as gd
 
-p = gd.GaussianMixture.from_arrays(
-    weights=[0.6, 0.4], means=[[0.0], [2.0]], covariances=[[[0.5]], [[0.5]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=0.5),
+        gd.Gaussian.univariate(mean=2.0, variance=0.5),
+    ],
+    weights=[0.6, 0.4],
 )
-q1 = gd.GaussianMixture.from_arrays(weights=[1.0], means=[[0.0]], covariances=[[[0.5]]])
-q2 = gd.GaussianMixture.from_arrays(weights=[1.0], means=[[2.0]], covariances=[[[0.5]]])
+q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
+q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
+
 fit = gd.fit_mixture_weights(p, [q1, q2])
-print(fit.weights)
+print(fit.weights)  # [~0.6, ~0.4]
 ```
 
 For the underlying formulation and more complete examples, see

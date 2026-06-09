@@ -1,7 +1,7 @@
+# ruff: noqa: T201
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import NamedTuple
 
@@ -56,7 +56,9 @@ def main() -> None:
         objective=gd.ForwardKL(rng=0),
         candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
     )
-    _ = sys.stdout.write(f"{res.display(source_labels=component_labels)}\n")
+    print(f"Fitted weights for target '{args.target}':")
+    for label, weight in zip(component_labels, res.weights, strict=False):
+        print(f"  {label}: {weight:.6g}")
 
 
 if __name__ == "__main__":

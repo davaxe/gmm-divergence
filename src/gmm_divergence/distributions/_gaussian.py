@@ -33,6 +33,27 @@ class Gaussian(GaussianFamily):
         """Create a Gaussian instance from array-like inputs."""
         return cls(mean=cast("FloatArray", mean), covariance=cast("Covariance", covariance))
 
+    @classmethod
+    def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:
+        """Create a univariate Gaussian instance."""
+        return cls(
+            mean=np.array([mean], dtype=np.float64),
+            covariance=np.array([[variance]], dtype=np.float64),
+        )
+
+    @classmethod
+    def isotropic(cls, mean: npt.ArrayLike, variance: float = 1.0) -> Gaussian:
+        """Create an isotropic Gaussian instance."""
+        mean = np.asarray(mean, dtype=np.float64)
+        n_features = mean.shape[0]
+        covariance = np.eye(n_features) * variance
+        return cls(mean=mean, covariance=covariance)
+
+    @classmethod
+    def standard(cls, dim: int) -> Gaussian:
+        """Create a standard Gaussian instance with zero mean and identity covariance."""
+        return cls(mean=np.zeros(dim, dtype=np.float64), covariance=np.eye(dim, dtype=np.float64))
+
     def __post_init__(self) -> None:
         """Validate the shapes of mean and covariance."""
         object.__setattr__(self, "mean", np.asarray(self.mean, dtype=np.float64))

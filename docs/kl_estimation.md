@@ -67,18 +67,24 @@ variational approximations, and unscented sigma point methods
 To estimate the KL divergence between two Gaussian mixtures using the
 [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) function. For example:
 
-``` python hl_lines="3-5"
-from gmm_divergence import GaussianMixture, MonteCarlo, kl_divergence
+``` python hl_lines="3-9"
+import gmm_divergence as gd
 
-p = GaussianMixture.from_arrays(  # (1)!
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(  # (1)!
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
-q = GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
 )
 
-kl_estimate = kl_divergence(p, q, method=MonteCarlo(rng=9126))
+kl_estimate = gd.kl_divergence(p, q, method=gd.MonteCarlo(rng=9126))
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
@@ -88,8 +94,14 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
     p(x) = 0.5 \mathcal{N}(x;0.0,1.0) + 0.5 \mathcal{N}(x;1.0,1.0).
     $$
 
-    !!! note "GaussianMixture.from_arrays"
-        The `GaussianMixture.from_arrays` constructor is a more flexible way to construct Gaussian mixtures from arrays of weights, means, and covariances.
+    !!! note "Simple constructors"
+        For simple one-dimensional examples, `GaussianMixture.from_components`
+        together with `Gaussian.univariate` is usually the clearest way to define
+        Gaussian mixtures.
+    
+        The `GaussianMixture.from_arrays` constructor remains useful when you
+        already have weight, mean, and covariance arrays.
+
     
 !!! note "Other methods"
     The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) for details.

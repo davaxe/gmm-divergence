@@ -28,12 +28,10 @@ from gmm_divergence.results import KLFitResult
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
-    from scipy.optimize import OptimizeResult
-
     from gmm_divergence._core._types import FloatArray, Weights
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
-    from gmm_divergence.fitting._selector import CandidateSelector
+    from gmm_divergence.fitting._selector import CandidateSelection, CandidateSelector
 
 
 FitObjectiveConfig: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
@@ -97,42 +95,6 @@ def _resolve_objective_samples(
             return resolve_samples(p, 10_000, None), None
 
 
-def _construct_kl_fit_result_from_weights(
-    *,
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    weights: Weights,
-    objective: FitObjectiveConfig,
-    objective_value: float,
-    p_samples: FloatArray,
-    reverse_diagnostic_sampling: int,
-    scipy_result: OptimizeResult | None = None,
-    iterations: int | None = None,
-    converged: bool | None = None,
-) -> KLFitResult:
-    """Construct a KLFitResult from fitted mixture weights."""
-    rng = _objective_rng(objective)
-    fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
-    return KLFitResult(
-        weights=fitted_mixture.mixture.weights.astype(np.float64),
-        fit_objective=_objective_name(objective),
-        objective_value=objective_value,
-        forward_kl=kl_divergence(
-            p, fitted_mixture.mixture, method=MonteCarlo(sampling=p_samples, rng=rng)
-        ),
-        reverse_kl=kl_divergence(
-            fitted_mixture.mixture,
-            p,
-            method=MonteCarlo(sampling=reverse_diagnostic_sampling, rng=rng),
-        ),
-        scipy_result=scipy_result,
-        fitted_mixture=fitted_mixture,
-        alpha=_objective_alpha(objective),
-        iterations=iterations,
-        converged=converged,
-    )
-
-
 def fit_mixture_weights(
     *,
     p: Gaussian | GaussianMixture,
@@ -143,6 +105,7 @@ def fit_mixture_weights(
     x0: npt.ArrayLike | None = None,
     candidate_selection: CandidateSelector[Gaussian | GaussianMixture] | None = None,
 ) -> KLFitResult:
+    selection: CandidateSelection[Gaussian | GaussianMixture] | None = None
     if candidate_selection is not None:
         selection = candidate_selection.select(p, q_i)
         q_i = [q_i[int(i)] for i in selection.selected_indices]
@@ -199,15 +162,24 @@ def fit_mixture_weights(
         tol=optimizer.tol,
         options={"maxiter": optimizer.max_iterations},
     )
-    return _construct_kl_fit_result_from_weights(
-        p=p,
-        q_i=q_i,
-        weights=weights_from_result(result.x),
-        objective=objective,
+    rng = _objective_rng(objective)
+    weights: Weights = weights_from_result(result.x)
+    fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
+    return KLFitResult(
+        weights=weights,
+        fit_objective=_objective_name(objective),
         objective_value=float(result.fun),
-        p_samples=resolved_p_samples,
-        reverse_diagnostic_sampling=resolved_num_p_samples,
+        forward_kl=kl_divergence(
+            p, fitted_mixture.mixture, method=MonteCarlo(sampling=resolved_p_samples, rng=rng)
+        ),
+        reverse_kl=kl_divergence(
+            fitted_mixture.mixture,
+            p,
+            method=MonteCarlo(sampling=resolved_q_samples or resolved_num_p_samples, rng=rng),
+        ),
         scipy_result=result,
+        fitted_mixture=fitted_mixture,
+        alpha=_objective_alpha(objective),
         iterations=result.nit,
-        converged=bool(result.success),
+        converged=result.success,
     )
