@@ -10,8 +10,19 @@ icon: material/rocket-launch
 from a checkout:
 
 ```bash
-python -m pip install -e .
+pip install -e .
 ```
+
+There is also a pre-release version available on PyPI:
+
+```bash
+pip install gmm-divergence
+```
+
+!!! warning "Pre-release software"
+    The PyPI version is a pre-release and **may contain bugs or incomplete features**.
+
+    Breaking changes may also occur without warning.
 
 ## Create Gaussian mixtures
 

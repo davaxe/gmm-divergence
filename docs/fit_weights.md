@@ -72,11 +72,6 @@ $$
 q_{\mathbf{w}}(x) = \sum_{i=1}^N w_i \sum_{j=1}^{K_i} \omega_{ij}\mathcal{N}(x;\nu_{ij},\Lambda_{ij}) = \sum_{i=1}^N \sum_{j=1}^{K_i} w_i \omega_{ij}\mathcal{N}(x;\nu_{ij},\Lambda_{ij}).
 $$
 
-This can further compactly be expressed as
-$$
-q_{\mathbf{w}}(x) = \sum_{i=1}^N \sum_{j=1}^{K_i} \tilde{\omega}_{ij} \mathcal{N}(x;\nu_{ij},\Lambda_{ij}),
-\quad \text{
-
 ### Practical objective
 
 Using the defenition of KL (see [Kl estimation](kl_estimation.md#definition)) divergence, the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
