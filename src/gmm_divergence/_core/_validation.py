@@ -65,19 +65,9 @@ def as_covariance(
     """Return a validated symmetric positive-definite covariance matrix."""
     covariance_arr = np.asarray(covariance, dtype=np.float64)
     full_shape = (n_features, n_features)
-    diag_shape = (n_features,)
-
-    if covariance_arr.shape == diag_shape:
-        covariance_arr = np.diag(covariance_arr).astype(np.float64)
-    elif covariance_arr.shape != full_shape:
-        msg = (
-            f"{name} must have shape {full_shape} or diagonal shape {diag_shape}"
-            f", got {covariance_arr.shape}."
-        )
+    if covariance_arr.shape != full_shape:
+        msg = f"{name} must have shape {full_shape}, got {covariance_arr.shape}."
         raise ValueError(msg)
-    else:
-        covariance_arr = covariance_arr.copy()
-
     _validate_covariance_values(covariance_arr, name=name)
     covariance_arr.setflags(write=writable)
     return covariance_arr
@@ -95,22 +85,9 @@ def as_covariances(
     """Return a validated stack of symmetric positive-definite covariances."""
     covariances_arr = np.asarray(covariances, dtype=np.float64)
     full_shape = (n_components, n_features, n_features)
-    diag_shape = (n_components, n_features)
-
-    if covariances_arr.shape == diag_shape:
-        full_covariances = np.zeros(full_shape, dtype=np.float64)
-        diagonal = np.arange(n_features)
-        full_covariances[:, diagonal, diagonal] = covariances_arr
-        covariances_arr = cast("Covariances", full_covariances)
-    elif covariances_arr.shape != full_shape:
-        msg = (
-            f"{name} must have shape {full_shape} or diagonal shape {diag_shape}, "
-            f"got {covariances_arr.shape}."
-        )
+    if covariances_arr.shape != full_shape:
+        msg = f"{name} must have shape {full_shape}, got {covariances_arr.shape}."
         raise ValueError(msg)
-    else:
-        covariances_arr = covariances_arr.copy()
-
     _validate_covariance_values(covariances_arr, name=name)
     covariances_arr.setflags(write=writable)
     return covariances_arr

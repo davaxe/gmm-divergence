@@ -178,15 +178,13 @@ p = gd.GaussianMixture.from_components(
 
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
-result = gd.fit_mixture_weights(p, [q1, q2], method="softmax-lbfgsb")
+result = gd.fit_mixture_weights(
+    p, [q1, q2], method="simplex_slsqp", objective=gd.ForwardKL(rng=102)
+)
 
 assert result.converged
 assert abs(result.weights[0] - 0.6) < 1e-2
 assert abs(result.weights[1] - 0.4) < 1e-2
-print(result.fit_objective)
-print(result.objective_value)
-print(result.forward_kl.value)
-print(result.reverse_kl.value)
 ```
 
 Here, the optimizer recovers the mixture weights of the reference distribution by

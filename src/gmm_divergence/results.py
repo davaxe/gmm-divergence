@@ -12,6 +12,14 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
+class MonteCarloStatistics:
+    sample_mean: float
+    sample_variance: float
+    standard_error: float
+    effective_sample_size: int
+
+
+@dataclass(frozen=True, slots=True)
 class DivergenceResult:
     """Result of a divergence estimation."""
 
@@ -21,6 +29,13 @@ class DivergenceResult:
     """The method used for estimation, if applicable."""
     num_samples: int | None = None
     """The number of samples used for estimation, if applicable."""
+    monte_carlo_stats: MonteCarloStatistics | None = None
+    """Monte Carlo statistics related to the estimation, if applicable.
+
+    Contains the sample mean, sample variance, standard error, and effective
+    sample size of the pointwise divergence estimates when using Monte Carlo
+    estimation.
+    """
 
 
 @dataclass(frozen=True, slots=True, repr=False)

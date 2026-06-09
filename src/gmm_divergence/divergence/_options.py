@@ -55,6 +55,7 @@ class Unscented:
     """
 
 
+@dataclass(frozen=True, slots=True)
 class GaussianApproximation:
     r"""Gaussian-approximation KL estimator configuration.
 

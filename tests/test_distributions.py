@@ -6,8 +6,8 @@ import pytest
 from gmm_divergence import Gaussian, GaussianMixture, combine_gaussians
 
 
-def test_gaussian_accepts_diagonal_covariance_and_matches_manual_logpdf() -> None:
-    gaussian = Gaussian.from_arrays(mean=[1.0, -2.0], covariance=[4.0, 9.0])
+def test_gaussian_matches_manual_logpdf() -> None:
+    gaussian = Gaussian.from_arrays(mean=[1.0, -2.0], covariance=np.diag([4.0, 9.0]))
     x = np.array([[1.0, -2.0], [3.0, 1.0], [-1.0, -5.0]], dtype=np.float64)
 
     diff = x - np.array([1.0, -2.0], dtype=np.float64)
@@ -28,8 +28,8 @@ def test_gaussian_mixture_normalizes_weights_and_matches_manual_logpdf() -> None
     x = np.array([[-2.0], [0.0], [3.0]], dtype=np.float64)
 
     components = [
-        Gaussian.from_arrays(mean=[-1.0], covariance=[[0.5]]),
-        Gaussian.from_arrays(mean=[2.0], covariance=[[1.5]]),
+        Gaussian.univariate(mean=-1.0, variance=0.5),
+        Gaussian.univariate(mean=2.0, variance=1.5),
     ]
     component_logpdf = np.column_stack([component.logpdf(x) for component in components])
     expected = np.logaddexp.reduce(np.log(mixture.weights)[None, :] + component_logpdf, axis=1)
@@ -49,7 +49,6 @@ def test_gaussian_mixture_sampling_is_seeded_and_has_expected_shape() -> None:
 
     first = mixture.sample(12, rng=123)
     second = mixture.sample(12, rng=123)
-
     assert first.shape == (12, 2)
     assert first.dtype == np.float64
     assert np.array_equal(first, second)

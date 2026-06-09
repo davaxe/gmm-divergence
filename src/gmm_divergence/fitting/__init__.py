@@ -19,7 +19,7 @@ from gmm_divergence.fitting._selector import (
     KLQuantileSelector,
     KLThresholdSelector,
     KLToleranceSelector,
-    TopKSelection,
+    TopKSelector,
 )
 
 __all__ = [
@@ -36,7 +36,7 @@ __all__ = [
     "ReverseKL",
     "SimplexSLSQP",
     "SoftmaxLBFGSB",
-    "TopKSelection",
+    "TopKSelector",
     "WeightFitMethod",
     "WeightFitObjective",
     "fit_mixture_weights",

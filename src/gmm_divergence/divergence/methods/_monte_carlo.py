@@ -6,7 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from gmm_divergence._core._sampling import resolve_samples
-from gmm_divergence.results import DivergenceResult
+from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
 if TYPE_CHECKING:
     from gmm_divergence.distributions._base import Distribution
@@ -59,8 +59,26 @@ def kl_monte_carlo(
         IEEE, 2007.
     """
     sampling = resolve_samples(p, sampling, rng)
+
+    pointwise_kl = np.asarray(p.logpdf(sampling) - q.logpdf(sampling), dtype=np.float64)
+    value = float(np.mean(pointwise_kl))
+    num_samples = int(pointwise_kl.shape[0])
+
+    if num_samples > 1:
+        sample_variance = float(np.var(pointwise_kl, ddof=1))
+        standard_error = float(np.sqrt(sample_variance / num_samples))
+    else:
+        sample_variance = float("nan")
+        standard_error = float("nan")
+
     return DivergenceResult(
-        value=float(np.mean(p.logpdf(sampling) - q.logpdf(sampling))),
+        value=value,
         method="monte_carlo",
-        num_samples=sampling.shape[0],
+        num_samples=num_samples,
+        monte_carlo_stats=MonteCarloStatistics(
+            sample_mean=value,
+            sample_variance=sample_variance,
+            standard_error=standard_error,
+            effective_sample_size=num_samples,
+        ),
     )

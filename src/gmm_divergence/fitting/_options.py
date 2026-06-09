@@ -159,7 +159,7 @@ class MomentMatching:
     """Whether to include covariance information in the objective."""
 
 
-FitMethodName: TypeAlias = Literal["softmax-lbfgsb", "simplex-slsqp"]
+FitMethodName: TypeAlias = Literal["softmax_lbfgsb", "simplex_slsqp"]
 FitObjective: TypeAlias = Literal["forward", "reverse", "bidirectional", "moment_matching"]
 FitParameterization: TypeAlias = Literal["simplex", "softmax"]
 WeightFitMethod: TypeAlias = FitMethodName | SoftmaxLBFGSB | SimplexSLSQP

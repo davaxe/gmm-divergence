@@ -47,7 +47,7 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     kl_method: KLMethod = field(default=MonteCarlo(rng=0))
 
     def __post_init__(self) -> None:
-        if self.direction == "bidirectional" and 0 <= self.alpha <= 1:
+        if self.direction == "bidirectional" and not 0 <= self.alpha <= 1:
             msg = f"alpha must be in [0, 1] for bidirectional KL, got {self.alpha}."
             raise ValueError(msg)
 
@@ -109,7 +109,7 @@ class KLToleranceSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class TopKSelection(_KLSelectorBase[DistributionT]):
+class TopKSelector(_KLSelectorBase[DistributionT]):
     k: int
 
     @override

@@ -52,7 +52,7 @@ def main() -> None:
     res = gd.fit_mixture_weights(
         target,
         components,
-        method="softmax-lbfgsb",
+        method="softmax_lbfgsb",
         objective=gd.ForwardKL(rng=0),
         candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
     )

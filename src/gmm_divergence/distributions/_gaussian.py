@@ -99,9 +99,7 @@ class Gaussian(GaussianFamily):
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian."""
         rng = np.random.default_rng(rng)
-        return rng.multivariate_normal(mean=self.mean, cov=self.covariance, size=n_samples).astype(
-            np.float64
-        )
+        return rng.multivariate_normal(mean=self.mean, cov=self.covariance, size=n_samples)
 
     @override
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
@@ -113,8 +111,8 @@ class Gaussian(GaussianFamily):
         d = self.mean.shape[0]
         chol = self.chol()
         diff = x - self.mean
-        rhs = diff.T
-        y = cast("FloatArray", np.linalg.solve(chol, rhs).T)
+        rhs = np.transpose(diff)
+        y = np.transpose(np.linalg.solve(chol, rhs))
         mahalanobis = np.sum(y**2, axis=-1)
         log_det = self.log_det()
         return -0.5 * (d * np.log(2 * np.pi) + log_det + mahalanobis)

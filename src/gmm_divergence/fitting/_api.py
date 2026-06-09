@@ -33,8 +33,8 @@ OptionsT = TypeVar("OptionsT")
 _OPTIMIZER_REGISTRY = Registry(
     label="fit optimizer",
     specs=(
-        MethodSpec(name="softmax-lbfgsb", option_type=SoftmaxLBFGSB, default=SoftmaxLBFGSB()),
-        MethodSpec(name="simplex-slsqp", option_type=SimplexSLSQP, default=SimplexSLSQP()),
+        MethodSpec(name="softmax_lbfgsb", option_type=SoftmaxLBFGSB, default=SoftmaxLBFGSB()),
+        MethodSpec(name="simplex_slsqp", option_type=SimplexSLSQP, default=SimplexSLSQP()),
     ),
 )
 
@@ -54,7 +54,7 @@ def fit_mixture_weights(
     q_i: Sequence[Gaussian | GaussianMixture],
     /,
     *,
-    method: WeightFitMethod = "softmax-lbfgsb",
+    method: WeightFitMethod = "softmax_lbfgsb",
     objective: WeightFitObjective = "forward",
     x0: npt.ArrayLike | None = None,
     candidate_selector: CandidateSelector[Gaussian | GaussianMixture] | None = None,
@@ -99,7 +99,7 @@ def fit_mixture_weights(
     _objective_spec, objective_config = _OBJECTIVE_REGISTRY.resolve(objective)
 
     match method_spec.name:
-        case "softmax-lbfgsb":
+        case "softmax_lbfgsb":
             optimizer = _cast_options(optimizer, SoftmaxLBFGSB)
             objective_config = _cast_fit_objective(objective_config)
             return wfit.fit_mixture_weights(
@@ -111,7 +111,7 @@ def fit_mixture_weights(
                 x0=x0,
                 candidate_selection=candidate_selector,
             )
-        case "simplex-slsqp":
+        case "simplex_slsqp":
             optimizer = _cast_options(optimizer, SimplexSLSQP)
             objective_config = _cast_fit_objective(objective_config)
             return wfit.fit_mixture_weights(

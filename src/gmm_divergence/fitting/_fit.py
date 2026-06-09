@@ -181,5 +181,6 @@ def fit_mixture_weights(
         fitted_mixture=fitted_mixture,
         alpha=_objective_alpha(objective),
         iterations=result.nit,
-        converged=result.success,
+        converged=bool(result.success),
+        used_candidate_indices=list(selection.selected_indices) if selection is not None else None,
     )

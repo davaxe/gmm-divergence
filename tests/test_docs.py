@@ -18,6 +18,8 @@ def test_python_code_blocks_in_docs(md_file: Path) -> None:
         code = match.group(2)
         namespace = {"__name__": "__main__", "__file__": str(md_file)}
         try:
+            # Intentionally execute trusted Python snippets from repository documentation
+            # to ensure examples stay valid.
             exec(compile(code, f"{md_file}:{line_no}", "exec"), namespace)  # noqa: S102
         except Exception as exc:  # noqa: BLE001
             failures.append(f"{md_file}:{line_no}\n{type(exc).__name__}: {exc}\nCode:\n{code}")
