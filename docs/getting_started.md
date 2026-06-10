@@ -29,14 +29,20 @@ pip install gmm-divergence
 Define Gaussian mixtures from component weights, means, and covariances:
 
 ```python
-from gmm_divergence import GaussianMixture
+import gmm_divergence as gd
 
-p = GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
-q = GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
 )
 ```
 
@@ -45,9 +51,23 @@ q = GaussianMixture.from_arrays(
 Use `kl_divergence` to estimate \(D_{\mathrm{KL}}(p \| q)\):
 
 ```python
-from gmm_divergence import MonteCarlo, kl_divergence
+import gmm_divergence as gd
 
-result = kl_divergence(p, q, method=MonteCarlo(rng=9126))
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
+)
+
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
+)
+
+result = gd.kl_divergence(p, q)
 print(result.value)
 ```
 
@@ -58,6 +78,15 @@ The result includes the estimated value and metadata about the estimator.
 Mixtures can generate samples and evaluate log densities:
 
 ```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
+)
+
 samples = p.sample(1000, rng=9126)
 log_density = p.logpdf(samples)
 ```
@@ -67,18 +96,20 @@ log_density = p.logpdf(samples)
 Use `fit_mixture_weights` to combine candidate mixtures against a reference distribution:
 
 ```python
-from gmm_divergence import ForwardKL, fit_mixture_weights
+import gmm_divergence as gd
 
-p = GaussianMixture.from_arrays(
-    weights=[0.6, 0.4], means=[[0.0], [2.0]], covariances=[[[0.5]], [[0.5]]]
+p = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=0.5),
+        gd.Gaussian.univariate(mean=2.0, variance=0.5),
+    ],
+    weights=[0.6, 0.4],
 )
+q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
+q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
-left = GaussianMixture.from_arrays(weights=[1.0], means=[[0.0]], covariances=[[[0.5]]])
-
-right = GaussianMixture.from_arrays(weights=[1.0], means=[[2.0]], covariances=[[[0.5]]])
-
-fit = fit_mixture_weights(p, [left, right], objective=ForwardKL(rng=9126))
-print(fit.weights)
+fit = gd.fit_mixture_weights(p, [q1, q2])
+print(fit.weights)  # [~0.6, ~0.4]
 ```
 
 For the underlying formulation and more complete examples, see

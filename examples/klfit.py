@@ -1,13 +1,13 @@
+# ruff: noqa: T201
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 from typing import NamedTuple
 
 import numpy as np
 
-from gmm_divergence import ForwardKL, Gaussian, fit_mixture_weights
+import gmm_divergence as gd
 
 DATA_PATH = Path(__file__).parent / "data32dim.npz"
 
@@ -40,19 +40,25 @@ def main() -> None:
         msg = f"Target distribution '{args.target}' not found in data. Available labels: {labels}"
         raise ValueError(msg)
     target_index = np.where(labels == args.target)[0][0]
-    target = Gaussian.from_arrays(
+    target = gd.Gaussian.from_arrays(
         mean=data["means"][target_index], covariance=data["covs"][target_index]
     )
-    components: list[Gaussian] = [
-        Gaussian.from_arrays(mean=data["means"][i], covariance=data["covs"][i])
+    components: list[gd.Gaussian] = [
+        gd.Gaussian.from_arrays(mean=data["means"][i], covariance=data["covs"][i])
         for i in range(len(labels))
         if i != target_index
     ]
     component_labels = [str(label) for i, label in enumerate(labels) if i != target_index]
-    res = fit_mixture_weights(
-        target, components, method="softmax-lbfgsb", objective=ForwardKL(rng=0)
+    res = gd.fit_mixture_weights(
+        target,
+        components,
+        method="softmax_lbfgsb",
+        objective=gd.ForwardKL(rng=0),
+        candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
     )
-    _ = sys.stdout.write(f"{res.display(source_labels=component_labels)}\n")
+    print(f"Fitted weights for target '{args.target}':")
+    for label, weight in zip(component_labels, res.weights, strict=False):
+        print(f"  {label}: {weight:.6g}")
 
 
 if __name__ == "__main__":

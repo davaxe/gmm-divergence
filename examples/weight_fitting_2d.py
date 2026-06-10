@@ -5,148 +5,64 @@ from typing import TYPE_CHECKING
 
 import matplotlib.pyplot as plt
 import numpy as np
-from matplotlib.lines import Line2D
 from scipy.stats import multivariate_normal
 
-from gmm_divergence import (
-    BidirectionalKL,
-    ForwardKL,
-    Gaussian,
-    GaussianMixture,
-    KLFitResult,
-    MomentMatching,
-    ReverseKL,
-    fit_mixture_weights,
-)
+import gmm_divergence as gd
 
 if TYPE_CHECKING:
     from matplotlib.axes import Axes
-    from matplotlib.collections import QuadMesh
+    from matplotlib.cm import ScalarMappable
+    from matplotlib.figure import Figure
 
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.fitting import FitObjective
 
 
-FIT_OBJECTIVES: tuple[FitObjective, ...] = (
-    "forward",
-    "reverse",
-    "bidirectional",
-    "moment_matching",
-)
-
-BIDIRECTIONAL_ALPHA = 0.5
-
-GRID_MIN = -2.75
-GRID_MAX = 2.75
-GRID_SIZE = 350
-
-FIGSIZE = (18, 8)
-
-TARGET_COLOR = "black"
-MIXTURE_COLOR = "tab:blue"
-REFERENCE_COLOR = "gray"
-COMPONENT_COLORS = (
-    "tab:orange",
-    "tab:green",
-    "tab:red",
-    "tab:purple",
-    "tab:brown",
-    "tab:pink",
-    "tab:olive",
-    "tab:cyan",
-)
-RESIDUAL_COLORMAP = "seismic"
-TARGET_CONTOUR_LINEWIDTH = 1.6
-MIXTURE_CONTOUR_LINEWIDTH = 1.3
-COMPONENT_CONTOUR_LINEWIDTH = 1.1
-WEIGHTED_COMPONENT_CONTOUR_LINEWIDTH = 0.8
-RESIDUAL_CONTOUR_LINEWIDTH = 0.9
-
-TARGET_CONTOUR_LINESTYLE = "solid"
-MIXTURE_CONTOUR_LINESTYLE = "dashed"
-COMPONENT_CONTOUR_LINESTYLE = "dashed"
-
-WEIGHTED_COMPONENT_ALPHA = 0.75
-GRID_ALPHA = 0.25
-
-TARGET_MEAN_MARKER = "x"
-TARGET_MEAN_SIZE = 80
-TARGET_MEAN_LINEWIDTH = 2
-
-MIXTURE_MEAN_MARKER = "o"
-MIXTURE_MEAN_SIZE = 52
-
-COMPONENT_MEAN_MARKER = "o"
-COMPONENT_MEAN_SIZE = 45
-
-LEGEND_TARGET_MEAN_MARKERSIZE = 8
-LEGEND_MIXTURE_MEAN_MARKERSIZE = 6
-
-
 @dataclass(frozen=True)
 class ObjectiveFit:
     objective: FitObjective
-    result: KLFitResult
+    result: gd.KLFitResult
 
     @property
-    def mixture(self) -> GaussianMixture:
+    def mixture(self) -> gd.GaussianMixture:
         return self.result.fitted_mixture.mixture
 
 
-def target() -> Gaussian:
-    return Gaussian.from_arrays(mean=[0.0, 0.0], covariance=[[1.25, 0.75], [0.75, 0.65]])
+@dataclass(frozen=True)
+class FitMetrics:
+    forward_kl: float
+    reverse_kl: float
+    tv_distance: float
+    overlap: float
+    hellinger: float
+    mean_error: float
+    covariance_error: float
 
 
-def components() -> list[Gaussian]:
+def target() -> gd.Gaussian:
+    return gd.Gaussian.from_arrays(mean=[0.0, 0.0], covariance=[[1.25, 0.75], [0.75, 0.65]])
+
+
+def components() -> list[gd.Gaussian]:
     return [
-        # Reverse-KL-friendly:
-        # tight component at the high-density core.
-        Gaussian.from_arrays(mean=[-0.05, -0.05], covariance=[[0.22, 0.10], [0.10, 0.18]]),
-        # Forward-KL-friendly:
-        # broad component covering much of the target support,
-        # but with extra mass outside the target.
-        Gaussian.from_arrays(mean=[0.05, 0.05], covariance=[[2.30, 0.55], [0.55, 1.15]]),
-        # Tail/shoulder component:
-        # helps cover one end of the elongated target,
-        # but is unattractive to reverse KL.
-        Gaussian.from_arrays(mean=[1.45, 0.95], covariance=[[0.28, 0.12], [0.12, 0.22]]),
+        gd.Gaussian.from_arrays(mean=[-0.05, -0.05], covariance=[[0.12, 0.05], [0.05, 0.10]]),
+        gd.Gaussian.from_arrays(mean=[0.05, 0.05], covariance=[[3.20, 0.75], [0.75, 1.60]]),
+        gd.Gaussian.from_arrays(mean=[1.45, 0.95], covariance=[[0.28, 0.12], [0.12, 0.22]]),
     ]
 
 
-def component_color(index: int) -> str:
-    return COMPONENT_COLORS[index % len(COMPONENT_COLORS)]
-
-
-def gaussian_pdf_grid(gaussian: Gaussian, x: FloatArray, y: FloatArray) -> FloatArray:
+def gaussian_pdf_grid(gaussian: gd.Gaussian, x: FloatArray, y: FloatArray) -> FloatArray:
     pos = np.dstack((x, y))
-
     return np.asarray(multivariate_normal(mean=gaussian.mean, cov=gaussian.covariance).pdf(pos))
 
 
-def mixture_pdf_grid(mixture: GaussianMixture, x: FloatArray, y: FloatArray) -> FloatArray:
+def mixture_pdf_grid(mixture: gd.GaussianMixture, x: FloatArray, y: FloatArray) -> FloatArray:
     z = np.zeros_like(x)
 
     for i in range(mixture.n_components):
-        weight = mixture.weights[i]
-        gaussian = mixture.get_component(i)
-        z += weight * gaussian_pdf_grid(gaussian, x, y)
+        z += mixture.weights[i] * gaussian_pdf_grid(mixture.get_component(i), x, y)
 
     return z
-
-
-def component_pdf_grids(q_i: list[Gaussian], x: FloatArray, y: FloatArray) -> list[FloatArray]:
-    return [gaussian_pdf_grid(q, x, y) for q in q_i]
-
-
-def symmetric_plot_limit(values: list[FloatArray]) -> float:
-    limit = 0.0
-
-    for value in values:
-        finite_values = value[np.isfinite(value)]
-        if finite_values.size:
-            limit = max(limit, float(np.max(np.abs(finite_values))))
-
-    return limit if limit > 0.0 else 1.0
 
 
 def density_contour(
@@ -154,348 +70,393 @@ def density_contour(
 ) -> None:
     z_min = float(np.nanmin(z))
     z_max = float(np.nanmax(z))
+
     valid_levels = levels[(levels > z_min) & (levels < z_max)]
+
     if valid_levels.size:
         _ = ax.contour(x, y, z, levels=valid_levels, **kwargs)
 
 
-def mixture_and_residual_grids(
-    p_density: FloatArray, x: FloatArray, y: FloatArray, fits: list[ObjectiveFit]
-) -> tuple[dict[FitObjective, FloatArray], dict[FitObjective, FloatArray], float]:
-    mixture_grids: dict[FitObjective, FloatArray] = {
-        fit.objective: mixture_pdf_grid(fit.mixture, x, y) for fit in fits
-    }
+def make_grid(
+    grid_min: float = -2.75, grid_max: float = 2.75, grid_size: int = 500
+) -> tuple[FloatArray, FloatArray]:
+    grid = np.linspace(grid_min, grid_max, grid_size)
+    x, y = np.meshgrid(grid, grid)
 
-    residual_grids: dict[FitObjective, FloatArray] = {
-        objective: p_density - mixture_density
-        for objective, mixture_density in mixture_grids.items()
-    }
+    return x.astype(np.float64), y.astype(np.float64)
 
-    residual_abs_limit = symmetric_plot_limit(list(residual_grids.values()))
 
-    return mixture_grids, residual_grids, residual_abs_limit
+def grid_spacing(x: FloatArray, y: FloatArray) -> tuple[float, float]:
+    dx = float(abs(x[0, 1] - x[0, 0]))
+    dy = float(abs(y[1, 0] - y[0, 0]))
+
+    return dx, dy
 
 
 def fit_weight_objectives(
-    p: Gaussian, q_i: list[Gaussian], *, rng: int = 1024, samples: int = 20_000
+    p: gd.Gaussian, q_i: list[gd.Gaussian], *, rng: int = 124, samples: int = 20_000
 ) -> list[ObjectiveFit]:
-    fits: list[ObjectiveFit] = []
+    objectives: tuple[FitObjective, ...] = ("forward", "reverse", "bidirectional")
 
-    for objective in FIT_OBJECTIVES:
-        result = fit_mixture_weights(
-            p, q_i, objective=fit_objective_config(objective, samples, rng)
-        )
+    fits: list[ObjectiveFit] = []
+    for objective in objectives:
+        if objective == "forward":
+            fit_objective = gd.ForwardKL(sampling=samples, rng=rng)
+
+        elif objective == "reverse":
+            fit_objective = gd.ReverseKL(p_sampling=samples, q_sampling=samples, rng=rng)
+
+        elif objective == "bidirectional":
+            fit_objective = gd.BidirectionalKL(
+                p_sampling=samples, q_sampling=samples, alpha=0.5, rng=rng
+            )
+
+        else:
+            msg = f"Unsupported objective: {objective}"
+            raise ValueError(msg)
+
+        result = gd.fit_mixture_weights(p, q_i, objective=fit_objective)
 
         fits.append(ObjectiveFit(objective=objective, result=result))
 
     return fits
 
 
-def fit_objective_config(
-    objective: FitObjective, samples: int, rng: int
-) -> ForwardKL | ReverseKL | BidirectionalKL | MomentMatching:
-    match objective:
-        case "forward":
-            return ForwardKL(sampling=samples, rng=rng)
-        case "reverse":
-            return ReverseKL(p_sampling=samples, q_sampling=samples, rng=rng)
-        case "bidirectional":
-            return BidirectionalKL(
-                p_sampling=samples, q_sampling=samples, alpha=BIDIRECTIONAL_ALPHA, rng=rng
-            )
-        case "moment_matching":
-            return MomentMatching(fit_second_moments=True)
-
-
 def objective_display_name(objective: FitObjective) -> str:
     return objective.replace("_", " ").title()
 
 
-def objective_axis_title(fit: ObjectiveFit) -> str:
-    return objective_display_name(fit.result.fit_objective)
+def compute_metrics(
+    p: gd.Gaussian,
+    fit: ObjectiveFit,
+    p_density: FloatArray,
+    mixture_density: FloatArray,
+    x: FloatArray,
+    y: FloatArray,
+) -> FitMetrics:
+    dx, dy = grid_spacing(x, y)
+    cell_area = dx * dy
+
+    l1_error = float(np.sum(np.abs(p_density - mixture_density)) * cell_area)
+    tv_distance = 0.5 * l1_error
+
+    overlap = float(np.sum(np.minimum(p_density, mixture_density)) * cell_area)
+
+    bhattacharyya_coefficient = float(np.sum(np.sqrt(p_density * mixture_density)) * cell_area)
+    bhattacharyya_coefficient = float(np.clip(bhattacharyya_coefficient, 0.0, 1.0))
+
+    hellinger = float(np.sqrt(max(0.0, 1.0 - bhattacharyya_coefficient)))
+
+    fitted_gaussian = fit.mixture.as_gaussian()
+
+    mean_error = float(np.linalg.norm(p.mean - fitted_gaussian.mean))
+
+    covariance_error = float(np.linalg.norm(p.covariance - fitted_gaussian.covariance, ord="fro"))
+
+    return FitMetrics(
+        forward_kl=float(fit.result.forward_kl.value),
+        reverse_kl=float(fit.result.reverse_kl.value),
+        tv_distance=tv_distance,
+        overlap=overlap,
+        hellinger=hellinger,
+        mean_error=mean_error,
+        covariance_error=covariance_error,
+    )
 
 
-def objective_metrics_text(fit: ObjectiveFit) -> str:
+def metrics_text(fit: ObjectiveFit, metrics: FitMetrics) -> str:
     weights = ", ".join(f"{weight:.2f}" for weight in fit.result.weights)
-    forward_kl = fit.result.forward_kl.value
-    reverse_kl = fit.result.reverse_kl.value
+
     return "\n".join((
-        rf"$D_{{\mathrm{{KL}}}}(p, q_w) = {forward_kl:.3f}$",
-        rf"$D_{{\mathrm{{KL}}}}(q_w, p) = {reverse_kl:.3f}$",
+        rf"$D_{{KL}}(p, q_w) = {metrics.forward_kl:.3f}$",
+        rf"$D_{{KL}}(q_w, p) = {metrics.reverse_kl:.3f}$",
+        "",
+        rf"$TV = {metrics.tv_distance:.3f}$",
+        rf"Overlap $= {metrics.overlap:.3f}$",
+        rf"Hellinger $= {metrics.hellinger:.3f}$",
+        "",
+        rf"$\Vert \mu_p - \mu_q \Vert = {metrics.mean_error:.3f}$",
+        rf"$\Vert \Sigma_p - \Sigma_q \Vert_F = {metrics.covariance_error:.3f}$",
+        "",
         rf"$w = [{weights}]$",
     ))
 
 
-def plot_setup_panel(
+def set_common_axis_style(
+    ax: Axes, *, grid_min: float = -2.75, grid_max: float = 2.75, show_grid: bool = True
+) -> None:
+    ax.set_aspect("equal")
+
+    _ = ax.set_xlim(grid_min, grid_max)
+    _ = ax.set_ylim(grid_min, grid_max)
+
+    _ = ax.set_xlabel("$x$")
+    _ = ax.set_ylabel("$y$")
+
+    if show_grid:
+        ax.grid(alpha=0.25)
+
+
+def add_density_overlays(
     ax: Axes,
-    p: Gaussian,
-    q_i: list[Gaussian],
-    component_grids: list[FloatArray],
     x: FloatArray,
     y: FloatArray,
     p_density: FloatArray,
-    p_levels: FloatArray,
+    mixture_density: FloatArray,
+    levels: FloatArray,
+    *,
+    target_linewidth: float = 1.0,
+    mixture_linewidth: float = 1.0,
 ) -> None:
+    density_contour(
+        ax, x, y, p_density, levels, colors="black", linewidths=target_linewidth, linestyles="solid"
+    )
+
     density_contour(
         ax,
         x,
         y,
-        p_density,
-        p_levels,
-        colors=TARGET_COLOR,
-        linewidths=TARGET_CONTOUR_LINEWIDTH,
-        linestyles=TARGET_CONTOUR_LINESTYLE,
+        mixture_density,
+        levels,
+        colors="tab:blue",
+        linewidths=mixture_linewidth,
+        linestyles="dashed",
     )
+
+
+def add_colorbar(fig: Figure, ax: Axes, image: ScalarMappable, label: str) -> None:
+    _ = fig.colorbar(image, ax=ax, label=label, fraction=0.046, pad=0.04)
+
+
+def plot_target_and_candidates_panel(
+    ax: Axes,
+    p: gd.Gaussian,
+    q_i: list[gd.Gaussian],
+    x: FloatArray,
+    y: FloatArray,
+    p_density: FloatArray,
+    levels: FloatArray,
+) -> None:
+    density_contour(ax, x, y, p_density, levels, colors="black", linewidths=1.7, linestyles="solid")
 
     _ = ax.scatter(
-        p.mean[0],
-        p.mean[1],
-        marker=TARGET_MEAN_MARKER,
-        s=TARGET_MEAN_SIZE,
-        linewidths=TARGET_MEAN_LINEWIDTH,
-        color=TARGET_COLOR,
+        p.mean[0], p.mean[1], marker="x", s=85, linewidths=2.2, color="black", label="Target mean"
     )
 
-    for i, (gaussian, z_q) in enumerate(zip(q_i, component_grids, strict=True), start=1):
-        color = component_color(i - 1)
+    component_colors = ["tab:orange", "tab:green", "tab:red"]
+
+    for i, gaussian in enumerate(q_i):
+        q_density = gaussian_pdf_grid(gaussian, x, y)
+        color = component_colors[i % len(component_colors)]
 
         density_contour(
-            ax,
-            x,
-            y,
-            z_q,
-            p_levels,
-            colors=[color],
-            linewidths=COMPONENT_CONTOUR_LINEWIDTH,
-            linestyles=COMPONENT_CONTOUR_LINESTYLE,
+            ax, x, y, q_density, levels, colors=[color], linewidths=1.2, linestyles="dashed"
         )
 
         _ = ax.scatter(
             gaussian.mean[0],
             gaussian.mean[1],
-            marker=COMPONENT_MEAN_MARKER,
-            s=COMPONENT_MEAN_SIZE,
+            marker="o",
+            s=45,
             color=color,
+            label=rf"Candidate $q_{i + 1}$ mean",
         )
 
-    _ = ax.set_title("Target $p$ and candidate components $q_i$")
-    _ = ax.set_xlabel("$x$")
-    _ = ax.set_ylabel("$y$")
+    _ = ax.set_title("Target and candidate components")
+    set_common_axis_style(ax)
+
+    _ = ax.legend(frameon=False, loc="lower right", fontsize=9)
 
 
-def plot_residual_background(
-    ax: Axes, x: FloatArray, y: FloatArray, residual: FloatArray, *, residual_abs_limit: float
-) -> QuadMesh:
-    return ax.pcolormesh(
+def plot_fit_panel(
+    ax: Axes,
+    p: gd.Gaussian,
+    fit: ObjectiveFit,
+    x: FloatArray,
+    y: FloatArray,
+    p_density: FloatArray,
+    mixture_density: FloatArray,
+    levels: FloatArray,
+) -> None:
+    mixture_mean = fit.mixture.as_gaussian().mean
+
+    add_density_overlays(
+        ax, x, y, p_density, mixture_density, levels, target_linewidth=1.7, mixture_linewidth=1.5
+    )
+
+    _ = ax.scatter(
+        p.mean[0], p.mean[1], marker="x", s=85, linewidths=2.2, color="black", label="Target mean"
+    )
+
+    _ = ax.scatter(
+        mixture_mean[0], mixture_mean[1], marker="o", s=60, color="tab:blue", label="Mixture mean"
+    )
+
+    _ = ax.set_title("Target and fitted mixture")
+    set_common_axis_style(ax)
+
+    _ = ax.legend(frameon=False, loc="lower right", fontsize=9)
+
+
+def plot_metrics_panel(ax: Axes, fit: ObjectiveFit, metrics: FitMetrics) -> None:
+    _ = ax.axis("off")
+    _ = ax.text(
+        0.02,
+        0.98,
+        metrics_text(fit, metrics),
+        transform=ax.transAxes,
+        va="top",
+        ha="left",
+        fontsize=12,
+        linespacing=1.30,
+        bbox={
+            "facecolor": "white",
+            "alpha": 0.96,
+            "edgecolor": "0.82",
+            "boxstyle": "round,pad=0.45",
+        },
+    )
+
+
+def plot_diagnostic_panel(
+    fig: Figure,
+    ax: Axes,
+    x: FloatArray,
+    y: FloatArray,
+    values: FloatArray,
+    p_density: FloatArray,
+    mixture_density: FloatArray,
+    levels: FloatArray,
+    *,
+    title: str,
+    colorbar_label: str,
+    cmap: str,
+    vmin: float,
+    vmax: float,
+) -> None:
+    image = ax.pcolormesh(x, y, values, cmap=cmap, vmin=vmin, vmax=vmax, shading="auto")
+
+    add_density_overlays(
+        ax, x, y, p_density, mixture_density, levels, target_linewidth=0.85, mixture_linewidth=0.85
+    )
+
+    _ = ax.set_title(title)
+    set_common_axis_style(ax, show_grid=False)
+
+    add_colorbar(fig, ax, image, colorbar_label)
+
+
+def plot_objective_fit(
+    p: gd.Gaussian,
+    q_i: list[gd.Gaussian],
+    fit: ObjectiveFit,
+    x: FloatArray,
+    y: FloatArray,
+    p_density: FloatArray,
+    levels: FloatArray,
+) -> None:
+    mixture_density = mixture_pdf_grid(fit.mixture, x, y)
+
+    signed_error = p_density - mixture_density
+    absolute_error = np.abs(signed_error)
+
+    eps = 1e-12
+    log_density_ratio = np.log(mixture_density + eps) - np.log(p_density + eps)
+    log_density_ratio = np.clip(log_density_ratio, -4.0, 4.0)
+
+    signed_error_limit = float(np.max(np.abs(signed_error)))
+    absolute_error_limit = float(np.max(absolute_error))
+
+    metrics = compute_metrics(p, fit, p_density, mixture_density, x, y)
+
+    fig = plt.figure(figsize=(15.5, 9.2), constrained_layout=True)
+
+    gs = fig.add_gridspec(2, 3, height_ratios=[1.0, 1.0], width_ratios=[1.0, 1.0, 1.0])
+
+    ax_problem = fig.add_subplot(gs[0, 0])
+    ax_fit = fig.add_subplot(gs[0, 1])
+    ax_metrics = fig.add_subplot(gs[0, 2])
+
+    ax_signed = fig.add_subplot(gs[1, 0])
+    ax_absolute = fig.add_subplot(gs[1, 1], sharex=ax_signed, sharey=ax_signed)
+    ax_log_ratio = fig.add_subplot(gs[1, 2], sharex=ax_signed, sharey=ax_signed)
+
+    _ = fig.suptitle(
+        f"{objective_display_name(fit.objective)} objective", fontsize=16, fontweight="bold"
+    )
+
+    plot_target_and_candidates_panel(ax_problem, p, q_i, x, y, p_density, levels)
+
+    plot_fit_panel(ax_fit, p, fit, x, y, p_density, mixture_density, levels)
+
+    plot_metrics_panel(ax_metrics, fit, metrics)
+
+    plot_diagnostic_panel(
+        fig,
+        ax_signed,
         x,
         y,
-        residual,
-        cmap=RESIDUAL_COLORMAP,
-        vmin=-residual_abs_limit,
-        vmax=residual_abs_limit,
-        shading="auto",
+        signed_error,
+        p_density,
+        mixture_density,
+        levels,
+        title=r"Signed error: $p(x) - q_w(x)$",
+        colorbar_label=r"$p(x) - q_w(x)$",
+        cmap="seismic",
+        vmin=-signed_error_limit,
+        vmax=signed_error_limit,
     )
 
-
-def plot_weight_fits(p: Gaussian, q_i: list[Gaussian], fits: list[ObjectiveFit]) -> None:
-    grid = np.linspace(GRID_MIN, GRID_MAX, GRID_SIZE)
-    x, y = np.meshgrid(grid, grid)
-
-    fig, axes = plt.subplot_mosaic(
-        [
-            ["setup", "forward", "reverse", "bidirectional", "moment_matching"],
-            [
-                "setup",
-                "forward_residual",
-                "reverse_residual",
-                "bidirectional_residual",
-                "moment_matching_residual",
-            ],
-        ],
-        figsize=FIGSIZE,
-        sharex=True,
-        sharey=True,
-        constrained_layout=True,
+    plot_diagnostic_panel(
+        fig,
+        ax_absolute,
+        x,
+        y,
+        absolute_error,
+        p_density,
+        mixture_density,
+        levels,
+        title=r"Absolute error: $|p(x) - q_w(x)|$",
+        colorbar_label=r"$|p(x) - q_w(x)|$",
+        cmap="viridis",
+        vmin=0.0,
+        vmax=absolute_error_limit,
     )
 
-    fit_by_objective = {fit.objective: fit for fit in fits}
-
-    p_density = gaussian_pdf_grid(p, x, y)
-    component_grids = component_pdf_grids(q_i, x, y)
-
-    p_levels = np.linspace(
-        0.08 * float(np.max(p_density)), 0.9 * float(np.max(p_density)), 4
-    ).astype(np.float64)
-
-    plot_setup_panel(axes["setup"], p, q_i, component_grids, x, y, p_density, p_levels)
-
-    mixture_grids, residual_grids, residual_abs_limit = mixture_and_residual_grids(
-        p_density, x, y, fits
+    plot_diagnostic_panel(
+        fig,
+        ax_log_ratio,
+        x,
+        y,
+        log_density_ratio,
+        p_density,
+        mixture_density,
+        levels,
+        title=r"Log-density ratio: $\log(q_w(x) / p(x))$",
+        colorbar_label=r"$\log(q_w(x) / p(x))$",
+        cmap="seismic",
+        vmin=-5.0,
+        vmax=5.0,
     )
-
-    residual_images: list[QuadMesh] = []
-
-    for objective in FIT_OBJECTIVES:
-        fit = fit_by_objective[objective]
-        z_mix = mixture_grids[objective]
-        residual = residual_grids[objective]
-        mixture_mean = fit.mixture.as_gaussian().mean
-
-        ax_contour = axes[objective]
-
-        density_contour(
-            ax_contour,
-            x,
-            y,
-            p_density,
-            p_levels,
-            colors=TARGET_COLOR,
-            linewidths=TARGET_CONTOUR_LINEWIDTH,
-            linestyles=TARGET_CONTOUR_LINESTYLE,
-        )
-
-        density_contour(
-            ax_contour,
-            x,
-            y,
-            z_mix,
-            p_levels,
-            colors=MIXTURE_COLOR,
-            linewidths=MIXTURE_CONTOUR_LINEWIDTH,
-            linestyles=MIXTURE_CONTOUR_LINESTYLE,
-        )
-
-        _ = ax_contour.scatter(
-            p.mean[0],
-            p.mean[1],
-            marker=TARGET_MEAN_MARKER,
-            s=TARGET_MEAN_SIZE,
-            linewidths=TARGET_MEAN_LINEWIDTH,
-            color=TARGET_COLOR,
-        )
-
-        _ = ax_contour.scatter(
-            mixture_mean[0],
-            mixture_mean[1],
-            marker=MIXTURE_MEAN_MARKER,
-            s=MIXTURE_MEAN_SIZE,
-            color=MIXTURE_COLOR,
-        )
-
-        _ = ax_contour.set_title(objective_axis_title(fit))
-        _ = ax_contour.text(
-            0.03,
-            0.97,
-            objective_metrics_text(fit),
-            transform=ax_contour.transAxes,
-            va="top",
-            ha="left",
-            fontsize="small",
-            bbox={"facecolor": "white", "alpha": 0.85, "edgecolor": "none", "pad": 3.0},
-        )
-        ax_residual = axes[f"{objective}_residual"]
-        residual_image = plot_residual_background(
-            ax_residual, x, y, residual, residual_abs_limit=residual_abs_limit
-        )
-
-        residual_images.append(residual_image)
-
-        density_contour(
-            ax_residual,
-            x,
-            y,
-            p_density,
-            p_levels,
-            colors=TARGET_COLOR,
-            linewidths=RESIDUAL_CONTOUR_LINEWIDTH,
-            linestyles=TARGET_CONTOUR_LINESTYLE,
-        )
-
-        density_contour(
-            ax_residual,
-            x,
-            y,
-            z_mix,
-            p_levels,
-            colors=MIXTURE_COLOR,
-            linewidths=RESIDUAL_CONTOUR_LINEWIDTH,
-            linestyles=MIXTURE_CONTOUR_LINESTYLE,
-        )
-
-        _ = ax_residual.set_title(r"$p(x)-q_w(x)$")
-        _ = ax_residual.set_xlabel("$x$")
-
-    for ax in axes.values():
-        ax.set_aspect("equal")
-        _ = ax.set_xlim(GRID_MIN, GRID_MAX)
-        _ = ax.set_ylim(GRID_MIN, GRID_MAX)
-        ax.grid(alpha=GRID_ALPHA)
-
-    for objective in FIT_OBJECTIVES:
-        axes[f"{objective}_residual"].grid(visible=False)
-
-    _ = axes["forward_residual"].set_ylabel("$y$")
-
-    legend_handles = [
-        Line2D(
-            [0],
-            [0],
-            color=TARGET_COLOR,
-            linestyle=TARGET_CONTOUR_LINESTYLE,
-            linewidth=TARGET_CONTOUR_LINEWIDTH,
-            label="Target $p$",
-        ),
-        Line2D(
-            [0],
-            [0],
-            color=MIXTURE_COLOR,
-            linestyle=MIXTURE_CONTOUR_LINESTYLE,
-            linewidth=TARGET_CONTOUR_LINEWIDTH,
-            label="Fitted mixture $q_w$",
-        ),
-        Line2D(
-            [0],
-            [0],
-            color=REFERENCE_COLOR,
-            linestyle=COMPONENT_CONTOUR_LINESTYLE,
-            linewidth=MIXTURE_CONTOUR_LINEWIDTH,
-            label="Candidate components $q_i$",
-        ),
-        Line2D(
-            [0],
-            [0],
-            color=TARGET_COLOR,
-            marker=TARGET_MEAN_MARKER,
-            linestyle="None",
-            markersize=LEGEND_TARGET_MEAN_MARKERSIZE,
-            label="Target mean",
-        ),
-        Line2D(
-            [0],
-            [0],
-            color=MIXTURE_COLOR,
-            marker=MIXTURE_MEAN_MARKER,
-            linestyle="None",
-            markersize=LEGEND_MIXTURE_MEAN_MARKERSIZE,
-            label="Mixture mean",
-        ),
-    ]
-    _ = fig.legend(handles=legend_handles, loc="outside lower center", ncols=6, frameon=False)
-
-    _ = fig.colorbar(
-        residual_images[-1],
-        ax=[axes[f"{objective}_residual"] for objective in FIT_OBJECTIVES],
-        label=r"$p(x)-q_w(x)$",
-        shrink=0.86,
-    )
-    plt.show()
 
 
 def main() -> None:
     p = target()
     q_i = components()
+
+    x, y = make_grid()
+    p_density = gaussian_pdf_grid(p, x, y)
+
+    levels = np.linspace(0.08 * float(np.max(p_density)), 0.9 * float(np.max(p_density)), 4).astype(
+        np.float64
+    )
+
     fits = fit_weight_objectives(p, q_i, rng=124, samples=20_000)
-    plot_weight_fits(p, q_i, fits)
+
+    for fit in fits:
+        plot_objective_fit(p, q_i, fit, x, y, p_density, levels)
+
+    plt.show()
 
 
 if __name__ == "__main__":

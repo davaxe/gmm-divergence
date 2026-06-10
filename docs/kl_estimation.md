@@ -67,19 +67,24 @@ variational approximations, and unscented sigma point methods
 To estimate the KL divergence between two Gaussian mixtures using the
 [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) function. For example:
 
-``` python hl_lines="3-5"
-from gmm_divergence import GaussianMixture, MonteCarlo, kl_divergence
+``` python hl_lines="3-9"
+import gmm_divergence as gd
 
-p = GaussianMixture.from_arrays(  # (1)!
-    weights=[0.5, 0.5], means=[[0.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
+p = gd.GaussianMixture.from_components(  # (1)!
+    components=[
+        gd.Gaussian.univariate(mean=0.0, variance=1.0),
+        gd.Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
 )
 
-q = GaussianMixture.from_arrays(
-    weights=[0.5, 0.5], means=[[0.5], [2.5]], covariances=[[[1.0]], [[0.5]]]
+q = gd.GaussianMixture.from_components(
+    components=[
+        gd.Gaussian.univariate(mean=0.5, variance=1.0),
+        gd.Gaussian.univariate(mean=2.5, variance=0.5),
+    ]
 )
 
-
-kl_estimate = kl_divergence(p, q, method=MonteCarlo(rng=9126))
+kl_estimate = gd.kl_divergence(p, q, method=gd.MonteCarlo(rng=9126))
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
@@ -89,20 +94,17 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
     p(x) = 0.5 \mathcal{N}(x;0.0,1.0) + 0.5 \mathcal{N}(x;1.0,1.0).
     $$
 
-    !!! note "GaussianMixture.from_arrays"
-        The `GaussianMixture.from_arrays` constructor is a more flexible way to construct Gaussian mixtures from arrays of weights, means, and covariances.
+    !!! note "Simple constructors"
+        For simple one-dimensional examples, `GaussianMixture.from_components`
+        together with `Gaussian.univariate` is usually the clearest way to define
+        Gaussian mixtures.
+    
+        The `GaussianMixture.from_arrays` constructor remains useful when you
+        already have weight, mean, and covariance arrays.
+
     
 !!! note "Other methods"
     The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) for details.
-
-!!! note "Single gaussian special case"
-    If $p$ and $q$ are single Gaussians (i.e. $K_p = K_q = 1$), then the KL divergence has a closed-form expression and can be computed exactly.
-
-    When using the `kl_divergence` function, if both $p$ and $q$ are single Gaussians, then the KL divergence can be computed exactly using the closed-form expression, which is less computationally expensive and more accurate than estimation methods. This is achieved by setting the `method` argument to `"closed_form"`, i.e.
-    
-    ``` python
-    kl_exact = kl_divergence(p, q, method="closed_form")
-    ```
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

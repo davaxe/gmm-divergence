@@ -172,3 +172,21 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
 
     with pytest.raises(ValueError, match="Expected samples of shape"):
         _ = kl_divergence(p, p, method=MonteCarlo(sampling=np.zeros((3, 2))))
+
+
+def test_monte_carlo_reports_standard_error() -> None:
+    p = Gaussian.from_arrays(mean=[0.0], covariance=[[1.0]])
+    q = Gaussian.from_arrays(mean=[1.0], covariance=[[2.0]])
+    samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
+
+    pointwise = p.logpdf(samples) - q.logpdf(samples)
+    expected_value = float(np.mean(pointwise))
+    expected_variance = float(np.var(pointwise, ddof=1))
+    expected_se = float(np.sqrt(expected_variance / samples.shape[0]))
+
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+
+    assert result.value == pytest.approx(expected_value)
+    assert result.monte_carlo_stats is not None
+    assert result.monte_carlo_stats.sample_variance == pytest.approx(expected_variance)
+    assert result.monte_carlo_stats.standard_error == pytest.approx(expected_se)

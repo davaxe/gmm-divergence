@@ -1,3 +1,5 @@
+"""Public distribution API."""
+
 from gmm_divergence.distributions._combine import (
     CombinedGaussianMixture,
     MixtureMapping,

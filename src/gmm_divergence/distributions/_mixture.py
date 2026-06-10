@@ -13,7 +13,7 @@ from gmm_divergence.distributions._base import GaussianComponentArrays, Gaussian
 from gmm_divergence.distributions._gaussian import Gaussian
 
 if TYPE_CHECKING:
-    from collections.abc import Iterator
+    from collections.abc import Iterator, Sequence
 
     from gmm_divergence._core._types import Covariances, FloatArray, Weights
 
@@ -34,6 +34,30 @@ class GaussianMixture(GaussianFamily):
 
     _log_dets: FloatArray | None = field(default=None, init=False, repr=False)
 
+    @classmethod
+    def from_arrays(
+        cls, weights: npt.ArrayLike, means: npt.ArrayLike, covariances: npt.ArrayLike
+    ) -> GaussianMixture:
+        """Create a Gaussian mixture from array-like parameters."""
+        return cls(
+            weights=cast("Weights", weights),
+            means=cast("FloatArray", means),
+            covariances=cast("Covariances", covariances),
+        )
+
+    @classmethod
+    def from_components(
+        cls, components: Sequence[Gaussian], weights: npt.ArrayLike | None = None
+    ) -> GaussianMixture:
+        """Create a Gaussian mixture from a sequence of Gaussian components and optional weights."""
+        means = np.array([comp.mean for comp in components], dtype=np.float64)
+        covariances = np.array([comp.covariance for comp in components], dtype=np.float64)
+        if weights is None:
+            weights = np.ones(len(components), dtype=np.float64) / len(components)
+        else:
+            weights = np.asarray(weights, dtype=np.float64)
+        return cls(weights=weights, means=means, covariances=covariances)
+
     def __post_init__(self) -> None:
         """Validate the shapes of weights, means, and covariances."""
         object.__setattr__(self, "means", np.asarray(self.means, dtype=np.float64))
@@ -51,7 +75,6 @@ class GaussianMixture(GaussianFamily):
             raise ValueError(msg)
 
         n_features = self.means.shape[1]
-
         object.__setattr__(
             self, "weights", as_weights(self.weights, expected_length=self.means.shape[0])
         )
@@ -63,17 +86,6 @@ class GaussianMixture(GaussianFamily):
         )
 
         self.means.setflags(write=False)
-
-    @classmethod
-    def from_arrays(
-        cls, weights: npt.ArrayLike, means: npt.ArrayLike, covariances: npt.ArrayLike
-    ) -> GaussianMixture:
-        """Create a Gaussian mixture from array-like parameters."""
-        return cls(
-            weights=cast("Weights", weights),
-            means=cast("FloatArray", means),
-            covariances=cast("Covariances", covariances),
-        )
 
     @property
     def n_components(self) -> int:

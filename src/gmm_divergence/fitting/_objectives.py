@@ -1,3 +1,5 @@
+"""Objective functions for fitting Gaussian mixtures via divergence minimization."""
+
 from __future__ import annotations
 
 from collections.abc import Callable, Sequence
@@ -38,10 +40,8 @@ def logpdf_matrix(components: Sequence[GaussianLike], samples: FloatArray) -> Fl
     """Evaluate each component log-density at each sample."""
     samples = np.asarray(samples, dtype=np.float64)
     log_q = np.empty((samples.shape[0], len(components)), dtype=np.float64)
-
     for k, qk in enumerate(components):
         log_q[:, k] = qk.logpdf(samples)
-
     return log_q
 
 
@@ -69,7 +69,7 @@ def with_softmax(simplex_objective: ObjectiveFn) -> ObjectiveFn:
     return objective
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ForwardKL:
     """Monte Carlo forward KL objective over simplex weights."""
 
@@ -122,7 +122,7 @@ def forward_kl(
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _ReverseKL:
     """Fixed-sample reverse KL objective over simplex weights."""
 
@@ -174,7 +174,7 @@ def reverse_kl(
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _WeightedSum:
     """Weighted sum of objective functions."""
 
@@ -235,7 +235,7 @@ def bidirectional_kl(
     )
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, slots=True)
 class _MomentMatching:
     """Moment-matching objective over simplex weights."""
 
