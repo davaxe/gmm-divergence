@@ -170,12 +170,10 @@ def fit_mixture_weights(
         fit_objective=_objective_name(objective),
         objective_value=float(result.fun),
         forward_kl=kl_divergence(
-            p, fitted_mixture.mixture, method=MonteCarlo(sampling=resolved_p_samples, rng=rng)
+            p, fitted_mixture.mixture, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
         ),
         reverse_kl=kl_divergence(
-            fitted_mixture.mixture,
-            p,
-            method=MonteCarlo(sampling=resolved_q_samples or resolved_num_p_samples, rng=rng),
+            fitted_mixture.mixture, p, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
         ),
         scipy_result=result,
         fitted_mixture=fitted_mixture,

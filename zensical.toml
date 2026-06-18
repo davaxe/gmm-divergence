@@ -22,6 +22,7 @@ nav = [
           "reference/distributions.md",
           { "Details" = "reference/distribution_details.md" }
       ] },
+      { "Covariance regularization" = "reference/covariance.md" },
       { "KL divergence" = [
           "reference/kl_estimators.md",
           { "Configuration" = "reference/kl_configuration.md" }
