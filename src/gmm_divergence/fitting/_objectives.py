@@ -103,7 +103,7 @@ def forward_kl(
     include_constant: bool = False,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    """Build a simplex objective for forward KL, ``KL(p || q_w)``."""
+    """Build a simplex objective for forward KL, `KL(p || q_w)`."""
     p_samples = np.asarray(p_samples, dtype=np.float64)
     log_q_on_p_samples = logpdf_matrix(q_components, p_samples)
 
@@ -158,7 +158,7 @@ def reverse_kl(
     *,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    """Build a simplex objective for fixed-sample reverse KL, ``KL(q_w || p)``."""
+    """Build a simplex objective for fixed-sample reverse KL, `KL(q_w || p)`."""
     q_samples = np.asarray(q_samples, dtype=np.float64)
     n_components, n_samples, dim = q_samples.shape
     q_samples_flat = q_samples.reshape(-1, dim)

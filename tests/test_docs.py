@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-CODE_BLOCK_RE = re.compile(r"```[ \t]*(python|py)[^\n]*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+CODE_BLOCK_RE = re.compile(r"``[ \t]*(python|py)[^\n]*\n(.*?)``", re.IGNORECASE | re.DOTALL)
 DOCS_DIR = Path(__file__).parent.parent / "docs"
 
 

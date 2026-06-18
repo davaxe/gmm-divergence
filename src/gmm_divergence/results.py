@@ -54,9 +54,9 @@ class KLFitResult:
     objective_value: float
     """The final scalar objective value minimized by the optimizer."""
     forward_kl: DivergenceResult
-    """Estimated forward KL divergence, ``KL(p || q_w)``."""
+    """Estimated forward KL divergence, `KL(p || q_w)`."""
     reverse_kl: DivergenceResult
-    """Estimated reverse KL divergence, ``KL(q_w || p)``."""
+    """Estimated reverse KL divergence, `KL(q_w || p)`."""
     scipy_result: OptimizeResult | None
     """The full result object returned by the optimization routine, if used."""
     fitted_mixture: CombinedGaussianMixture

@@ -3,12 +3,24 @@
 The top-level package provides two complementary access patterns:
 
 - A curated convenience layer for the most common classes and functions.
-- Stable domain namespaces: ``distributions``, ``divergence``, and ``fitting``.
+- Stable domain namespaces: `distributions`, `divergence`, `fitting`, and `covariance`.
 """
 
 from importlib.metadata import PackageNotFoundError, version
 
-from gmm_divergence import distributions, divergence, fitting
+from gmm_divergence import covariance, distributions, divergence, fitting
+from gmm_divergence.covariance import (
+    DiagonalLoading,
+    DiagonalShrinkage,
+    EigenvalueClipping,
+    LinearShrinkage,
+    LowRank,
+    RelativeToTrace,
+    ResidualVariance,
+    TargetConditionNumber,
+    estimate_epsilon,
+    regularize_covariance,
+)
 from gmm_divergence.distributions import (
     CombinedGaussianMixture,
     Gaussian,
@@ -40,27 +52,38 @@ __all__ = [
     "BidirectionalKL",
     "ClosedForm",
     "CombinedGaussianMixture",
+    "DiagonalLoading",
+    "DiagonalShrinkage",
     "DivergenceResult",
+    "EigenvalueClipping",
     "ForwardKL",
     "Gaussian",
     "GaussianApproximation",
     "GaussianMixture",
     "KLFitResult",
+    "LinearShrinkage",
+    "LowRank",
     "MixtureMapping",
     "MomentMatching",
     "MonteCarlo",
+    "RelativeToTrace",
+    "ResidualVariance",
     "ReverseKL",
     "SimplexSLSQP",
     "SoftmaxLBFGSB",
+    "TargetConditionNumber",
     "Unscented",
     "Variational",
     "combine_gaussians",
+    "covariance",
     "distributions",
     "divergence",
+    "estimate_epsilon",
     "fit_mixture_weights",
     "fitting",
     "kl_divergence",
     "prune_mixture",
+    "regularize_covariance",
 ]
 
 try:  # noqa: RUF067

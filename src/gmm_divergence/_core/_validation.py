@@ -68,6 +68,7 @@ def as_covariance(
     if covariance_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariance_arr.shape}."
         raise ValueError(msg)
+    covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
     _validate_covariance_values(covariance_arr, name=name)
     covariance_arr.setflags(write=writable)
     return covariance_arr
@@ -88,6 +89,7 @@ def as_covariances(
     if covariances_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariances_arr.shape}."
         raise ValueError(msg)
+    covariances_arr = 0.5 * (covariances_arr + np.swapaxes(covariances_arr, -1, -2))
     _validate_covariance_values(covariances_arr, name=name)
     covariances_arr.setflags(write=writable)
     return covariances_arr
