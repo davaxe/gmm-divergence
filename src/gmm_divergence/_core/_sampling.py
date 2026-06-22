@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from gmm_divergence._core._validation import as_points, as_positive_sample_count, as_sample_batches
+
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
@@ -21,12 +23,8 @@ def resolve_samples(
     """Return provided samples or draw samples from the distribution."""
     dim = distribution.dim
     if not isinstance(samples, int):
-        samples = np.asarray(samples, dtype=np.float64)
-        if samples.ndim != 2 or samples.shape[1] != dim:
-            msg = f"Expected samples of shape (n_samples, n_features), got {samples.shape}"
-            raise ValueError(msg)
-        return samples
-    return distribution.sample(n_samples=samples or 10_000, rng=rng)
+        return as_points(samples, n_features=dim, name="samples")
+    return distribution.sample(n_samples=as_positive_sample_count(samples, name="samples"), rng=rng)
 
 
 def resolve_sample_batches(
@@ -36,26 +34,14 @@ def resolve_sample_batches(
 ) -> FloatArray:
     """Return provided sample batches or draw one batch from each distribution."""
     if isinstance(samples, int) or samples is None:
-        n_samples = samples or 10_000
+        n_samples = 10_000 if samples is None else as_positive_sample_count(samples, name="samples")
         rng = np.random.default_rng(rng)
         return np.asarray(
             [distribution.sample(n_samples, rng=rng) for distribution in distributions],
             dtype=np.float64,
         )
 
-    samples = np.asarray(samples, dtype=np.float64)
-    if samples.ndim != 3 or samples.shape[0] != len(distributions):
-        msg = (
-            "Expected sample batches with shape "
-            f"({len(distributions)}, n_samples, n_features), got {samples.shape}."
-        )
-        raise ValueError(msg)
-
     expected_dim = distributions[0].dim if distributions else 0
-    if samples.shape[2] != expected_dim:
-        msg = (
-            "Expected sample batches with feature dimension "
-            f"{expected_dim}, got {samples.shape[2]}."
-        )
-        raise ValueError(msg)
-    return samples
+    return as_sample_batches(
+        samples, n_distributions=len(distributions), n_features=expected_dim, name="samples"
+    )

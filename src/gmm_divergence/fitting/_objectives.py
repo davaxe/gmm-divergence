@@ -10,8 +10,7 @@ import numpy as np
 
 from gmm_divergence._core._numeric import logsumexp
 from gmm_divergence._core._types import FloatArray
-from gmm_divergence.distributions._gaussian import Gaussian
-from gmm_divergence.distributions._mixture import GaussianMixture
+from gmm_divergence.distributions._base import GaussianFamily, gaussian_family_raw_moment_vector
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitParameterization,
@@ -22,9 +21,11 @@ from gmm_divergence.fitting._options import (
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import Weights
+    from gmm_divergence.distributions._gaussian import Gaussian
+    from gmm_divergence.distributions._mixture import GaussianMixture
 
 
-GaussianLike = Gaussian | GaussianMixture
+GaussianLike = GaussianFamily
 ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
 
 
@@ -252,30 +253,13 @@ class _MomentMatching:
         return value, grad.astype(np.float64)
 
 
-def _raw_moment_vector(distribution: GaussianLike, *, second_moments: bool = False) -> FloatArray:
-    """Return raw moment vector used for moment matching."""
-    if not isinstance(distribution, Gaussian):
-        mean = distribution.as_gaussian().mean
-        covariance = distribution.as_gaussian().covariance
-    else:
-        mean = distribution.mean
-        covariance = distribution.covariance
-
-    if not second_moments:
-        return mean
-
-    covariance = np.asarray(covariance, dtype=np.float64)
-    raw_second = covariance + np.outer(mean, mean)
-    return np.concatenate([mean.ravel(), raw_second.ravel()]).astype(np.float64)
-
-
 def moment_matching(
-    p: GaussianLike, q_components: Sequence[GaussianLike], *, second_moments: bool = True
+    p: GaussianLike, q_components: Sequence[GaussianLike], *, second_moments: bool = False
 ) -> ObjectiveFn:
     """Build a simplex objective for moment matching."""
-    p_moments = _raw_moment_vector(p, second_moments=second_moments)
+    p_moments = gaussian_family_raw_moment_vector(p, second_moments=second_moments)
     q_moments = np.asarray(
-        [_raw_moment_vector(q, second_moments=second_moments) for q in q_components],
+        [gaussian_family_raw_moment_vector(q, second_moments=second_moments) for q in q_components],
         dtype=np.float64,
     )
 

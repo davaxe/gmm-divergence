@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 if TYPE_CHECKING:
@@ -24,6 +25,9 @@ class DiagonalLoading:
     eps: EpsilonSpec = 1e-6
     """Diagonal loading amount or epsilon heuristic."""
 
+    def __post_init__(self) -> None:
+        _validate_epsilon_spec(self.eps, name="eps")
+
 
 @dataclass(frozen=True, slots=True)
 class LinearShrinkage:
@@ -46,6 +50,9 @@ class LinearShrinkage:
     alpha: float = 1e-2
     """Interpolation weight between the covariance and isotropic target."""
 
+    def __post_init__(self) -> None:
+        _validate_unit_interval(self.alpha, name="alpha")
+
 
 @dataclass(frozen=True, slots=True)
 class DiagonalShrinkage:
@@ -65,6 +72,9 @@ class DiagonalShrinkage:
 
     alpha: float = 1e-2
     """Interpolation weight between the covariance and diagonal target."""
+
+    def __post_init__(self) -> None:
+        _validate_unit_interval(self.alpha, name="alpha")
 
 
 @dataclass(frozen=True, slots=True)
@@ -90,6 +100,11 @@ class EigenvalueClipping:
 
     min_eigenvalue: float = 1e-6
     """Smallest allowed eigenvalue after clipping."""
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.min_eigenvalue) or self.min_eigenvalue <= 0.0:
+            msg = f"min_eigenvalue must be a positive finite value, got {self.min_eigenvalue}."
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +135,12 @@ class LowRank:
     eps: EpsilonSpec = 1e-6
     """Diagonal loading amount or epsilon heuristic."""
 
+    def __post_init__(self) -> None:
+        if isinstance(self.rank, bool) or self.rank <= 0:
+            msg = f"rank must be a positive integer, got {self.rank}."
+            raise ValueError(msg)
+        _validate_epsilon_spec(self.eps, name="eps")
+
 
 CovarianceRegularizationMethod: TypeAlias = Literal[
     "diagonal_loading", "linear_shrinkage", "diagonal_shrinkage", "eigenvalue_clipping", "lowrank"
@@ -133,3 +154,20 @@ CovarianceRegularizer: TypeAlias = (
     | EigenvalueClipping
     | LowRank
 )
+
+
+def _validate_unit_interval(value: float, /, *, name: str) -> None:
+    if not isfinite(value) or not 0.0 <= value <= 1.0:
+        msg = f"{name} must be a finite value in [0, 1], got {value}."
+        raise ValueError(msg)
+
+
+def _validate_epsilon_spec(value: EpsilonSpec, /, *, name: str) -> None:
+    if isinstance(value, bool):
+        msg = f"{name} must be a nonnegative finite value, got {value}."
+        raise TypeError(msg)
+    if isinstance(value, (int, float)):
+        value_float = float(value)
+        if not isfinite(value_float) or value_float < 0.0:
+            msg = f"{name} must be a nonnegative finite value, got {value}."
+            raise ValueError(msg)

@@ -36,6 +36,10 @@ class MonteCarlo:
     rng: np.random.Generator | int | None = None
     """Random generator or seed used when drawing samples."""
 
+    def __post_init__(self) -> None:
+        if isinstance(self.sampling, int) and not isinstance(self.sampling, bool):
+            _validate_positive_int(self.sampling, name="sampling")
+
 
 @dataclass(frozen=True, slots=True)
 class Unscented:
@@ -84,6 +88,11 @@ class GaussianApproximation:
     approximation: Approximation = "moment_matching"
     """Gaussian approximation strategy to use."""
 
+    def __post_init__(self) -> None:
+        if self.approximation not in {"nearest", "moment_matching"}:
+            msg = "approximation must be 'nearest' or 'moment_matching'."
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True, slots=True)
 class Variational:
@@ -113,6 +122,14 @@ class ClosedForm:
 
 
 EstimationMethod: TypeAlias = Literal[
-    "monte_carlo", "unscented", "gaussian_approximation", "closed_form"
+    "monte_carlo", "unscented", "gaussian_approximation", "closed_form", "variational"
 ]
-KLMethod: TypeAlias = EstimationMethod | MonteCarlo | Unscented | ClosedForm
+KLMethod: TypeAlias = (
+    EstimationMethod | MonteCarlo | Unscented | GaussianApproximation | ClosedForm | Variational
+)
+
+
+def _validate_positive_int(value: int, /, *, name: str) -> None:
+    if value <= 0:
+        msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)

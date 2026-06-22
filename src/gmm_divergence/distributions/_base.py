@@ -7,7 +7,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import override
 
-from gmm_divergence._core._types import Covariances, FloatArray, Weights
+from gmm_divergence._core._types import Covariance, Covariances, FloatArray, Weights
 
 GaussianComponentArrays: TypeAlias = tuple[Weights, FloatArray, Covariances]
 
@@ -28,7 +28,7 @@ class Distribution(ABC):
     @property
     @abstractmethod
     def dim(self) -> int:
-        """Return the dimensionality of the distribution."""
+        """Dimensionality of the distribution."""
         ...
 
     def pdf(self, x: npt.ArrayLike) -> FloatArray:
@@ -59,6 +59,31 @@ class GaussianFamily(Distribution, ABC):
     @property
     @override
     def dim(self) -> int:
-        """Return the dimensionality of the distribution."""
+        """Dimensionality of the distribution."""
         _, means, _ = self.component_arrays()
         return means.shape[1]
+
+
+def gaussian_family_moments(distribution: GaussianFamily, /) -> tuple[FloatArray, Covariance]:
+    """Return the mean and covariance represented by a Gaussian-family distribution."""
+    weights, means, covariances = distribution.component_arrays()
+    mean = np.sum(weights[:, None] * means, axis=0)
+    mean_delta = means - mean
+    covariance = np.sum(
+        weights[:, None, None] * (covariances + mean_delta[:, :, None] * mean_delta[:, None, :]),
+        axis=0,
+    )
+    covariance = 0.5 * (covariance + covariance.T)
+    return mean.astype(np.float64, copy=False), covariance
+
+
+def gaussian_family_raw_moment_vector(
+    distribution: GaussianFamily, /, *, second_moments: bool = False
+) -> FloatArray:
+    """Return the raw moment vector used by moment-matching objectives."""
+    mean, covariance = gaussian_family_moments(distribution)
+    if not second_moments:
+        return mean
+
+    raw_second = covariance + np.outer(mean, mean)
+    return np.concatenate([mean.ravel(), raw_second.ravel()]).astype(np.float64)

@@ -67,11 +67,17 @@ def pairwise_gaussian_kl(
         )
         raise ValueError(msg)
 
-    inv_q_covariances = np.linalg.inv(q_covariances)
-    _, logdet_p = np.linalg.slogdet(p_covariances)
-    _, logdet_q = np.linalg.slogdet(q_covariances)
+    chol_p = np.linalg.cholesky(p_covariances)
+    chol_q = np.linalg.cholesky(q_covariances)
+    logdet_p = 2.0 * np.sum(np.log(np.diagonal(chol_p, axis1=1, axis2=2)), axis=1)
+    logdet_q = 2.0 * np.sum(np.log(np.diagonal(chol_q, axis1=1, axis2=2)), axis=1)
     logdet_term = logdet_q[None, :] - logdet_p[:, None]
-    trace_term = np.einsum("jab,iab->ij", inv_q_covariances, p_covariances)
+    whitened_covariances = np.linalg.solve(chol_q[:, None, :, :], p_covariances[None, :, :, :])
+    solved_covariances = np.linalg.solve(
+        np.swapaxes(chol_q, 1, 2)[:, None, :, :], whitened_covariances
+    )
+    trace_term = np.trace(solved_covariances, axis1=2, axis2=3).T
     diff = q_means[None, :, :] - p_means[:, None, :]
-    quad_term = np.einsum("ija,jab,ijb->ij", diff, inv_q_covariances, diff)
+    whitened_diff = np.linalg.solve(chol_q[None, :, :, :], diff[..., None])[..., 0]
+    quad_term = np.einsum("ija,ija->ij", whitened_diff, whitened_diff)
     return 0.5 * (logdet_term - d + trace_term + quad_term)

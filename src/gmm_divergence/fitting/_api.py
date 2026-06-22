@@ -128,9 +128,7 @@ def fit_mixture_weights(
             raise AssertionError(msg)
 
 
-def prune_mixture(
-    mixture: GaussianMixture, *, min_weight: float = 1e-4, renormalize: bool = True
-) -> GaussianMixture:
+def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
     """Prune components of a Gaussian mixture with small weights.
 
     This is a common post-processing step after fitting to remove components
@@ -144,27 +142,28 @@ def prune_mixture(
     min_weight : float, optional
         Minimum weight threshold for keeping components. Components with weights
         below this threshold will be removed. Default is 1e-4.
-    renormalize : bool, optional
-        Whether to renormalize the remaining weights to sum to 1 after pruning.
 
     Returns
     -------
     GaussianMixture
-        The pruned mixture.
+        The pruned mixture with weights normalized to sum to one.
 
     Raises
     ------
     ValueError
-        If all components are pruned, or if renormalization fails due to zero
-        total weight after pruning.
+        If all components are pruned.
     """
+    if not np.isfinite(min_weight) or min_weight < 0.0:
+        msg = f"min_weight must be a nonnegative finite value, got {min_weight}."
+        raise ValueError(msg)
+
     weights = mixture.weights
     keep_mask = weights >= min_weight
     if not np.any(keep_mask):
         msg = "All components were pruned, increase min_weight threshold."
         raise ValueError(msg)
 
-    return mixture.select_components(np.nonzero(keep_mask)[0], renormalize=renormalize)
+    return mixture.select_components(np.nonzero(keep_mask)[0])
 
 
 def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:

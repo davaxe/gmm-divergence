@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a4"
+version = "0.0.1a5"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
@@ -46,16 +46,20 @@ test = [
     "pytest>=8.3.5",
     "pytest-benchmark>=5.2.3",
 ]
+lint = [
+    "ruff>=0.15.12",
+]
 typecheck = [
+    "scipy-stubs>=1.15.3.0",
     "basedpyright>=1.0.0",
 ]
 example = [
     "matplotlib>=3.10.9",
 ]
 dev = [
-    "scipy-stubs>=1.15.3.0",
     { include-group = "build" },
     { include-group = "docs" },
+    { include-group = "lint" },
     { include-group = "test" },
     { include-group = "typecheck" },
     { include-group = "example" },
@@ -113,7 +117,7 @@ skip-magic-trailing-comma = true
 split-on-trailing-comma = false
 
 [tool.basedpyright]
-pythonVersion = "3.10"
+# pythonVersion = "3.10"
 pythonPlatform = "All"
 typeCheckingMode = "recommended"
 include = ["src", "tests"]

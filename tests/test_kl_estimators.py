@@ -170,8 +170,11 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
     with pytest.raises(ValueError, match="Unknown KL method"):
         _ = kl_divergence(p, p, method=cast("KLMethod", cast("object", "not-a-method")))
 
-    with pytest.raises(ValueError, match="Expected samples of shape"):
+    with pytest.raises(ValueError, match="samples must have shape"):
         _ = kl_divergence(p, p, method=MonteCarlo(sampling=np.zeros((3, 2))))
+
+    with pytest.raises(ValueError, match="sampling must be a positive integer"):
+        _ = kl_divergence(p, p, method=MonteCarlo(sampling=0))
 
 
 def test_monte_carlo_reports_standard_error() -> None:

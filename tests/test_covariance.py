@@ -8,7 +8,9 @@ import pytest
 import gmm_divergence as gd
 from gmm_divergence.covariance import (
     DiagonalLoading,
+    DiagonalShrinkage,
     EigenvalueClipping,
+    LinearShrinkage,
     LowRank,
     RelativeToTrace,
     ResidualVariance,
@@ -135,3 +137,20 @@ def test_regularize_covariance_rejects_unknown_methods() -> None:
         _ = regularize_covariance(
             covariance, method=cast("CovarianceRegularizer", cast("object", "not-a-method"))
         )
+
+
+def test_covariance_options_reject_invalid_parameters() -> None:
+    with pytest.raises(ValueError, match="eps must be a nonnegative finite value"):
+        _ = DiagonalLoading(eps=-1.0)
+
+    with pytest.raises(ValueError, match=r"alpha must be a finite value in \[0, 1\]"):
+        _ = LinearShrinkage(alpha=1.5)
+
+    with pytest.raises(ValueError, match=r"alpha must be a finite value in \[0, 1\]"):
+        _ = DiagonalShrinkage(alpha=-0.1)
+
+    with pytest.raises(ValueError, match="min_eigenvalue must be a positive finite value"):
+        _ = EigenvalueClipping(min_eigenvalue=0.0)
+
+    with pytest.raises(ValueError, match="rank must be a positive integer"):
+        _ = LowRank(rank=0)

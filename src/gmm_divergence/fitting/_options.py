@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 if TYPE_CHECKING:
@@ -30,6 +31,10 @@ class SoftmaxLBFGSB:
     max_iterations: int = 1000
     """Maximum number of optimizer iterations."""
 
+    def __post_init__(self) -> None:
+        _validate_positive_float(self.tol, name="tol")
+        _validate_positive_int(self.max_iterations, name="max_iterations")
+
 
 @dataclass(frozen=True, slots=True)
 class SimplexSLSQP:
@@ -54,6 +59,10 @@ class SimplexSLSQP:
     """Optimizer convergence tolerance."""
     max_iterations: int = 1000
     """Maximum number of optimizer iterations."""
+
+    def __post_init__(self) -> None:
+        _validate_positive_float(self.tol, name="tol")
+        _validate_positive_int(self.max_iterations, name="max_iterations")
 
 
 @dataclass(frozen=True, slots=True)
@@ -82,6 +91,9 @@ class ForwardKL:
     rng: np.random.Generator | int | None = None
     """Random generator or seed used when drawing samples."""
 
+    def __post_init__(self) -> None:
+        _validate_sampling(self.sampling, name="sampling")
+
 
 @dataclass(frozen=True, slots=True)
 class ReverseKL:
@@ -109,6 +121,10 @@ class ReverseKL:
     """Samples from each q_i, or the number to draw from each q_i."""
     rng: np.random.Generator | int | None = None
     """Random generator or seed used when drawing samples."""
+
+    def __post_init__(self) -> None:
+        _validate_sampling(self.p_sampling, name="p_sampling")
+        _validate_sampling(self.q_sampling, name="q_sampling")
 
 
 @dataclass(frozen=True, slots=True)
@@ -139,6 +155,13 @@ class BidirectionalKL:
     rng: np.random.Generator | int | None = None
     """Random generator or seed used when drawing samples."""
 
+    def __post_init__(self) -> None:
+        _validate_sampling(self.p_sampling, name="p_sampling")
+        _validate_sampling(self.q_sampling, name="q_sampling")
+        if not isfinite(self.alpha) or not 0.0 <= self.alpha <= 1.0:
+            msg = f"alpha must be in [0, 1], got {self.alpha}."
+            raise ValueError(msg)
+
 
 @dataclass(frozen=True, slots=True)
 class MomentMatching:
@@ -166,3 +189,20 @@ WeightFitMethod: TypeAlias = FitMethodName | SoftmaxLBFGSB | SimplexSLSQP
 WeightFitObjective: TypeAlias = (
     FitObjective | ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
 )
+
+
+def _validate_positive_float(value: float, /, *, name: str) -> None:
+    if not isfinite(value) or value <= 0.0:
+        msg = f"{name} must be a positive finite value, got {value}."
+        raise ValueError(msg)
+
+
+def _validate_positive_int(value: int, /, *, name: str) -> None:
+    if isinstance(value, bool) or value <= 0:
+        msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)
+
+
+def _validate_sampling(value: npt.ArrayLike | int, /, *, name: str) -> None:
+    if isinstance(value, int):
+        _validate_positive_int(value, name=name)

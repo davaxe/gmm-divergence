@@ -8,8 +8,17 @@ import numpy.typing as npt
 from typing_extensions import override
 
 from gmm_divergence._core._numeric import logsumexp
-from gmm_divergence._core._validation import as_covariances, as_weights
-from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
+from gmm_divergence._core._validation import (
+    as_covariances,
+    as_points,
+    as_positive_sample_count,
+    as_weights,
+)
+from gmm_divergence.distributions._base import (
+    GaussianComponentArrays,
+    GaussianFamily,
+    gaussian_family_moments,
+)
 from gmm_divergence.distributions._gaussian import Gaussian
 
 if TYPE_CHECKING:
@@ -95,9 +104,7 @@ class GaussianMixture(GaussianFamily):
     @override
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian mixture at given points."""
-        x = np.asarray(x, dtype=np.float64)
-        if x.ndim == 1:
-            x = x[None, :]
+        x = as_points(x, n_features=self.dim, name="x")
 
         return gmm_logpdf(x=x, gmm=self)
 
@@ -133,9 +140,7 @@ class GaussianMixture(GaussianFamily):
 
         return Gaussian(mean=self.means[index], covariance=self.covariances[index])
 
-    def select_components(
-        self, indices: npt.ArrayLike, *, renormalize: bool = True
-    ) -> GaussianMixture:
+    def select_components(self, indices: npt.ArrayLike) -> GaussianMixture:
         """Return a new Gaussian mixture containing only the specified components."""
         indices = np.asarray(indices, dtype=np.intp)
         if np.any(indices < 0) or np.any(indices >= self.n_components):
@@ -143,9 +148,7 @@ class GaussianMixture(GaussianFamily):
             raise IndexError(msg)
 
         return GaussianMixture(
-            weights=self.weights[indices]
-            if not renormalize
-            else as_weights(self.weights[indices], expected_length=indices.shape[0]),
+            weights=as_weights(self.weights[indices], expected_length=indices.shape[0]),
             means=self.means[indices],
             covariances=self.covariances[indices],
         )
@@ -175,13 +178,8 @@ class GaussianMixture(GaussianFamily):
             return None
         if self.n_components == 1:
             return self.get_component(0)
-        mean = np.sum(self.weights[:, None] * self.means, axis=0)
-        diff = self.means - mean
-        cov = np.sum(
-            self.weights[:, None, None] * (self.covariances + diff[:, :, None] * diff[:, None, :]),
-            axis=0,
-        )
-        return Gaussian(mean=mean, covariance=0.5 * (cov + cov.T))
+        mean, covariance = gaussian_family_moments(self)
+        return Gaussian(mean=mean, covariance=covariance)
 
     @override
     def component_arrays(self) -> GaussianComponentArrays:
@@ -198,6 +196,7 @@ def sample_gmm(
     gmm: GaussianMixture, /, n_samples: int, *, rng: np.random.Generator | int | None = None
 ) -> FloatArray:
     """Draw samples from a Gaussian mixture."""
+    n_samples = as_positive_sample_count(n_samples)
     rng = np.random.default_rng(rng)
 
     component_ids = rng.choice(gmm.n_components, size=n_samples, p=gmm.weights)
@@ -209,10 +208,7 @@ def sample_gmm(
 
 def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
     """Evaluate the log-density of a Gaussian mixture without an explicit Python loop."""
-    x = np.asarray(x, dtype=np.float64)
-
-    if x.ndim == 1:
-        x = x[None, :]
+    x = as_points(x, n_features=gmm.dim, name="x")
 
     _, n_features = x.shape
     log_weights = np.log(gmm.weights)  # (K,)

@@ -6,6 +6,7 @@ import numpy as np
 import pytest
 
 from gmm_divergence import (
+    BidirectionalKL,
     Gaussian,
     GaussianMixture,
     MomentMatching,
@@ -14,9 +15,27 @@ from gmm_divergence import (
     fit_mixture_weights,
     prune_mixture,
 )
+from gmm_divergence.fitting._objectives import forward_kl, moment_matching, reverse_kl
 
 if TYPE_CHECKING:
+    from collections.abc import Callable
+
+    from gmm_divergence._core._types import FloatArray
     from gmm_divergence.fitting import WeightFitMethod
+
+
+def _finite_difference_gradient(
+    objective: Callable[[FloatArray], tuple[float, FloatArray]], weights: FloatArray
+) -> FloatArray:
+    eps = 1e-6
+    grad = np.empty_like(weights)
+    for k in range(weights.shape[0]):
+        step = np.zeros_like(weights)
+        step[k] = eps
+        value_plus, _ = objective(weights + step)
+        value_minus, _ = objective(weights - step)
+        grad[k] = (value_plus - value_minus) / (2 * eps)
+    return grad
 
 
 @pytest.mark.parametrize(
@@ -73,15 +92,50 @@ def test_prune_mixture_removes_small_weights_and_keeps_valid_mixture() -> None:
     )
 
     pruned = prune_mixture(mixture, min_weight=1e-4)
-    pruned_without_explicit_renormalization = prune_mixture(
-        mixture, min_weight=1e-4, renormalize=False
-    )
 
     assert pruned.n_components == 2
     assert pruned.weights == pytest.approx([0.8 / 0.99999, 0.19999 / 0.99999])
     assert pruned.means[:, 0] == pytest.approx([0.0, 2.0])
-    assert pruned_without_explicit_renormalization.n_components == 2
-    assert float(np.sum(pruned_without_explicit_renormalization.weights)) == pytest.approx(1.0)
 
     with pytest.raises(ValueError, match="All components were pruned"):
         _ = prune_mixture(mixture, min_weight=0.9)
+
+    with pytest.raises(ValueError, match="min_weight must be a nonnegative finite value"):
+        _ = prune_mixture(mixture, min_weight=-1.0)
+
+
+def test_fit_options_reject_invalid_parameters() -> None:
+    with pytest.raises(ValueError, match="tol must be a positive finite value"):
+        _ = SoftmaxLBFGSB(tol=0.0)
+
+    with pytest.raises(ValueError, match="max_iterations must be a positive integer"):
+        _ = SimplexSLSQP(max_iterations=0)
+
+    with pytest.raises(ValueError, match=r"alpha must be in \[0, 1\]"):
+        _ = BidirectionalKL(alpha=1.5)
+
+
+def test_fit_objective_gradients_match_finite_differences() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.45, 0.55], means=[[-1.0], [1.3]], covariances=[[[0.6]], [[1.2]]]
+    )
+    candidates = [
+        Gaussian.univariate(mean=-0.8, variance=0.7),
+        Gaussian.univariate(mean=1.6, variance=1.1),
+    ]
+    p_samples = np.array([[-1.5], [-0.2], [0.4], [1.0], [2.2]], dtype=np.float64)
+    q_samples = np.array(
+        [[[-1.4], [-0.8], [0.0], [0.6]], [[0.8], [1.2], [1.8], [2.5]]], dtype=np.float64
+    )
+    weights = np.array([0.37, 0.63], dtype=np.float64)
+
+    objectives = [
+        forward_kl(p, candidates, p_samples),
+        reverse_kl(p, candidates, q_samples),
+        moment_matching(p, candidates, second_moments=True),
+    ]
+
+    for objective in objectives:
+        _value, analytical = objective(weights)
+        numerical = _finite_difference_gradient(objective, weights)
+        assert analytical == pytest.approx(numerical, rel=1e-5, abs=1e-5)

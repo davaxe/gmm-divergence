@@ -95,6 +95,66 @@ def as_covariances(
     return covariances_arr
 
 
+def as_points(
+    points: npt.ArrayLike, /, *, n_features: int, name: str = "Points", writable: bool = False
+) -> FloatArray:
+    """Return validated points with shape ``(n_points, n_features)``."""
+    points_arr = np.asarray(points, dtype=np.float64)
+    if points_arr.ndim == 1:
+        points_arr = points_arr[None, :]
+
+    if points_arr.ndim != 2 or points_arr.shape[1] != n_features:
+        msg = f"{name} must have shape (n_points, {n_features}), got {points_arr.shape}."
+        raise ValueError(msg)
+
+    if not np.all(np.isfinite(points_arr)):
+        msg = f"{name} must contain only finite values."
+        raise ValueError(msg)
+
+    points_arr = np.array(points_arr, dtype=np.float64, copy=True)
+    points_arr.setflags(write=writable)
+    return points_arr
+
+
+def as_sample_batches(
+    samples: npt.ArrayLike,
+    /,
+    *,
+    n_distributions: int,
+    n_features: int,
+    name: str = "Sample batches",
+    writable: bool = False,
+) -> FloatArray:
+    """Return validated sample batches with shape ``(n_distributions, n_samples, n_features)``."""
+    samples_arr = np.asarray(samples, dtype=np.float64)
+    if samples_arr.ndim != 3 or samples_arr.shape[0] != n_distributions:
+        msg = (
+            f"{name} must have shape ({n_distributions}, n_samples, {n_features}), "
+            f"got {samples_arr.shape}."
+        )
+        raise ValueError(msg)
+
+    if samples_arr.shape[2] != n_features:
+        msg = f"{name} must have feature dimension {n_features}, got {samples_arr.shape[2]}."
+        raise ValueError(msg)
+
+    if not np.all(np.isfinite(samples_arr)):
+        msg = f"{name} must contain only finite values."
+        raise ValueError(msg)
+
+    samples_arr = np.array(samples_arr, dtype=np.float64, copy=True)
+    samples_arr.setflags(write=writable)
+    return samples_arr
+
+
+def as_positive_sample_count(n_samples: object, /, *, name: str = "n_samples") -> int:
+    """Return a validated positive sample count."""
+    if not isinstance(n_samples, int) or isinstance(n_samples, bool) or n_samples <= 0:
+        msg = f"{name} must be a positive integer, got {n_samples}."
+        raise ValueError(msg)
+    return n_samples
+
+
 def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None:
     if not np.all(np.isfinite(covariance)):
         msg = f"{name} must contain only finite values."

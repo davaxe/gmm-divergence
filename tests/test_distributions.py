@@ -53,6 +53,12 @@ def test_gaussian_mixture_sampling_is_seeded_and_has_expected_shape() -> None:
     assert first.dtype == np.float64
     assert np.array_equal(first, second)
 
+    with pytest.raises(ValueError, match="n_samples must be a positive integer"):
+        _ = mixture.sample(0, rng=123)
+
+    with pytest.raises(ValueError, match="x must have shape"):
+        _ = mixture.logpdf(np.zeros((3, 3)))
+
 
 def test_combine_gaussians_flattens_sources_and_records_component_mapping() -> None:
     gaussian = Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]])

@@ -349,12 +349,12 @@ def _apply_diagonal_loading_single(covariance: FloatArray, eps: float | FloatArr
     if eps_arr.ndim != 0:
         msg = f"Single-covariance epsilon must be scalar, got shape {eps_arr.shape}."
         raise ValueError(msg)
-    idx = np.arange(covariance.shape[0])
+    idx = np.arange(covariance.shape[0], dtype=np.intp)
     covariance[idx, idx] += float(eps_arr)
 
 
 def _apply_diagonal_loading_batched(covariance: FloatArray, eps: float | FloatArray) -> None:
-    idx = np.arange(covariance.shape[1])
+    idx = np.arange(covariance.shape[1], dtype=np.intp)
     eps_arr = np.asarray(eps, dtype=np.float64)
     if eps_arr.ndim == 0:
         covariance[:, idx, idx] += float(eps_arr)

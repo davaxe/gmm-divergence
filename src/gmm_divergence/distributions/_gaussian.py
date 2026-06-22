@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 from typing_extensions import override
 
-from gmm_divergence._core._validation import as_covariance
+from gmm_divergence._core._validation import as_covariance, as_points, as_positive_sample_count
 from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
 
 if TYPE_CHECKING:
@@ -98,15 +98,14 @@ class Gaussian(GaussianFamily):
     @override
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian."""
+        n_samples = as_positive_sample_count(n_samples)
         rng = np.random.default_rng(rng)
         return rng.multivariate_normal(mean=self.mean, cov=self.covariance, size=n_samples)
 
     @override
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian at given points."""
-        x = np.asarray(x, dtype=np.float64)
-        if x.ndim == 1:
-            x = x[None, :]
+        x = as_points(x, n_features=self.dim, name="x")
 
         d = self.mean.shape[0]
         chol = self.chol()

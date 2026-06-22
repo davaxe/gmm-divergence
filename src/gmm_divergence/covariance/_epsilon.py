@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, cast, overload
+from math import isfinite
+from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, overload
 
 import numpy as np
 
@@ -11,6 +12,12 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import FloatArray
+
+
+def _validate_positive_finite(value: float, *, name: str) -> None:
+    if not np.isfinite(value) or value <= 0.0:
+        msg = f"{name} must be a positive finite value, got {value}."
+        raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +36,9 @@ class RelativeToTrace:
     c: float = 1e-6
     r"""Multiplier $c$ in $\varepsilon = c\,\mathrm{tr}(\Sigma)/d$."""
 
+    def __post_init__(self) -> None:
+        _validate_positive_finite(self.c, name="c")
+
 
 @dataclass(frozen=True, slots=True)
 class TargetConditionNumber:
@@ -46,6 +56,11 @@ class TargetConditionNumber:
 
     kappa: float = 1e8
     r"""Target upper bound $\kappa(\Sigma + \varepsilon I)$."""
+
+    def __post_init__(self) -> None:
+        if not isfinite(self.kappa) or self.kappa <= 1.0:
+            msg = f"kappa must be a finite value greater than 1, got {self.kappa}."
+            raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +82,12 @@ class ResidualVariance:
     r"""Multiplier $c$ on the mean discarded eigenvalue."""
     r: int | None = None
     r"""Target rank $r$ used to define the discarded spectrum."""
+
+    def __post_init__(self) -> None:
+        _validate_positive_finite(self.c, name="c")
+        if self.r is not None and (isinstance(self.r, bool) or self.r <= 0):
+            msg = f"r must be a positive integer when provided, got {self.r}."
+            raise ValueError(msg)
 
 
 EpsilonMethodName: TypeAlias = Literal[
@@ -221,7 +242,7 @@ def _residual_variance(
     n_discarded = _n_discarded(eigvals.shape[-1], rank=rank)
 
     if batched == "single":
-        discarded = cast("FloatArray", eigvals[:n_discarded])
+        discarded = eigvals[:n_discarded]
         if discarded.size == 0:
             return 0.0
         return float(c * np.mean(np.maximum(discarded, 0.0)))
@@ -238,12 +259,6 @@ def _n_discarded(dim: int, *, rank: int) -> int:
 
 def _symmetrize(covariance: FloatArray) -> FloatArray:
     return 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
-
-
-def _validate_positive_finite(value: float, *, name: str) -> None:
-    if not np.isfinite(value) or value <= 0.0:
-        msg = f"{name} must be a positive finite value, got {value}."
-        raise ValueError(msg)
 
 
 def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
