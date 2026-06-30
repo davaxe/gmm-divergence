@@ -8,6 +8,8 @@ Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 
 ## ::: gmm_divergence.kl_divergence
 
+## ::: gmm_divergence.component_kl_matrix
+
 ## ::: gmm_divergence.symmetric_kl_divergence
 
 ## ::: gmm_divergence.jensen_shannon_divergence

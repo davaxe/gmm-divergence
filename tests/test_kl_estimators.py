@@ -196,6 +196,90 @@ def test_monte_carlo_reports_standard_error() -> None:
     assert result.monte_carlo_stats.standard_error == pytest.approx(expected_se)
 
 
+def test_monte_carlo_adaptive_sampling_stops_when_standard_error_target_is_met() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+
+    result = kl_divergence(
+        p, p, method=MonteCarlo(sampling=5, target_standard_error=1e-12, max_samples=25, rng=123)
+    )
+
+    assert result.num_samples == 5
+    assert result.value == pytest.approx(0.0, abs=1e-14)
+    assert result.monte_carlo_stats is not None
+    assert result.monte_carlo_stats.standard_error == pytest.approx(0.0)
+
+
+def test_monte_carlo_adaptive_sampling_respects_max_samples() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    q = Gaussian.univariate(mean=1.0, variance=2.0)
+
+    result = kl_divergence(
+        p,
+        q,
+        method=MonteCarlo(
+            sampling=5, target_standard_error=1e-12, max_samples=15, batch_size=5, rng=123
+        ),
+    )
+
+    assert result.num_samples == 15
+    assert result.monte_carlo_stats is not None
+    assert result.monte_carlo_stats.standard_error > 1e-12
+
+
+def test_monte_carlo_adaptive_options_validate_inputs() -> None:
+    samples = np.zeros((3, 1), dtype=np.float64)
+
+    with pytest.raises(ValueError, match="target_standard_error requires sampling"):
+        _ = MonteCarlo(sampling=samples, target_standard_error=0.1)
+
+    with pytest.raises(ValueError, match="target_standard_error must be a positive finite value"):
+        _ = MonteCarlo(sampling=10, target_standard_error=0.0)
+
+    with pytest.raises(ValueError, match="max_samples must be greater than or equal"):
+        _ = MonteCarlo(sampling=10, target_standard_error=0.1, max_samples=5)
+
+
+def test_component_kl_matrix_matches_closed_form_component_pairs() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    q = GaussianMixture.from_arrays(
+        weights=[0.6, 0.4], means=[[-1.0], [2.5]], covariances=[[[0.9]], [[0.7]]]
+    )
+
+    matrix = gd.component_kl_matrix(p, q)
+    expected = np.array(
+        [
+            [
+                kl_divergence(p.get_component(0), q.get_component(0), method="closed_form").value,
+                kl_divergence(p.get_component(0), q.get_component(1), method="closed_form").value,
+            ],
+            [
+                kl_divergence(p.get_component(1), q.get_component(0), method="closed_form").value,
+                kl_divergence(p.get_component(1), q.get_component(1), method="closed_form").value,
+            ],
+        ],
+        dtype=np.float64,
+    )
+
+    assert matrix.shape == (2, 2)
+    assert matrix == pytest.approx(expected)
+
+
+def test_component_kl_matrix_treats_gaussian_as_single_component() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    q = GaussianMixture.from_arrays(
+        weights=[0.4, 0.6], means=[[-1.0], [2.0]], covariances=[[[0.5]], [[1.5]]]
+    )
+
+    matrix = gd.component_kl_matrix(p, q)
+
+    assert matrix.shape == (1, 2)
+    assert matrix[0, 0] == pytest.approx(
+        kl_divergence(p, q.get_component(0), method="closed_form").value
+    )
+
+
 def test_symmetric_kl_divergence_averages_both_directions() -> None:
     p = Gaussian.from_arrays(mean=[0.5, -1.0], covariance=[[1.2, 0.2], [0.2, 0.7]])
     q = Gaussian.from_arrays(mean=[-0.25, 0.75], covariance=[[0.9, -0.1], [-0.1, 1.8]])
@@ -237,6 +321,7 @@ def test_jensen_shannon_divergence_is_zero_for_identical_mixtures() -> None:
 
 
 def test_public_exports_include_divergence_helpers_and_candidate_selectors() -> None:
+    assert gd.component_kl_matrix is not None
     assert gd.symmetric_kl_divergence is not None
     assert gd.jensen_shannon_divergence is not None
     assert gd.TopKSelector(k=1).k == 1

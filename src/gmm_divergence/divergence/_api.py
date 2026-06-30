@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._numeric import pairwise_gaussian_kl
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
@@ -22,6 +23,7 @@ from gmm_divergence.divergence.methods._variational import kl_variational
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
+    from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._base import Distribution
 
 OptionsT = TypeVar("OptionsT")
@@ -128,7 +130,15 @@ def kl_divergence(
     match spec.name:
         case "monte_carlo":
             options = _cast_options(options, MonteCarlo)
-            return kl_monte_carlo(p, q, sampling=options.sampling, rng=options.rng)
+            return kl_monte_carlo(
+                p,
+                q,
+                sampling=options.sampling,
+                rng=options.rng,
+                target_standard_error=options.target_standard_error,
+                max_samples=options.max_samples,
+                batch_size=options.batch_size,
+            )
         case "unscented":
             p = _require_unscented_input(p, spec.name)
             return kl_unscented(p, q)
@@ -145,6 +155,37 @@ def kl_divergence(
         case _:
             msg = "Unhandled KL method registry entry."
             raise AssertionError(msg)
+
+
+def component_kl_matrix(
+    p: Gaussian | GaussianMixture, q: Gaussian | GaussianMixture, /
+) -> FloatArray:
+    r"""Return pairwise Gaussian-component KL divergences.
+
+    The returned matrix has shape `(p_components, q_components)`, where entry
+    `(i, j)` is
+
+    $$
+    D_{\mathrm{KL}}\!\left(p_i \| q_j\right)
+    $$
+
+    for component `i` of `p` and component `j` of `q`. A single `Gaussian` is
+    treated as a one-component Gaussian mixture.
+
+    Parameters
+    ----------
+    p, q : Gaussian or GaussianMixture
+        Gaussian-family distributions whose components are compared.
+
+    Returns
+    -------
+    FloatArray
+        Pairwise component KL matrix.
+    """
+    _validate_same_dimension(p, q)
+    _, p_means, p_covariances = p.component_arrays()
+    _, q_means, q_covariances = q.component_arrays()
+    return pairwise_gaussian_kl(p_means, p_covariances, q_means, q_covariances)
 
 
 def symmetric_kl_divergence(
