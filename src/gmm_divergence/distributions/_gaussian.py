@@ -7,12 +7,14 @@ import numpy as np
 from typing_extensions import override
 
 from gmm_divergence._core._validation import as_covariance, as_points, as_positive_sample_count
+from gmm_divergence.covariance import regularize_covariance
 from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import Covariance, FloatArray
+    from gmm_divergence.covariance import CovarianceRegularizer
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -32,6 +34,22 @@ class Gaussian(GaussianFamily):
     def from_arrays(cls, mean: npt.ArrayLike, covariance: npt.ArrayLike) -> Gaussian:
         """Create a Gaussian instance from array-like inputs."""
         return cls(mean=cast("FloatArray", mean), covariance=cast("Covariance", covariance))
+
+    @classmethod
+    def from_regularized_arrays(
+        cls,
+        mean: npt.ArrayLike,
+        covariance: npt.ArrayLike,
+        *,
+        regularization: CovarianceRegularizer = "diagonal_loading",
+    ) -> Gaussian:
+        """Create a Gaussian after explicitly regularizing its covariance.
+
+        This constructor keeps `from_arrays` strict while providing a convenient
+        path for estimated or nearly singular covariances.
+        """
+        regularized = regularize_covariance(covariance, method=regularization, batched=False)
+        return cls(mean=cast("FloatArray", mean), covariance=regularized)
 
     @classmethod
     def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:

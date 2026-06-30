@@ -14,6 +14,7 @@ from gmm_divergence._core._validation import (
     as_positive_sample_count,
     as_weights,
 )
+from gmm_divergence.covariance import regularize_covariance
 from gmm_divergence.distributions._base import (
     GaussianComponentArrays,
     GaussianFamily,
@@ -25,6 +26,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
     from gmm_divergence._core._types import Covariances, FloatArray, Weights
+    from gmm_divergence.covariance import CovarianceRegularizer
 
 
 @dataclass(frozen=True, slots=True)
@@ -77,6 +79,27 @@ class GaussianMixture(GaussianFamily):
             weights=cast("Weights", weights),
             means=cast("FloatArray", means),
             covariances=cast("Covariances", covariances),
+        )
+
+    @classmethod
+    def from_regularized_arrays(
+        cls,
+        weights: npt.ArrayLike,
+        means: npt.ArrayLike,
+        covariances: npt.ArrayLike,
+        *,
+        regularization: CovarianceRegularizer = "diagonal_loading",
+    ) -> GaussianMixture:
+        """Create a Gaussian mixture after explicitly regularizing covariances.
+
+        This constructor keeps `from_arrays` strict while providing a convenient
+        path for estimated or nearly singular component covariances.
+        """
+        regularized = regularize_covariance(covariances, method=regularization, batched=True)
+        return cls(
+            weights=cast("Weights", weights),
+            means=cast("FloatArray", means),
+            covariances=regularized,
         )
 
     @classmethod
