@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
 if TYPE_CHECKING:
@@ -32,13 +33,44 @@ class MonteCarlo:
     """
 
     sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the number of samples to draw from p."""
+    """Samples from p, or the initial number of samples to draw from p."""
     rng: np.random.Generator | int | None = None
     """Random generator or seed used when drawing samples."""
+    target_standard_error: float | None = None
+    """Optional standard-error target for adaptive sampling."""
+    max_samples: int | None = None
+    """Maximum sample count when adaptive sampling is enabled.
+
+    If omitted, adaptive Monte Carlo uses ten times the initial `sampling`
+    count.
+    """
+    batch_size: int | None = None
+    """Batch size for additional adaptive samples.
+
+    If omitted, adaptive Monte Carlo uses the initial `sampling` count.
+    """
 
     def __post_init__(self) -> None:
+        sampling_count: int | None = None
         if isinstance(self.sampling, int) and not isinstance(self.sampling, bool):
-            _validate_positive_int(self.sampling, name="sampling")
+            sampling_count = self.sampling
+            _validate_positive_int(sampling_count, name="sampling")
+        elif self.target_standard_error is not None:
+            msg = "target_standard_error requires sampling to be an integer sample count."
+            raise ValueError(msg)
+
+        if self.target_standard_error is not None:
+            _validate_positive_float(self.target_standard_error, name="target_standard_error")
+        if self.max_samples is not None:
+            _validate_positive_int(self.max_samples, name="max_samples")
+            if sampling_count is not None and self.max_samples < sampling_count:
+                msg = (
+                    "max_samples must be greater than or equal to the initial sampling count, "
+                    f"got max_samples={self.max_samples} and sampling={sampling_count}."
+                )
+                raise ValueError(msg)
+        if self.batch_size is not None:
+            _validate_positive_int(self.batch_size, name="batch_size")
 
 
 @dataclass(frozen=True, slots=True)
@@ -130,6 +162,12 @@ KLMethod: TypeAlias = (
 
 
 def _validate_positive_int(value: int, /, *, name: str) -> None:
-    if value <= 0:
+    if isinstance(value, bool) or value <= 0:
         msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)
+
+
+def _validate_positive_float(value: float, /, *, name: str) -> None:
+    if not isfinite(value) or value <= 0.0:
+        msg = f"{name} must be a positive finite value, got {value}."
         raise ValueError(msg)

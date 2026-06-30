@@ -3,6 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
+import gmm_divergence as gd
 from gmm_divergence import Gaussian, GaussianMixture, combine_gaussians
 
 
@@ -91,3 +92,34 @@ def test_distribution_constructors_reject_invalid_parameters() -> None:
 
     with pytest.raises(ValueError, match="Means must be a 2D array"):
         _ = GaussianMixture.from_arrays(weights=[1.0], means=[0.0], covariances=[[[1.0]]])
+
+
+def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() -> None:
+    covariance = np.array([[1.0, 0.0], [0.0, 0.0]], dtype=np.float64)
+
+    with pytest.raises(ValueError, match="Covariance must be positive definite"):
+        _ = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=covariance)
+
+    gaussian = Gaussian.from_regularized_arrays(
+        mean=[0.0, 1.0], covariance=covariance, regularization=gd.DiagonalLoading(eps=1e-3)
+    )
+
+    assert gaussian.covariance == pytest.approx(np.array([[1.001, 0.0], [0.0, 0.001]]))
+    assert not gaussian.covariance.flags.writeable
+    assert np.all(np.linalg.eigvalsh(gaussian.covariance) > 0.0)
+
+
+def test_gaussian_mixture_from_regularized_arrays_regularizes_covariance_batch() -> None:
+    covariances = np.array([[[1.0, 0.0], [0.0, 0.0]], [[2.0, 0.25], [0.25, 0.5]]], dtype=np.float64)
+
+    mixture = GaussianMixture.from_regularized_arrays(
+        weights=[2.0, 1.0],
+        means=[[0.0, 0.0], [2.0, -1.0]],
+        covariances=covariances,
+        regularization=gd.EigenvalueClipping(min_eigenvalue=0.1),
+    )
+
+    assert mixture.weights == pytest.approx([2.0 / 3.0, 1.0 / 3.0])
+    assert mixture.covariances.shape == (2, 2, 2)
+    assert not mixture.covariances.flags.writeable
+    assert float(np.min(np.linalg.eigvalsh(mixture.covariances))) >= 0.1 - 1e-12

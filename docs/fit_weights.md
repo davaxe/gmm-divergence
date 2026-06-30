@@ -87,7 +87,7 @@ Since $p$ does not depend on $\mathbf{w}$, the optimization problem is equivalen
 $$
 \min_{\mathbf{w} \in \Delta_N}
 \quad \underbrace{-\mathbb{E}_{X\sim p}
-\left\lbrack \log q_{\mathbf{w}}(X) \right\rbrack}_{\equiv J(\mathbf{w}), \;\text{objective function}}.
+\left\lbrack \log q_{\mathbf{w}}(X) \right\rbrack}_{= J(\mathbf{w}), \;\text{objective function}}.
 $$
 
 The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and can generally not be expressed in closed form. However, it
@@ -157,7 +157,8 @@ $$
 
 The optimization problem would essentially be a weighted combination of the two
 previous optimization problems, and can also be estimated using Monte Carlo
-sampling.
+sampling. In the case of $\alpha=0.5$, the bidirectional KL divergence is
+symmetric and gives equal weight to both the forward and reverse KL divergences.
 
 
 ## Example

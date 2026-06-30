@@ -17,3 +17,11 @@ Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 ## ::: gmm_divergence.SoftmaxLBFGSB
 
 ## ::: gmm_divergence.SimplexSLSQP
+
+## ::: gmm_divergence.TopKSelector
+
+## ::: gmm_divergence.KLThresholdSelector
+
+## ::: gmm_divergence.KLToleranceSelector
+
+## ::: gmm_divergence.KLQuantileSelector

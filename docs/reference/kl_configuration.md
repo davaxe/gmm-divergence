@@ -2,7 +2,7 @@
 icon: lucide/settings-2
 ---
 
-# KL configuration
+# KL estimation configuration
 
 Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 
