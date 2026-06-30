@@ -65,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-[`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) function. For example:
+[`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-9"
 import gmm_divergence as gd
@@ -104,7 +104,7 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
 
     
 !!! note "Other methods"
-    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_estimators.md#gmm_divergence.kl_divergence) for details.
+    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) for details.
 
 !!! tip "Adaptive Monte Carlo"
     To spend more samples only when the estimate is still noisy, pass a target

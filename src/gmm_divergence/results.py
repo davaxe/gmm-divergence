@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import operator
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
@@ -68,3 +69,28 @@ class KLFitResult:
     converged: bool | None = None
     """Whether the optimization routine reported convergence, if applicable."""
     used_candidate_indices: list[int] | None = None
+
+    def candidate_weights(self) -> list[tuple[int, float]]:
+        """Return fitted weights paired with original candidate indices.
+
+        If candidate selection was used, indices refer to the original `q_i`
+        sequence passed to `fit_mixture_weights`. Otherwise they are simply
+        `0, 1, ..., n_candidates - 1`.
+        """
+        indices = (
+            range(self.weights.shape[0])
+            if self.used_candidate_indices is None
+            else self.used_candidate_indices
+        )
+        return sorted(
+            [
+                (int(index), float(weight))
+                for index, weight in zip(indices, self.weights, strict=True)
+            ],
+            key=operator.itemgetter(1),
+            reverse=True,
+        )
+
+    def candidate_weight_dict(self) -> dict[int, float]:
+        """Return fitted weights keyed by original candidate index."""
+        return dict(self.candidate_weights())

@@ -14,7 +14,7 @@ top-level `gmm_divergence` module.
 - [Distributions](distributions.md)
 - [Distribution details](distribution_details.md)
 - [Covariance regularization](covariance.md)
-- [KL divergence](kl_estimators.md)
+- [KL-based divergence estimators](kl_based_estimators.md)
 - [KL configuration](kl_configuration.md)
 - [Mixture weight fitting](fit_weights.md)
 - [Fit configuration](fit_configuration.md)

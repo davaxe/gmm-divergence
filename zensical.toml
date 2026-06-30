@@ -23,8 +23,8 @@ nav = [
           { "Details" = "reference/distribution_details.md" }
       ] },
       { "Covariance regularization" = "reference/covariance.md" },
-      { "KL divergence" = [
-          "reference/kl_estimators.md",
+      { "Divergence estimation" = [
+          "reference/kl_based_estimators.md",
           { "Configuration" = "reference/kl_configuration.md" }
       ] },
       { "Mixture weight fitting" = [

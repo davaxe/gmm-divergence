@@ -28,7 +28,7 @@ def parse_args() -> Args:
         help=f"Path to the data file (default: {DATA_PATH}).",
     )
     args = parser.parse_args()
-    return Args(target=args.target)
+    return Args(target=args.target, data_path=args.data_path)
 
 
 def main() -> None:
@@ -56,9 +56,11 @@ def main() -> None:
         objective=gd.ForwardKL(rng=0),
         candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
     )
+    print(f"Fitted forward KL: {res.forward_kl.value}")
     print(f"Fitted weights for target '{args.target}':")
-    for label, weight in zip(component_labels, res.weights, strict=False):
-        print(f"  {label}: {weight:.6g}")
+    for candidate_index, weight in res.candidate_weights():
+        label = component_labels[candidate_index]
+        print(f"  {label}: {weight:.6f}")
 
 
 if __name__ == "__main__":

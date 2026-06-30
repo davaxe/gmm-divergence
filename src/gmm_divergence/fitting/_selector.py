@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from math import isfinite
 from typing import TYPE_CHECKING, Generic, Literal, Protocol
 
 import numpy as np
@@ -47,9 +48,7 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     kl_method: KLMethod = field(default=MonteCarlo(rng=0))
 
     def __post_init__(self) -> None:
-        if self.direction == "bidirectional" and not 0 <= self.alpha <= 1:
-            msg = f"alpha must be in [0, 1] for bidirectional KL, got {self.alpha}."
-            raise ValueError(msg)
+        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
 
     def _kl_divergence(self, p: Distribution, q: Distribution) -> float:
         return kl_divergence(p, q, method=self.kl_method, prefer_closed_form=True).value
@@ -84,7 +83,15 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
 
 @dataclass(frozen=True, slots=True)
 class KLThresholdSelector(_KLSelectorBase[DistributionT]):
+    """Select candidates whose KL score is at or below a fixed threshold."""
+
     threshold: float
+
+    def __post_init__(self) -> None:
+        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        if not isfinite(self.threshold) or self.threshold < 0.0:
+            msg = f"threshold must be a nonnegative finite value, got {self.threshold}."
+            raise ValueError(msg)
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -94,8 +101,22 @@ class KLThresholdSelector(_KLSelectorBase[DistributionT]):
 
 @dataclass(frozen=True, slots=True)
 class KLToleranceSelector(_KLSelectorBase[DistributionT]):
+    """Select candidates within a tolerance of the best KL score.
+
+    In absolute mode, candidates with `KL <= min(KL) + delta` are kept. In
+    relative mode, candidates with `KL <= min(KL) + delta * abs(min(KL))` are
+    kept, so `delta=0.5` means within 50% of the best score when the best score
+    is positive.
+    """
+
     delta: float
     mode: Literal["absolute", "relative"] = "absolute"
+
+    def __post_init__(self) -> None:
+        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        if not isfinite(self.delta) or self.delta < 0.0:
+            msg = f"delta must be a nonnegative finite value, got {self.delta}."
+            raise ValueError(msg)
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -112,12 +133,15 @@ class KLToleranceSelector(_KLSelectorBase[DistributionT]):
 class TopKSelector(_KLSelectorBase[DistributionT]):
     k: int
 
+    def __post_init__(self) -> None:
+        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        if isinstance(self.k, bool) or self.k <= 0:
+            msg = f"k must be positive, got {self.k}."
+            raise ValueError(msg)
+
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
         """Predicate to filter candidates based on top-k KL divergence."""
-        if self.k <= 0:
-            msg = f"k must be positive, got {self.k}."
-            raise ValueError(msg)
         if self.k >= len(kl_values):
             return np.ones_like(kl_values, dtype=bool)
         threshold = np.partition(kl_values, self.k - 1)[self.k - 1]
@@ -128,11 +152,25 @@ class TopKSelector(_KLSelectorBase[DistributionT]):
 class KLQuantileSelector(_KLSelectorBase[DistributionT]):
     quantile: float
 
-    @override
-    def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
-        """Predicate to filter candidates based on KL divergence quantile."""
+    def __post_init__(self) -> None:
+        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
         if not 0 < self.quantile < 1:
             msg = f"quantile must be in (0, 1), got {self.quantile}."
             raise ValueError(msg)
+
+    @override
+    def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
+        """Predicate to filter candidates based on KL divergence quantile."""
         threshold = np.quantile(kl_values, self.quantile)
         return kl_values <= threshold
+
+
+def _validate_kl_selector_base(
+    *, direction: Literal["forward", "reverse", "bidirectional"], alpha: float
+) -> None:
+    if direction not in {"forward", "reverse", "bidirectional"}:
+        msg = f"direction must be 'forward', 'reverse', or 'bidirectional', got {direction!r}."
+        raise ValueError(msg)
+    if direction == "bidirectional" and not 0 <= alpha <= 1:
+        msg = f"alpha must be in [0, 1] for bidirectional KL, got {alpha}."
+        raise ValueError(msg)
