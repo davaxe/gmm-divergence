@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeVar
 
 from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.divergence._options import (
@@ -18,10 +19,10 @@ from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_appro
 from gmm_divergence.divergence.methods._monte_carlo import kl_monte_carlo
 from gmm_divergence.divergence.methods._unscented import kl_unscented
 from gmm_divergence.divergence.methods._variational import kl_variational
+from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence.distributions._base import Distribution
-    from gmm_divergence.results import DivergenceResult
 
 OptionsT = TypeVar("OptionsT")
 
@@ -144,6 +145,120 @@ def kl_divergence(
         case _:
             msg = "Unhandled KL method registry entry."
             raise AssertionError(msg)
+
+
+def symmetric_kl_divergence(
+    p: Distribution,
+    q: Distribution,
+    /,
+    *,
+    method: KLMethod = "monte_carlo",
+    prefer_closed_form: bool = False,
+) -> DivergenceResult:
+    r"""Compute the symmetric KL divergence between two distributions.
+
+    Computes
+
+    $$
+    D_{\mathrm{SKL}}(p, q)
+    =
+    \frac{1}{2}
+    \left[
+        D_{\mathrm{KL}}(p \| q) + D_{\mathrm{KL}}(q \| p)
+    \right].
+    $$
+
+    The same KL estimation method is used in both directions.
+
+    Parameters
+    ----------
+    p, q : Distribution
+        The two distributions to compare. They must have the same dimensionality.
+    method : str or KL method configuration, default="monte_carlo"
+        Method used for each directed KL estimate.
+    prefer_closed_form : bool, default=False
+        If `True`, each directed estimate will attempt to use closed form when
+        both inputs are Gaussian.
+
+    Returns
+    -------
+    DivergenceResult
+        Result containing the symmetric KL value. For sampled methods,
+        `num_samples` is the total sample count across both directed estimates
+        when both counts are available.
+    """
+    forward = kl_divergence(p, q, method=method, prefer_closed_form=prefer_closed_form)
+    reverse = kl_divergence(q, p, method=method, prefer_closed_form=prefer_closed_form)
+    return DivergenceResult(
+        value=0.5 * (forward.value + reverse.value),
+        method="symmetric_kl",
+        num_samples=_sum_num_samples(forward, reverse),
+    )
+
+
+def jensen_shannon_divergence(
+    p: Gaussian | GaussianMixture,
+    q: Gaussian | GaussianMixture,
+    /,
+    *,
+    method: KLMethod = "monte_carlo",
+    prefer_closed_form: bool = False,
+) -> DivergenceResult:
+    r"""Compute the Jensen-Shannon divergence between two Gaussian-family distributions.
+
+    Computes
+
+    $$
+    D_{\mathrm{JS}}(p, q)
+    =
+    \frac{1}{2}D_{\mathrm{KL}}(p \| m)
+    +
+    \frac{1}{2}D_{\mathrm{KL}}(q \| m),
+    \qquad
+    m = \frac{1}{2}p + \frac{1}{2}q.
+    $$
+
+    For Gaussian and Gaussian-mixture inputs, the midpoint distribution `m` is
+    represented as a Gaussian mixture using existing component-combination
+    logic.
+
+    Parameters
+    ----------
+    p, q : Gaussian or GaussianMixture
+        The two Gaussian-family distributions to compare. They must have the
+        same dimensionality.
+    method : str or KL method configuration, default="monte_carlo"
+        Method used for the two KL estimates against the midpoint mixture.
+    prefer_closed_form : bool, default=False
+        Passed through to `kl_divergence`. Note that the midpoint is generally
+        a Gaussian mixture, so closed form is only available for methods and
+        inputs that support it.
+
+    Returns
+    -------
+    DivergenceResult
+        Result containing the Jensen-Shannon divergence value. For sampled
+        methods, `num_samples` is the total sample count across both directed
+        estimates when both counts are available.
+    """
+    _validate_same_dimension(p, q)
+    midpoint = combine_gaussians([p, q], weights=[0.5, 0.5])
+    p_to_midpoint = kl_divergence(p, midpoint, method=method, prefer_closed_form=prefer_closed_form)
+    q_to_midpoint = kl_divergence(q, midpoint, method=method, prefer_closed_form=prefer_closed_form)
+    return DivergenceResult(
+        value=0.5 * (p_to_midpoint.value + q_to_midpoint.value),
+        method="jensen_shannon",
+        num_samples=_sum_num_samples(p_to_midpoint, q_to_midpoint),
+    )
+
+
+def _sum_num_samples(*results: DivergenceResult) -> int | None:
+    total = 0
+    for result in results:
+        if result.num_samples is None:
+            return None
+        total += result.num_samples
+    return total
 
 
 def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:

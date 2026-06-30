@@ -27,6 +27,31 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import Covariances, FloatArray, Weights
 
 
+@dataclass(frozen=True, slots=True)
+class MixtureDiagnostics:
+    """Diagnostics for a Gaussian mixture model."""
+
+    n_components: int
+    """Number of components in the mixture."""
+
+    dim: int
+    """Dimensionality of the mixture."""
+
+    weight_sum: float
+    """Sum of the weights of the components."""
+
+    max_weight: float
+    """Maximum weight among the components."""
+
+    min_weight: float
+    """Minimum weight among the components."""
+
+    weights_entropy: float
+    """Entropy of the weights of the components in nats."""
+
+    covar_condition_numbers: list[float]
+
+
 @dataclass(frozen=True, slots=True, repr=False)
 class GaussianMixture(GaussianFamily):
     weights: Weights
@@ -190,6 +215,23 @@ class GaussianMixture(GaussianFamily):
         """Iterate over the Gaussian components of the mixture."""
         for k in range(self.n_components):
             yield self.weights[k], self.get_component(k)
+
+    def diagnostics(self) -> MixtureDiagnostics:
+        """Return diagnostics for the Gaussian mixture."""
+        weight_sum = float(np.sum(self.weights))
+        max_weight = float(np.max(self.weights))
+        min_weight = float(np.min(self.weights))
+        weights_entropy = float(-np.sum(self.weights * np.log(self.weights + 1e-12)))
+        covar_condition_numbers = [float(np.linalg.cond(cov)) for cov in self.covariances]
+        return MixtureDiagnostics(
+            n_components=self.n_components,
+            dim=self.dim,
+            weight_sum=weight_sum,
+            max_weight=max_weight,
+            min_weight=min_weight,
+            weights_entropy=weights_entropy,
+            covar_condition_numbers=covar_condition_numbers,
+        )
 
 
 def sample_gmm(
