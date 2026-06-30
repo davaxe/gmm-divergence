@@ -9,13 +9,19 @@ from gmm_divergence import (
     BidirectionalKL,
     Gaussian,
     GaussianMixture,
+    JensenShannon,
     MomentMatching,
     SimplexSLSQP,
     SoftmaxLBFGSB,
     fit_mixture_weights,
     prune_mixture,
 )
-from gmm_divergence.fitting._objectives import forward_kl, moment_matching, reverse_kl
+from gmm_divergence.fitting._objectives import (
+    forward_kl,
+    jensen_shannon,
+    moment_matching,
+    reverse_kl,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
@@ -115,6 +121,28 @@ def test_fit_options_reject_invalid_parameters() -> None:
         _ = BidirectionalKL(alpha=1.5)
 
 
+def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
+        Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
+    ]
+
+    result = fit_mixture_weights(
+        p, candidates, objective=JensenShannon(p_sampling=2_000, q_sampling=2_000, rng=123)
+    )
+
+    assert result.fit_objective == "jensen_shannon"
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
+    assert float(np.sum(result.weights)) == pytest.approx(1.0)
+
+    default_result = fit_mixture_weights(p, candidates, objective="jensen_shannon")
+    assert default_result.fit_objective == "jensen_shannon"
+
+
 def test_fit_objective_gradients_match_finite_differences() -> None:
     p = GaussianMixture.from_arrays(
         weights=[0.45, 0.55], means=[[-1.0], [1.3]], covariances=[[[0.6]], [[1.2]]]
@@ -132,6 +160,7 @@ def test_fit_objective_gradients_match_finite_differences() -> None:
     objectives = [
         forward_kl(p, candidates, p_samples),
         reverse_kl(p, candidates, q_samples),
+        jensen_shannon(p, candidates, p_samples, q_samples),
         moment_matching(p, candidates, second_moments=True),
     ]
 

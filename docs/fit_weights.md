@@ -160,6 +160,47 @@ previous optimization problems, and can also be estimated using Monte Carlo
 sampling. In the case of $\alpha=0.5$, the bidirectional KL divergence is
 symmetric and gives equal weight to both the forward and reverse KL divergences.
 
+## Alternative objective: _Jensen-Shannon_ divergence
+
+The Jensen-Shannon objective compares `p` and `q_w` through their midpoint
+mixture,
+
+$$
+m_{\mathbf{w}} = \frac{1}{2}p + \frac{1}{2}q_{\mathbf{w}},
+$$
+
+and minimizes
+
+$$
+D_{\mathrm{JS}}(p, q_{\mathbf{w}})
+=
+\frac{1}{2}D_{\mathrm{KL}}(p \| m_{\mathbf{w}})
++
+\frac{1}{2}D_{\mathrm{KL}}(q_{\mathbf{w}} \| m_{\mathbf{w}}).
+$$
+
+This gives a symmetric alternative to the directional KL objectives:
+
+```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components(
+    [
+        gd.Gaussian.univariate(mean=0.0, variance=0.5),
+        gd.Gaussian.univariate(mean=2.0, variance=0.5),
+    ],
+    weights=[0.6, 0.4],
+)
+q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
+q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
+
+fit = gd.fit_mixture_weights(
+    p,
+    [q1, q2],
+    objective=gd.JensenShannon(p_sampling=10_000, q_sampling=10_000, rng=102),
+)
+```
+
 
 ## Example
 

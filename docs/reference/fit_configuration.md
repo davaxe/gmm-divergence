@@ -12,6 +12,8 @@ Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 
 ## ::: gmm_divergence.BidirectionalKL
 
+## ::: gmm_divergence.JensenShannon
+
 ## ::: gmm_divergence.MomentMatching
 
 ## ::: gmm_divergence.SoftmaxLBFGSB

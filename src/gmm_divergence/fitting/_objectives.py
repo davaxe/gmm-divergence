@@ -15,6 +15,7 @@ from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitParameterization,
     ForwardKL,
+    JensenShannon,
     MomentMatching,
     ReverseKL,
 )
@@ -176,6 +177,71 @@ def reverse_kl(
 
 
 @dataclass(frozen=True, slots=True)
+class _JensenShannon:
+    """Fixed-sample Jensen-Shannon objective over simplex weights."""
+
+    log_q_on_p_samples: FloatArray
+    log_p_on_p_samples: FloatArray
+    log_q_on_q_samples: FloatArray
+    log_p_on_q_samples: FloatArray
+    eps: float = 1e-300
+
+    @property
+    def n_components(self) -> int:
+        return int(self.log_q_on_q_samples.shape[0])
+
+    def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
+        w = np.asarray(weights, dtype=np.float64)
+        log_2: float = np.log(2.0)
+        log_qw_p, _ = mixture_stats(self.log_q_on_p_samples, w, eps=self.eps)
+        log_m_p = np.logaddexp(self.log_p_on_p_samples, log_qw_p) - log_2
+        log_w = np.log(np.maximum(w, self.eps))
+        log_qw_q = logsumexp(self.log_q_on_q_samples + log_w, axis=-1)
+        log_m_q = np.logaddexp(self.log_p_on_q_samples, log_qw_q) - log_2
+        forward_kl = np.mean(self.log_p_on_p_samples - log_m_p)
+        reverse_kl_per_component = np.mean(log_qw_q - log_m_q, axis=1)
+        value = 0.5 * (forward_kl + np.dot(w, reverse_kl_per_component))
+        forward_grad = -0.25 * np.mean(np.exp(self.log_q_on_p_samples - log_m_p[:, None]), axis=0)
+        mean_q_over_qw = np.mean(np.exp(self.log_q_on_q_samples - log_qw_q[..., None]), axis=1)
+        mean_q_over_m = np.mean(np.exp(self.log_q_on_q_samples - log_m_q[..., None]), axis=1)
+        reverse_grad = (
+            0.5 * reverse_kl_per_component + 0.5 * (w @ mean_q_over_qw) - 0.25 * (w @ mean_q_over_m)
+        )
+        return float(value), forward_grad + reverse_grad
+
+
+def jensen_shannon(
+    p: GaussianLike,
+    q_components: Sequence[GaussianLike],
+    p_samples: FloatArray,
+    q_samples: FloatArray,
+    *,
+    eps: float = 1e-300,
+) -> ObjectiveFn:
+    """Build a simplex objective for Jensen-Shannon divergence."""
+    p_samples = np.asarray(p_samples, dtype=np.float64)
+    q_samples = np.asarray(q_samples, dtype=np.float64)
+    n_components, n_samples, dim = q_samples.shape
+    q_samples_flat = q_samples.reshape(-1, dim)
+
+    log_q_on_p_samples = logpdf_matrix(q_components, p_samples)
+    log_p_on_p_samples = np.asarray(p.logpdf(p_samples), dtype=np.float64)
+    log_p_on_q_samples = np.asarray(p.logpdf(q_samples_flat), dtype=np.float64).reshape(
+        n_components, n_samples
+    )
+    log_q_flat = logpdf_matrix(q_components, q_samples_flat)
+    log_q_on_q_samples = log_q_flat.reshape(n_components, n_samples, n_components)
+
+    return _JensenShannon(
+        log_q_on_p_samples=log_q_on_p_samples,
+        log_p_on_p_samples=log_p_on_p_samples,
+        log_q_on_q_samples=log_q_on_q_samples,
+        log_p_on_q_samples=log_p_on_q_samples,
+        eps=eps,
+    )
+
+
+@dataclass(frozen=True, slots=True)
 class _WeightedSum:
     """Weighted sum of objective functions."""
 
@@ -245,7 +311,6 @@ class _MomentMatching:
 
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         weights = np.asarray(weights, dtype=np.float64)
-
         mixture_moments = weights @ self.q_moments
         residual = mixture_moments - self.p_moments
         value = float(residual @ residual)
@@ -333,9 +398,25 @@ def softmax_bidirectional_kl(
     )
 
 
+def softmax_jensen_shannon(
+    p: GaussianLike,
+    q_components: Sequence[GaussianLike],
+    p_samples: FloatArray,
+    q_samples: FloatArray,
+    *,
+    eps: float = 1e-300,
+) -> ObjectiveFn:
+    """Build a Jensen-Shannon objective over softmax logits."""
+    return with_softmax(
+        jensen_shannon(
+            p=p, q_components=q_components, p_samples=p_samples, q_samples=q_samples, eps=eps
+        )
+    )
+
+
 def _build_softmax_objective(
     *,
-    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,
@@ -353,13 +434,18 @@ def _build_softmax_objective(
             return softmax_bidirectional_kl(
                 p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha
             )
+        case JensenShannon():
+            if q_samples is None:
+                msg = "q_samples is required for Jensen-Shannon."
+                raise ValueError(msg)
+            return softmax_jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
         case MomentMatching(fit_second_moments=fit_second_moments):
             return with_softmax(moment_matching(p, q_i, second_moments=fit_second_moments))
 
 
 def _build_simplex_objective(
     *,
-    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,
@@ -375,6 +461,11 @@ def _build_simplex_objective(
             return reverse_kl(p, q_i, q_samples)
         case BidirectionalKL(alpha=alpha):
             return bidirectional_kl(p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha)
+        case JensenShannon():
+            if q_samples is None:
+                msg = "q_samples is required for Jensen-Shannon."
+                raise ValueError(msg)
+            return jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
         case MomentMatching(fit_second_moments=fit_second_moments):
             return moment_matching(p, q_i, second_moments=fit_second_moments)
 
@@ -382,7 +473,7 @@ def _build_simplex_objective(
 def build_objective(
     *,
     parameterization: FitParameterization,
-    objective: ForwardKL | ReverseKL | BidirectionalKL | MomentMatching,
+    objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray,

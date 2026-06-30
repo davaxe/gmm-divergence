@@ -164,6 +164,42 @@ class BidirectionalKL:
 
 
 @dataclass(frozen=True, slots=True)
+class JensenShannon:
+    r"""Jensen-Shannon fitting objective configuration.
+
+    Fits the candidate-mixture weights by minimizing
+
+    $$
+    D_{\mathrm{JS}}\!\left(p, q_{\mathbf{w}}\right)
+    =
+    \frac{1}{2}D_{\mathrm{KL}}\!\left(p \,\|\, m_{\mathbf{w}}\right)
+    +
+    \frac{1}{2}D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, m_{\mathbf{w}}\right),
+    $$
+
+    where
+
+    $$
+    m_{\mathbf{w}} = \frac{1}{2}p + \frac{1}{2}q_{\mathbf{w}}.
+    $$
+
+    This objective is symmetric and bounded, while still using fixed samples
+    from `p` and each candidate mixture `q_i` during optimization.
+    """
+
+    p_sampling: npt.ArrayLike | int = 10_000
+    """Samples from p, or the number of samples to draw from p."""
+    q_sampling: npt.ArrayLike | int = 10_000
+    """Samples from each q_i, or the number to draw from each q_i."""
+    rng: np.random.Generator | int | None = None
+    """Random generator or seed used when drawing samples."""
+
+    def __post_init__(self) -> None:
+        _validate_sampling(self.p_sampling, name="p_sampling")
+        _validate_sampling(self.q_sampling, name="q_sampling")
+
+
+@dataclass(frozen=True, slots=True)
 class MomentMatching:
     r"""Moment-matching fitting objective configuration.
 
@@ -183,11 +219,13 @@ class MomentMatching:
 
 
 FitMethodName: TypeAlias = Literal["softmax_lbfgsb", "simplex_slsqp"]
-FitObjective: TypeAlias = Literal["forward", "reverse", "bidirectional", "moment_matching"]
+FitObjective: TypeAlias = Literal[
+    "forward", "reverse", "bidirectional", "jensen_shannon", "moment_matching"
+]
 FitParameterization: TypeAlias = Literal["simplex", "softmax"]
 WeightFitMethod: TypeAlias = FitMethodName | SoftmaxLBFGSB | SimplexSLSQP
 WeightFitObjective: TypeAlias = (
-    FitObjective | ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
+    FitObjective | ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
 )
 
 

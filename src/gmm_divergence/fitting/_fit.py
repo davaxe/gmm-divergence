@@ -18,6 +18,7 @@ from gmm_divergence.fitting._options import (
     FitObjective,
     FitParameterization,
     ForwardKL,
+    JensenShannon,
     MomentMatching,
     ReverseKL,
     SimplexSLSQP,
@@ -34,7 +35,9 @@ if TYPE_CHECKING:
     from gmm_divergence.fitting._selector import CandidateSelection, CandidateSelector
 
 
-FitObjectiveConfig: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
+FitObjectiveConfig: TypeAlias = (
+    ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
+)
 FitOptimizerConfig: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
 
 
@@ -63,6 +66,8 @@ def _objective_name(objective: FitObjectiveConfig) -> FitObjective:
             return "reverse"
         case BidirectionalKL():
             return "bidirectional"
+        case JensenShannon():
+            return "jensen_shannon"
         case MomentMatching():
             return "moment_matching"
 
@@ -74,7 +79,7 @@ def _objective_alpha(objective: FitObjectiveConfig) -> float | None:
 
 
 def _objective_rng(objective: FitObjectiveConfig) -> np.random.Generator | int | None:
-    if isinstance(objective, (ForwardKL, ReverseKL, BidirectionalKL)):
+    if isinstance(objective, (ForwardKL, ReverseKL, BidirectionalKL, JensenShannon)):
         return objective.rng
     return None
 
@@ -90,6 +95,8 @@ def _resolve_objective_samples(
         case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
             return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
         case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
+            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
+        case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
             return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
         case MomentMatching():
             return resolve_samples(p, 10_000, None), None

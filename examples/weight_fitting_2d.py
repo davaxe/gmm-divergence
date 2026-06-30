@@ -15,12 +15,11 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.fitting import FitObjective
 
 
 @dataclass(frozen=True)
 class ObjectiveFit:
-    objective: FitObjective
+    objective: gd.FitObjective
     result: gd.KLFitResult
 
     @property
@@ -96,7 +95,12 @@ def grid_spacing(x: FloatArray, y: FloatArray) -> tuple[float, float]:
 def fit_weight_objectives(
     p: gd.Gaussian, q_i: list[gd.Gaussian], *, rng: int = 124, samples: int = 20_000
 ) -> list[ObjectiveFit]:
-    objectives: tuple[FitObjective, ...] = ("forward", "reverse", "bidirectional")
+    objectives: tuple[gd.FitObjective, ...] = (
+        "forward",
+        "reverse",
+        "bidirectional",
+        "jensen_shannon",
+    )
 
     fits: list[ObjectiveFit] = []
     for objective in objectives:
@@ -111,6 +115,9 @@ def fit_weight_objectives(
                 p_sampling=samples, q_sampling=samples, alpha=0.5, rng=rng
             )
 
+        elif objective == "jensen_shannon":
+            fit_objective = gd.JensenShannon(p_sampling=samples, q_sampling=samples, rng=rng)
+
         else:
             msg = f"Unsupported objective: {objective}"
             raise ValueError(msg)
@@ -122,7 +129,7 @@ def fit_weight_objectives(
     return fits
 
 
-def objective_display_name(objective: FitObjective) -> str:
+def objective_display_name(objective: gd.FitObjective) -> str:
     return objective.replace("_", " ").title()
 
 

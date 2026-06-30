@@ -12,6 +12,7 @@ from gmm_divergence._core._dispatch import MethodSpec, Registry
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     ForwardKL,
+    JensenShannon,
     MomentMatching,
     ReverseKL,
     SimplexSLSQP,
@@ -44,6 +45,7 @@ _OBJECTIVE_REGISTRY = Registry(
         MethodSpec(name="forward", option_type=ForwardKL, default=ForwardKL()),
         MethodSpec(name="reverse", option_type=ReverseKL, default=ReverseKL()),
         MethodSpec(name="bidirectional", option_type=BidirectionalKL, default=BidirectionalKL()),
+        MethodSpec(name="jensen_shannon", option_type=JensenShannon, default=JensenShannon()),
         MethodSpec(name="moment_matching", option_type=MomentMatching, default=MomentMatching()),
     ),
 )
@@ -83,7 +85,8 @@ def fit_mixture_weights(
     objective : str or WeightFitObjective configuration, optional
         Objective used for fitting. Passing a string runs that objective with
         defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
-        or `MomentMatching(...)` for objective-specific options.
+        `JensenShannon(...)`, or `MomentMatching(...)` for objective-specific
+        options.
     x0 : array-like, optional
         Initial weights for the optimized variables. If `None`, the optimizer's
         default initialization is used.
@@ -174,7 +177,9 @@ def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
 
 
 def _cast_fit_objective(options: object) -> wfit.FitObjectiveConfig:
-    if not isinstance(options, (ForwardKL, ReverseKL, BidirectionalKL, MomentMatching)):
+    if not isinstance(
+        options, (ForwardKL, ReverseKL, BidirectionalKL, JensenShannon, MomentMatching)
+    ):
         msg = "Dispatcher returned an objective object with the wrong type."
         raise TypeError(msg)
     return options
