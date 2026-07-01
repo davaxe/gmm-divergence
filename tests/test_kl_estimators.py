@@ -88,7 +88,7 @@ def test_monte_carlo_with_deterministic_sigma_points_is_exact_for_gaussian_pairs
     samples = _sigma_points(p)
     expected = kl_divergence(p, q, method="closed_form").value
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.UseSamples(samples)))
 
     assert result.method == "monte_carlo"
     assert result.num_samples == 2 * p.dim
@@ -104,7 +104,7 @@ def test_monte_carlo_kl_for_mixtures_matches_numerical_quadrature_reference() ->
     )
     expected = _quadrature_kl_1d(p, q)
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=100_000, rng=1234))
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.DrawSamples(100_000, rng=1234)))
 
     assert expected == pytest.approx(0.1129823940300846, rel=1e-12)
     assert result.method == "monte_carlo"
@@ -115,7 +115,12 @@ def test_monte_carlo_kl_for_mixtures_matches_numerical_quadrature_reference() ->
 
 @pytest.mark.parametrize(
     "method",
-    [MonteCarlo(sampling=1_000, rng=7), "unscented", "variational", "gaussian_approximation"],
+    [
+        MonteCarlo(sampling=gd.DrawSamples(1_000, rng=7)),
+        "unscented",
+        "variational",
+        "gaussian_approximation",
+    ],
 )
 def test_kl_estimators_return_zero_for_identical_mixtures(method: EstimatorUnderTest) -> None:
     mixture = GaussianMixture.from_arrays(
@@ -125,6 +130,36 @@ def test_kl_estimators_return_zero_for_identical_mixtures(method: EstimatorUnder
     result = kl_divergence(mixture, mixture, method=cast("KLMethod", method))
 
     assert result.value == pytest.approx(0.0, abs=1e-14)
+
+
+def test_monte_carlo_stratified_sampling_for_mixture_reference() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.8, 0.2], means=[[-1.0], [1.0]], covariances=[[[0.3]], [[0.7]]]
+    )
+
+    result = kl_divergence(p, p, method=MonteCarlo(sampling=gd.StratifiedSamples(10, rng=123)))
+
+    assert result.method == "monte_carlo"
+    assert result.num_samples == 10
+    assert result.value == pytest.approx(0.0, abs=1e-14)
+    assert result.monte_carlo_stats is not None
+    assert result.monte_carlo_stats.effective_sample_size == 10
+
+
+def test_monte_carlo_stratified_sampling_rejects_non_mixture_reference() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+
+    with pytest.raises(TypeError, match="StratifiedSamples requires a GaussianMixture"):
+        _ = kl_divergence(p, p, method=MonteCarlo(sampling=gd.StratifiedSamples(10, rng=123)))
+
+
+def test_monte_carlo_stratified_sampling_requires_samples_for_positive_components() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.8, 0.2], means=[[-1.0], [1.0]], covariances=[[[0.3]], [[0.7]]]
+    )
+
+    with pytest.raises(ValueError, match="at least one sample per positive-weight component"):
+        _ = kl_divergence(p, p, method=MonteCarlo(sampling=gd.StratifiedSamples(1, rng=123)))
 
 
 def test_gaussian_approximation_matches_closed_form_of_moment_matched_mixtures() -> None:
@@ -148,7 +183,7 @@ def test_monte_carlo_uses_precomputed_samples_without_resampling() -> None:
     samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
     expected = float(np.mean(p.logpdf(samples) - q.logpdf(samples)))
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples, rng=999))
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.UseSamples(samples)))
 
     assert result.method == "monte_carlo"
     assert result.num_samples == samples.shape[0]
@@ -172,10 +207,10 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
         _ = kl_divergence(p, p, method=cast("KLMethod", cast("object", "not-a-method")))
 
     with pytest.raises(ValueError, match="samples must have shape"):
-        _ = kl_divergence(p, p, method=MonteCarlo(sampling=np.zeros((3, 2))))
+        _ = kl_divergence(p, p, method=MonteCarlo(sampling=gd.UseSamples(np.zeros((3, 2)))))
 
-    with pytest.raises(ValueError, match="sampling must be a positive integer"):
-        _ = kl_divergence(p, p, method=MonteCarlo(sampling=0))
+    with pytest.raises(ValueError, match="n_samples must be a positive integer"):
+        _ = MonteCarlo(sampling=gd.DrawSamples(0))
 
 
 def test_monte_carlo_reports_standard_error() -> None:
@@ -188,7 +223,7 @@ def test_monte_carlo_reports_standard_error() -> None:
     expected_variance = float(np.var(pointwise, ddof=1))
     expected_se = float(np.sqrt(expected_variance / samples.shape[0]))
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.UseSamples(samples)))
 
     assert result.value == pytest.approx(expected_value)
     assert result.monte_carlo_stats is not None
@@ -200,7 +235,13 @@ def test_monte_carlo_adaptive_sampling_stops_when_standard_error_target_is_met()
     p = Gaussian.univariate(mean=0.0, variance=1.0)
 
     result = kl_divergence(
-        p, p, method=MonteCarlo(sampling=5, target_standard_error=1e-12, max_samples=25, rng=123)
+        p,
+        p,
+        method=MonteCarlo(
+            sampling=gd.DrawSamples(5, rng=123),
+            target_standard_error=1e-12,
+            max_samples=25,
+        ),
     )
 
     assert result.num_samples == 5
@@ -217,7 +258,10 @@ def test_monte_carlo_adaptive_sampling_respects_max_samples() -> None:
         p,
         q,
         method=MonteCarlo(
-            sampling=5, target_standard_error=1e-12, max_samples=15, batch_size=5, rng=123
+            sampling=gd.DrawSamples(5, rng=123),
+            target_standard_error=1e-12,
+            max_samples=15,
+            batch_size=5,
         ),
     )
 
@@ -227,16 +271,14 @@ def test_monte_carlo_adaptive_sampling_respects_max_samples() -> None:
 
 
 def test_monte_carlo_adaptive_options_validate_inputs() -> None:
-    samples = np.zeros((3, 1), dtype=np.float64)
-
     with pytest.raises(ValueError, match="target_standard_error requires sampling"):
-        _ = MonteCarlo(sampling=samples, target_standard_error=0.1)
+        _ = MonteCarlo(sampling=gd.UseSamples(np.zeros((3, 1))), target_standard_error=0.1)
 
     with pytest.raises(ValueError, match="target_standard_error must be a positive finite value"):
-        _ = MonteCarlo(sampling=10, target_standard_error=0.0)
+        _ = MonteCarlo(sampling=gd.DrawSamples(10), target_standard_error=0.0)
 
     with pytest.raises(ValueError, match="max_samples must be greater than or equal"):
-        _ = MonteCarlo(sampling=10, target_standard_error=0.1, max_samples=5)
+        _ = MonteCarlo(sampling=gd.DrawSamples(10), target_standard_error=0.1, max_samples=5)
 
 
 def test_component_kl_matrix_matches_closed_form_component_pairs() -> None:
@@ -302,7 +344,9 @@ def test_symmetric_kl_divergence_reports_total_monte_carlo_samples() -> None:
     q = Gaussian.univariate(mean=1.0, variance=2.0)
     samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
 
-    result = gd.symmetric_kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+    result = gd.symmetric_kl_divergence(
+        p, q, method=MonteCarlo(sampling=gd.UseSamples(samples))
+    )
 
     assert result.num_samples == 2 * samples.shape[0]
 
@@ -313,7 +357,9 @@ def test_jensen_shannon_divergence_is_zero_for_identical_mixtures() -> None:
     )
     samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
 
-    result = gd.jensen_shannon_divergence(mixture, mixture, method=MonteCarlo(sampling=samples))
+    result = gd.jensen_shannon_divergence(
+        mixture, mixture, method=MonteCarlo(sampling=gd.UseSamples(samples))
+    )
 
     assert result.method == "jensen_shannon"
     assert result.num_samples == 2 * samples.shape[0]
@@ -321,6 +367,10 @@ def test_jensen_shannon_divergence_is_zero_for_identical_mixtures() -> None:
 
 
 def test_public_exports_include_divergence_helpers_and_candidate_selectors() -> None:
+    assert gd.DrawSamples(n_samples=1).n_samples == 1
+    assert gd.StratifiedSamples(n_samples=1).n_samples == 1
+    assert gd.UseSamples(np.zeros((1, 1))).samples is not None
+    assert gd.UseSampleBatches(np.zeros((1, 1, 1))).samples is not None
     assert gd.component_kl_matrix is not None
     assert gd.symmetric_kl_divergence is not None
     assert gd.jensen_shannon_divergence is not None

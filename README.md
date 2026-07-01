@@ -13,7 +13,9 @@ The package currently includes:
 - Sampling from Gaussian mixtures
 - KL divergence estimators based on closed-form Gaussian KL, Monte Carlo sampling,
   unscented sigma points, Gaussian approximations, and variational bounds
-- Mixture-weight fitting with forward, reverse, bidirectional, and moment-matching objectives
+- Explicit sampling controls for drawn, reused, and stratified Monte Carlo samples
+- Mixture-weight fitting with forward, reverse, bidirectional, Jensen-Shannon, and
+  moment-matching objectives
 - Covariance regularization utilities for diagonal loading, shrinkage, eigenvalue clipping,
   and low-rank approximation
 
@@ -48,7 +50,9 @@ q = gd.GaussianMixture.from_components([
     gd.Gaussian.univariate(mean=1.8, variance=1.2),
 ])
 
-result = gd.kl_divergence(p, q, method=gd.MonteCarlo(sampling=50_000, rng=0))
+result = gd.kl_divergence(
+    p, q, method=gd.MonteCarlo(sampling=gd.DrawSamples(50_000, rng=0))
+)
 print(result.value, result.monte_carlo_stats.standard_error)
 ```
 

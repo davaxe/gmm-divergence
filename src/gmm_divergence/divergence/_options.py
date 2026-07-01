@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
-if TYPE_CHECKING:
-    import numpy as np
-    import numpy.typing as npt
-
+from gmm_divergence._core._sampling import DrawSamples, SampleSpec
 
 Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 
@@ -30,40 +27,41 @@ class MonteCarlo:
 
     This is the most general estimator: it can be used whenever `p` can be
     sampled and both `p` and `q` can evaluate log densities.
+
+    Sampling is configured explicitly with `DrawSamples(...)`,
+    `UseSamples(...)`, or `StratifiedSamples(...)`. Adaptive standard-error
+    control requires `DrawSamples(...)` because it must draw additional
+    batches.
     """
 
-    sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the initial number of samples to draw from p."""
-    rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
+    sampling: SampleSpec = field(default_factory=DrawSamples)
+    """Sampling specification used to estimate the expectation under p."""
     target_standard_error: float | None = None
     """Optional standard-error target for adaptive sampling."""
     max_samples: int | None = None
     """Maximum sample count when adaptive sampling is enabled.
 
-    If omitted, adaptive Monte Carlo uses ten times the initial `sampling`
-    count.
+    If omitted, adaptive Monte Carlo uses ten times the initial draw count.
     """
     batch_size: int | None = None
     """Batch size for additional adaptive samples.
 
-    If omitted, adaptive Monte Carlo uses the initial `sampling` count.
+    If omitted, adaptive Monte Carlo uses the initial draw count.
     """
 
     def __post_init__(self) -> None:
-        sampling_count: int | None = None
-        if isinstance(self.sampling, int) and not isinstance(self.sampling, bool):
-            sampling_count = self.sampling
-            _validate_positive_int(sampling_count, name="sampling")
-        elif self.target_standard_error is not None:
-            msg = "target_standard_error requires sampling to be an integer sample count."
+        if not isinstance(self.sampling, (DrawSamples,)):
+            if self.target_standard_error is None:
+                return
+            msg = "target_standard_error requires sampling=DrawSamples(...)."
             raise ValueError(msg)
 
+        sampling_count = self.sampling.n_samples
         if self.target_standard_error is not None:
             _validate_positive_float(self.target_standard_error, name="target_standard_error")
         if self.max_samples is not None:
             _validate_positive_int(self.max_samples, name="max_samples")
-            if sampling_count is not None and self.max_samples < sampling_count:
+            if self.max_samples < sampling_count:
                 msg = (
                     "max_samples must be greater than or equal to the initial sampling count, "
                     f"got max_samples={self.max_samples} and sampling={sampling_count}."

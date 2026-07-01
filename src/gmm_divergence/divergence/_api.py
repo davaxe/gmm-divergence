@@ -75,8 +75,8 @@ def kl_divergence(
     method : str or KL method configuration, default="monte_carlo"
         Method used to compute or estimate the KL divergence. Passing a string
         runs that method with its defaults. Use a method configuration object,
-        such as `MonteCarlo(sampling=50_000, rng=0)`, for method-specific
-        options.
+        such as `MonteCarlo(sampling=DrawSamples(50_000, rng=0))`, for
+        method-specific options.
     prefer_closed_form : bool, default=False
         If `True`, the function will attempt use closed form if both inputs are
         Gaussian, even if the user specified a different method.
@@ -116,8 +116,17 @@ def kl_divergence(
     Configure Monte Carlo sampling:
 
     ```python
+    result = kl_divergence(
+        p,
+        q,
+        method=MonteCarlo(sampling=DrawSamples(50_000, rng=0)),
+    )
+
+    Use precomputed samples:
+
+    ```python
     samples = p.sample(50_000, rng=0)
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+    result = kl_divergence(p, q, method=MonteCarlo(sampling=UseSamples(samples)))
     ```
 
 
@@ -134,7 +143,6 @@ def kl_divergence(
                 p,
                 q,
                 sampling=options.sampling,
-                rng=options.rng,
                 target_standard_error=options.target_standard_error,
                 max_samples=options.max_samples,
                 batch_size=options.batch_size,

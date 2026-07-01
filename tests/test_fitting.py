@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import pytest
 
+import gmm_divergence as gd
 from gmm_divergence import (
     BidirectionalKL,
     Gaussian,
@@ -131,7 +132,12 @@ def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
     ]
 
     result = fit_mixture_weights(
-        p, candidates, objective=JensenShannon(p_sampling=2_000, q_sampling=2_000, rng=123)
+        p,
+        candidates,
+        objective=JensenShannon(
+            p_sampling=gd.DrawSamples(2_000, rng=123),
+            q_sampling=gd.DrawSamples(2_000, rng=123),
+        ),
     )
 
     assert result.fit_objective == "jensen_shannon"
@@ -141,6 +147,29 @@ def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
 
     default_result = fit_mixture_weights(p, candidates, objective="jensen_shannon")
     assert default_result.fit_objective == "jensen_shannon"
+
+
+def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        GaussianMixture.from_components([Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]])]),
+        GaussianMixture.from_components([Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]])]),
+    ]
+
+    result = fit_mixture_weights(
+        p,
+        candidates,
+        objective=JensenShannon(
+            p_sampling=gd.StratifiedSamples(2_000, rng=123),
+            q_sampling=gd.StratifiedSamples(2_000, rng=123),
+        ),
+    )
+
+    assert result.fit_objective == "jensen_shannon"
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
 
 
 def test_fit_objective_gradients_match_finite_differences() -> None:

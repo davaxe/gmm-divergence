@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import Literal, TypeAlias
 
-if TYPE_CHECKING:
-    import numpy as np
-    import numpy.typing as npt
+from gmm_divergence._core._sampling import DrawSamples, SampleBatchSpec, SampleSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -86,13 +84,13 @@ class ForwardKL:
     negative expected log-density of $q_{\mathbf{w}}$ under samples from $p$.
     """
 
-    sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the number of samples to draw from p."""
-    rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
+    sampling: SampleSpec = field(default_factory=DrawSamples)
+    """Sampling specification for the expectation under p.
 
-    def __post_init__(self) -> None:
-        _validate_sampling(self.sampling, name="sampling")
+    Use `DrawSamples(...)` to draw fresh samples, `UseSamples(...)` for
+    precomputed reference samples, or `StratifiedSamples(...)` when `p` is a
+    Gaussian mixture and fixed per-component counts are desired.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -115,16 +113,15 @@ class ReverseKL:
     candidate mixture $q_i$ for the reverse objective.
     """
 
-    p_sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the number of samples to draw from p."""
-    q_sampling: npt.ArrayLike | int = 10_000
-    """Samples from each q_i, or the number to draw from each q_i."""
-    rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
+    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    """Sampling specification for diagnostics under p."""
+    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    """Sampling specification for fixed batches from each q_i.
 
-    def __post_init__(self) -> None:
-        _validate_sampling(self.p_sampling, name="p_sampling")
-        _validate_sampling(self.q_sampling, name="q_sampling")
+    Use `DrawSamples(...)` to draw one batch per candidate distribution,
+    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
+    `UseSampleBatches(...)` to provide those batches directly.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -146,18 +143,19 @@ class BidirectionalKL:
     objective.
     """
 
-    p_sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the number of samples to draw from p."""
-    q_sampling: npt.ArrayLike | int = 10_000
-    """Samples from each q_i, or the number to draw from each q_i."""
+    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    """Sampling specification for the forward term under p."""
+    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    """Sampling specification for the reverse term under each q_i.
+
+    Use `DrawSamples(...)` to draw one batch per candidate distribution,
+    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
+    `UseSampleBatches(...)` to provide those batches directly.
+    """
     alpha: float = 0.5
     """Weight assigned to the forward KL term."""
-    rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
 
     def __post_init__(self) -> None:
-        _validate_sampling(self.p_sampling, name="p_sampling")
-        _validate_sampling(self.q_sampling, name="q_sampling")
         if not isfinite(self.alpha) or not 0.0 <= self.alpha <= 1.0:
             msg = f"alpha must be in [0, 1], got {self.alpha}."
             raise ValueError(msg)
@@ -187,16 +185,15 @@ class JensenShannon:
     from `p` and each candidate mixture `q_i` during optimization.
     """
 
-    p_sampling: npt.ArrayLike | int = 10_000
-    """Samples from p, or the number of samples to draw from p."""
-    q_sampling: npt.ArrayLike | int = 10_000
-    """Samples from each q_i, or the number to draw from each q_i."""
-    rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
+    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    """Sampling specification for the term under p."""
+    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    """Sampling specification for fixed batches from each q_i.
 
-    def __post_init__(self) -> None:
-        _validate_sampling(self.p_sampling, name="p_sampling")
-        _validate_sampling(self.q_sampling, name="q_sampling")
+    Use `DrawSamples(...)` to draw one batch per candidate distribution,
+    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
+    `UseSampleBatches(...)` to provide those batches directly.
+    """
 
 
 @dataclass(frozen=True, slots=True)
@@ -239,8 +236,3 @@ def _validate_positive_int(value: int, /, *, name: str) -> None:
     if isinstance(value, bool) or value <= 0:
         msg = f"{name} must be a positive integer, got {value}."
         raise ValueError(msg)
-
-
-def _validate_sampling(value: npt.ArrayLike | int, /, *, name: str) -> None:
-    if isinstance(value, int):
-        _validate_positive_int(value, name=name)

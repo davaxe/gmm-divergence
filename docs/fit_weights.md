@@ -197,9 +197,19 @@ q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 fit = gd.fit_mixture_weights(
     p,
     [q1, q2],
-    objective=gd.JensenShannon(p_sampling=10_000, q_sampling=10_000, rng=102),
+    objective=gd.JensenShannon(
+        p_sampling=gd.DrawSamples(10_000, rng=102),
+        q_sampling=gd.DrawSamples(10_000, rng=102),
+    ),
 )
 ```
+
+For fitting objectives, `p_sampling` controls samples from the reference
+distribution and `q_sampling` controls one fixed batch per candidate
+distribution. Use `UseSamples(...)` for precomputed reference samples and
+`UseSampleBatches(...)` for precomputed candidate batches. `StratifiedSamples`
+can be used for either side when the sampled distributions are Gaussian
+mixtures.
 
 
 ## Example
@@ -221,7 +231,10 @@ p = gd.GaussianMixture.from_components(
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 result = gd.fit_mixture_weights(
-    p, [q1, q2], method="simplex_slsqp", objective=gd.ForwardKL(rng=102)
+    p,
+    [q1, q2],
+    method="simplex_slsqp",
+    objective=gd.ForwardKL(sampling=gd.DrawSamples(10_000, rng=102)),
 )
 
 assert result.converged

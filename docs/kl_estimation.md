@@ -84,7 +84,9 @@ q = gd.GaussianMixture.from_components(
     ]
 )
 
-kl_estimate = gd.kl_divergence(p, q, method=gd.MonteCarlo(rng=9126))
+kl_estimate = gd.kl_divergence(
+    p, q, method=gd.MonteCarlo(sampling=gd.DrawSamples(10_000, rng=9126))
+)
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
@@ -106,6 +108,29 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
 !!! note "Other methods"
     The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) for details.
 
+## Sampling configuration
+
+Monte Carlo sampling is configured with explicit sample specifications:
+
+```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components([
+    gd.Gaussian.univariate(mean=0.0, variance=1.0),
+    gd.Gaussian.univariate(mean=1.0, variance=1.0),
+])
+
+drawn = gd.MonteCarlo(sampling=gd.DrawSamples(10_000, rng=9126))
+reused = gd.MonteCarlo(sampling=gd.UseSamples(p.sample(10_000, rng=9126)))
+stratified = gd.MonteCarlo(sampling=gd.StratifiedSamples(10_000, rng=9126))
+```
+
+`DrawSamples` is the default and works for any sampleable distribution.
+`UseSamples` is useful when comparing several methods on exactly the same
+reference samples. `StratifiedSamples` is only valid when the reference
+distribution is a `GaussianMixture`; it allocates fixed sample counts to
+positive-weight components instead of relying on random component counts.
+
 !!! tip "Adaptive Monte Carlo"
     To spend more samples only when the estimate is still noisy, pass a target
     standard error.
@@ -126,13 +151,15 @@ result = gd.kl_divergence(
     p,
     q,
     method=gd.MonteCarlo(
-        sampling=10_000, target_standard_error=1e-3, max_samples=100_000, rng=9126
+        sampling=gd.DrawSamples(10_000, rng=9126),
+        target_standard_error=1e-3,
+        max_samples=100_000,
     ),
 )
 ```
 
-The initial `sampling` count is always evaluated first. Additional batches are
-drawn until the target is met or `max_samples` is reached.
+The initial `DrawSamples` count is always evaluated first. Additional batches
+are drawn until the target is met or `max_samples` is reached.
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

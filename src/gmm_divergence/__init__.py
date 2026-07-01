@@ -9,6 +9,14 @@ The top-level package provides two complementary access patterns:
 from importlib.metadata import PackageNotFoundError, version
 
 from gmm_divergence import covariance, distributions, divergence, fitting
+from gmm_divergence._core._sampling import (
+    DrawSamples,
+    SampleBatchSpec,
+    SampleSpec,
+    StratifiedSamples,
+    UseSampleBatches,
+    UseSamples,
+)
 from gmm_divergence.covariance import (
     DiagonalLoading,
     DiagonalShrinkage,
@@ -72,6 +80,7 @@ __all__ = [
     "DiagonalLoading",
     "DiagonalShrinkage",
     "DivergenceResult",
+    "DrawSamples",
     "EigenvalueClipping",
     "FitObjective",
     "FitParameterization",
@@ -93,11 +102,16 @@ __all__ = [
     "RelativeToTrace",
     "ResidualVariance",
     "ReverseKL",
+    "SampleBatchSpec",
+    "SampleSpec",
     "SimplexSLSQP",
     "SoftmaxLBFGSB",
+    "StratifiedSamples",
     "TargetConditionNumber",
     "TopKSelector",
     "Unscented",
+    "UseSampleBatches",
+    "UseSamples",
     "Variational",
     "WeightFitMethod",
     "WeightFitObjective",

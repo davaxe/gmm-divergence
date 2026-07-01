@@ -8,7 +8,13 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
-from gmm_divergence._core._sampling import resolve_sample_batches, resolve_samples
+from gmm_divergence._core._sampling import (
+    DrawSamples,
+    SampleSpec,
+    StratifiedSamples,
+    resolve_sample_batches,
+    resolve_samples,
+)
 from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.divergence import MonteCarlo, kl_divergence
@@ -79,8 +85,16 @@ def _objective_alpha(objective: FitObjectiveConfig) -> float | None:
 
 
 def _objective_rng(objective: FitObjectiveConfig) -> np.random.Generator | int | None:
-    if isinstance(objective, (ForwardKL, ReverseKL, BidirectionalKL, JensenShannon)):
-        return objective.rng
+    if isinstance(objective, ForwardKL):
+        return _sample_spec_rng(objective.sampling)
+    if isinstance(objective, (ReverseKL, BidirectionalKL, JensenShannon)):
+        return _sample_spec_rng(objective.p_sampling)
+    return None
+
+
+def _sample_spec_rng(spec: SampleSpec) -> np.random.Generator | int | None:
+    if isinstance(spec, (DrawSamples, StratifiedSamples)):
+        return spec.rng
     return None
 
 
@@ -90,16 +104,16 @@ def _resolve_objective_samples(
     objective: FitObjectiveConfig,
 ) -> tuple[FloatArray, FloatArray | None]:
     match objective:
-        case ForwardKL(sampling=sampling, rng=rng):
-            return resolve_samples(p, sampling, rng), None
-        case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
-        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
-        case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
+        case ForwardKL(sampling=sampling):
+            return resolve_samples(p, sampling), None
+        case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+        case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
         case MomentMatching():
-            return resolve_samples(p, 10_000, None), None
+            return resolve_samples(p, DrawSamples(10_000)), None
 
 
 def fit_mixture_weights(
@@ -170,6 +184,7 @@ def fit_mixture_weights(
         options={"maxiter": optimizer.max_iterations},
     )
     rng = _objective_rng(objective)
+    diagnostic_sampling = DrawSamples(resolved_num_p_samples, rng=rng)
     weights: Weights = weights_from_result(result.x)
     fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
     return KLFitResult(
@@ -177,10 +192,10 @@ def fit_mixture_weights(
         fit_objective=_objective_name(objective),
         objective_value=float(result.fun),
         forward_kl=kl_divergence(
-            p, fitted_mixture.mixture, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
+            p, fitted_mixture.mixture, method=MonteCarlo(sampling=diagnostic_sampling)
         ),
         reverse_kl=kl_divergence(
-            fitted_mixture.mixture, p, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
+            fitted_mixture.mixture, p, method=MonteCarlo(sampling=diagnostic_sampling)
         ),
         scipy_result=result,
         fitted_mixture=fitted_mixture,

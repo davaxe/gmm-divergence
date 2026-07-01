@@ -105,18 +105,26 @@ def fit_weight_objectives(
     fits: list[ObjectiveFit] = []
     for objective in objectives:
         if objective == "forward":
-            fit_objective = gd.ForwardKL(sampling=samples, rng=rng)
+            fit_objective = gd.ForwardKL(sampling=gd.DrawSamples(samples, rng=rng))
 
         elif objective == "reverse":
-            fit_objective = gd.ReverseKL(p_sampling=samples, q_sampling=samples, rng=rng)
+            fit_objective = gd.ReverseKL(
+                p_sampling=gd.DrawSamples(samples, rng=rng),
+                q_sampling=gd.DrawSamples(samples, rng=rng),
+            )
 
         elif objective == "bidirectional":
             fit_objective = gd.BidirectionalKL(
-                p_sampling=samples, q_sampling=samples, alpha=0.5, rng=rng
+                p_sampling=gd.DrawSamples(samples, rng=rng),
+                q_sampling=gd.DrawSamples(samples, rng=rng),
+                alpha=0.5,
             )
 
         elif objective == "jensen_shannon":
-            fit_objective = gd.JensenShannon(p_sampling=samples, q_sampling=samples, rng=rng)
+            fit_objective = gd.JensenShannon(
+                p_sampling=gd.DrawSamples(samples, rng=rng),
+                q_sampling=gd.DrawSamples(samples, rng=rng),
+            )
 
         else:
             msg = f"Unsupported objective: {objective}"

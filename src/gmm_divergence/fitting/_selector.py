@@ -11,6 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import TypeVar, override
 
+from gmm_divergence._core._sampling import DrawSamples
 from gmm_divergence.distributions._base import Distribution
 from gmm_divergence.divergence._api import kl_divergence
 from gmm_divergence.divergence._options import MonteCarlo
@@ -45,7 +46,7 @@ class CandidateSelector(Protocol, Generic[DistributionT]):
 class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     direction: Literal["forward", "reverse", "bidirectional"] = "forward"
     alpha: float = 0.5
-    kl_method: KLMethod = field(default=MonteCarlo(rng=0))
+    kl_method: KLMethod = field(default=MonteCarlo(sampling=DrawSamples(rng=0)))
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)

@@ -53,7 +53,7 @@ def main() -> None:
         target,
         components,
         method="softmax_lbfgsb",
-        objective=gd.ForwardKL(rng=0),
+        objective=gd.ForwardKL(sampling=gd.DrawSamples(10_000, rng=0)),
         candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
     )
     print(f"Fitted forward KL: {res.forward_kl.value}")

@@ -10,6 +10,7 @@ from gmm_divergence import (
     GaussianMixture,
     KLFitResult,
     MonteCarlo,
+    UseSamples,
     fit_mixture_weights,
     kl_divergence,
 )
@@ -49,7 +50,8 @@ def test_benchmark_monte_carlo_kl(benchmark: BenchmarkFixture) -> None:
     samples = p.sample(750, rng=321)
 
     result = cast(
-        "DivergenceResult", benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=samples))
+        "DivergenceResult",
+        benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=UseSamples(samples))),
     )
 
     assert result.num_samples == 750

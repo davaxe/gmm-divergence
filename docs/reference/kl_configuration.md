@@ -6,6 +6,14 @@ icon: lucide/settings-2
 
 Symbols are grouped by topic here, but are imported from `gmm_divergence`.
 
+## ::: gmm_divergence.DrawSamples
+
+## ::: gmm_divergence.StratifiedSamples
+
+## ::: gmm_divergence.UseSamples
+
+## ::: gmm_divergence.UseSampleBatches
+
 ## ::: gmm_divergence.MonteCarlo
 
 ## ::: gmm_divergence.Unscented
