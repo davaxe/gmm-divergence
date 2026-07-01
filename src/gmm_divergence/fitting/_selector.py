@@ -11,7 +11,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import TypeVar, override
 
-from gmm_divergence._core._sampling import DrawSamples
+from gmm_divergence._core._sampling import Draw
 from gmm_divergence.distributions._base import Distribution
 from gmm_divergence.divergence._api import kl_divergence
 from gmm_divergence.divergence._options import MonteCarlo
@@ -46,7 +46,7 @@ class CandidateSelector(Protocol, Generic[DistributionT]):
 class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     direction: Literal["forward", "reverse", "bidirectional"] = "forward"
     alpha: float = 0.5
-    kl_method: KLMethod = field(default=MonteCarlo(sampling=DrawSamples(rng=0)))
+    kl_method: KLMethod = field(default=MonteCarlo(sampling=Draw(rng=0)))
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
@@ -83,7 +83,7 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
 
 
 @dataclass(frozen=True, slots=True)
-class KLThresholdSelector(_KLSelectorBase[DistributionT]):
+class ThresholdSelector(_KLSelectorBase[DistributionT]):
     """Select candidates whose KL score is at or below a fixed threshold."""
 
     threshold: float
@@ -101,7 +101,7 @@ class KLThresholdSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class KLToleranceSelector(_KLSelectorBase[DistributionT]):
+class ToleranceSelector(_KLSelectorBase[DistributionT]):
     """Select candidates within a tolerance of the best KL score.
 
     In absolute mode, candidates with `KL <= min(KL) + delta` are kept. In
@@ -150,7 +150,7 @@ class TopKSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class KLQuantileSelector(_KLSelectorBase[DistributionT]):
+class QuantileSelector(_KLSelectorBase[DistributionT]):
     quantile: float
 
     def __post_init__(self) -> None:

@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import Literal, TypeAlias
 
-from gmm_divergence._core._sampling import DrawSamples, SampleBatchSpec, SampleSpec
+from gmm_divergence._core._sampling import Draw, SampleBatchSpec, SampleSpec
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,11 +84,11 @@ class ForwardKL:
     negative expected log-density of $q_{\mathbf{w}}$ under samples from $p$.
     """
 
-    sampling: SampleSpec = field(default_factory=DrawSamples)
+    sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the expectation under p.
 
-    Use `DrawSamples(...)` to draw fresh samples, `UseSamples(...)` for
-    precomputed reference samples, or `StratifiedSamples(...)` when `p` is a
+    Use `sampling.Draw(...)` to draw fresh samples, `sampling.Samples(...)` for
+    precomputed reference samples, or `sampling.Stratified(...)` when `p` is a
     Gaussian mixture and fixed per-component counts are desired.
     """
 
@@ -113,14 +113,14 @@ class ReverseKL:
     candidate mixture $q_i$ for the reverse objective.
     """
 
-    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for diagnostics under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    q_sampling: SampleBatchSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
-    Use `DrawSamples(...)` to draw one batch per candidate distribution,
-    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
-    `UseSampleBatches(...)` to provide those batches directly.
+    Use `sampling.Draw(...)` to draw one batch per candidate distribution,
+    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.SampleBatches(...)` to provide those batches directly.
     """
 
 
@@ -143,14 +143,14 @@ class BidirectionalKL:
     objective.
     """
 
-    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the forward term under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    q_sampling: SampleBatchSpec = field(default_factory=Draw)
     """Sampling specification for the reverse term under each q_i.
 
-    Use `DrawSamples(...)` to draw one batch per candidate distribution,
-    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
-    `UseSampleBatches(...)` to provide those batches directly.
+    Use `sampling.Draw(...)` to draw one batch per candidate distribution,
+    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.SampleBatches(...)` to provide those batches directly.
     """
     alpha: float = 0.5
     """Weight assigned to the forward KL term."""
@@ -185,14 +185,14 @@ class JensenShannon:
     from `p` and each candidate mixture `q_i` during optimization.
     """
 
-    p_sampling: SampleSpec = field(default_factory=DrawSamples)
+    p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the term under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=DrawSamples)
+    q_sampling: SampleBatchSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
-    Use `DrawSamples(...)` to draw one batch per candidate distribution,
-    `StratifiedSamples(...)` when every candidate is a Gaussian mixture, or
-    `UseSampleBatches(...)` to provide those batches directly.
+    Use `sampling.Draw(...)` to draw one batch per candidate distribution,
+    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.SampleBatches(...)` to provide those batches directly.
     """
 
 

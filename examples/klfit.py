@@ -53,8 +53,8 @@ def main() -> None:
         target,
         components,
         method="softmax_lbfgsb",
-        objective=gd.ForwardKL(sampling=gd.DrawSamples(10_000, rng=0)),
-        candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
+        objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=0)),
+        candidate_selector=gd.fitting.ToleranceSelector(delta=15, mode="relative"),
     )
     print(f"Fitted forward KL: {res.forward_kl.value}")
     print(f"Fitted weights for target '{args.target}':")

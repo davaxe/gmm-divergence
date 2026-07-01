@@ -6,9 +6,9 @@ import numpy as np
 import numpy.typing as npt
 
 from gmm_divergence._core._sampling import (
-    DrawSamples,
+    Draw,
     SampleSpec,
-    StratifiedSamples,
+    Stratified,
     resolve_samples,
     stratified_mixture_samples,
 )
@@ -53,11 +53,11 @@ def kl_monte_carlo(
         Approximating distribution evaluated at the sampled points.
     sampling : SampleSpec, optional
         Sampling specification for the expectation under `p`, such as
-        `DrawSamples(...)`, `UseSamples(...)`, or `StratifiedSamples(...)`.
+        `sampling.Draw(...)`, `sampling.Samples(...)`, or `sampling.Stratified(...)`.
     target_standard_error : float, optional
         If provided, draw additional batches until the Monte Carlo standard
         error is at or below this target, or until `max_samples` is reached.
-        Adaptive sampling requires `DrawSamples`.
+        Adaptive sampling requires `sampling.Draw`.
     max_samples : int, optional
         Maximum sample count for adaptive sampling. Defaults to ten times the
         initial sample count.
@@ -78,7 +78,7 @@ def kl_monte_carlo(
         IEEE, 2007.
     """
     if sampling is None:
-        sampling = DrawSamples()
+        sampling = Draw()
 
     if target_standard_error is not None:
         return _kl_monte_carlo_adaptive(
@@ -90,7 +90,7 @@ def kl_monte_carlo(
             batch_size=batch_size,
         )
 
-    if isinstance(sampling, StratifiedSamples):
+    if isinstance(sampling, Stratified):
         return _kl_monte_carlo_stratified(p, q, sampling=sampling)
 
     samples = resolve_samples(p, sampling)
@@ -108,8 +108,8 @@ def _kl_monte_carlo_adaptive(
     max_samples: int | None,
     batch_size: int | None,
 ) -> DivergenceResult:
-    if not isinstance(sampling, DrawSamples):
-        msg = "Adaptive Monte Carlo requires sampling=DrawSamples(...)."
+    if not isinstance(sampling, Draw):
+        msg = "Adaptive Monte Carlo requires sampling=sampling.Draw(...)."
         raise TypeError(msg)
     if target_standard_error <= 0.0 or not np.isfinite(target_standard_error):
         msg = f"target_standard_error must be a positive finite value, got {target_standard_error}."
@@ -144,13 +144,13 @@ def _kl_monte_carlo_adaptive(
 
 
 def _kl_monte_carlo_stratified(
-    p: Distribution, q: Distribution, /, *, sampling: StratifiedSamples
+    p: Distribution, q: Distribution, /, *, sampling: Stratified
 ) -> DivergenceResult:
     result = stratified_mixture_samples(p, sampling)
     pointwise_kl = _pointwise_kl(p, q, result.samples)
 
     if not isinstance(p, GaussianMixture):
-        msg = "StratifiedSamples requires a GaussianMixture distribution."
+        msg = "sampling.Stratified requires a GaussianMixture distribution."
         raise TypeError(msg)
 
     weights = np.asarray(p.weights, dtype=np.float64)

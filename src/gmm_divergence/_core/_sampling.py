@@ -18,7 +18,7 @@ if TYPE_CHECKING:
 
 
 @dataclass(frozen=True, slots=True)
-class DrawSamples:
+class Draw:
     """Draw fresh samples from the distribution being estimated.
 
     Use this when the estimator or fitting objective should own sampling.
@@ -36,7 +36,7 @@ class DrawSamples:
 
 
 @dataclass(frozen=True, slots=True)
-class StratifiedSamples:
+class Stratified:
     """Draw stratified samples from a Gaussian mixture.
 
     Component sample counts are allocated deterministically from the mixture
@@ -56,7 +56,7 @@ class StratifiedSamples:
 
 
 @dataclass(frozen=True, slots=True)
-class UseSamples:
+class Samples:
     """Use precomputed samples from a single reference distribution."""
 
     samples: npt.ArrayLike
@@ -64,25 +64,25 @@ class UseSamples:
 
 
 @dataclass(frozen=True, slots=True)
-class UseSampleBatches:
+class SampleBatches:
     """Use precomputed sample batches for a sequence of candidate distributions."""
 
     samples: npt.ArrayLike
     """Sample array with shape `(n_distributions, n_samples, n_features)`."""
 
 
-SampleSpec: TypeAlias = DrawSamples | StratifiedSamples | UseSamples
-SampleBatchSpec: TypeAlias = DrawSamples | StratifiedSamples | UseSampleBatches
+SampleSpec: TypeAlias = Draw | Stratified | Samples
+SampleBatchSpec: TypeAlias = Draw | Stratified | SampleBatches
 
 
 def resolve_samples(distribution: Distribution, spec: SampleSpec) -> FloatArray:
     """Return samples described by a single-distribution sample specification."""
     match spec:
-        case DrawSamples(n_samples=n_samples, rng=rng):
+        case Draw(n_samples=n_samples, rng=rng):
             return distribution.sample(n_samples=n_samples, rng=rng)
-        case StratifiedSamples():
+        case Stratified():
             return stratified_mixture_samples(distribution, spec).samples
-        case UseSamples(samples=samples):
+        case Samples(samples=samples):
             return as_points(samples, n_features=distribution.dim, name="samples")
 
 
@@ -91,13 +91,13 @@ def resolve_sample_batches(
 ) -> FloatArray:
     """Return sample batches described by a sample-batch specification."""
     match spec:
-        case DrawSamples(n_samples=n_samples, rng=rng):
+        case Draw(n_samples=n_samples, rng=rng):
             rng = np.random.default_rng(rng)
             return np.asarray(
                 [distribution.sample(n_samples, rng=rng) for distribution in distributions],
                 dtype=np.float64,
             )
-        case StratifiedSamples():
+        case Stratified():
             return np.asarray(
                 [
                     stratified_mixture_samples(distribution, spec).samples
@@ -105,7 +105,7 @@ def resolve_sample_batches(
                 ],
                 dtype=np.float64,
             )
-        case UseSampleBatches(samples=samples):
+        case SampleBatches(samples=samples):
             expected_dim = distributions[0].dim if distributions else 0
             return as_sample_batches(
                 samples, n_distributions=len(distributions), n_features=expected_dim, name="samples"
@@ -125,12 +125,12 @@ class StratifiedSampleResult:
 
 
 def stratified_mixture_samples(
-    distribution: Distribution, spec: StratifiedSamples
+    distribution: Distribution, spec: Stratified
 ) -> StratifiedSampleResult:
     """Draw stratified samples from a Gaussian mixture."""
     if not isinstance(distribution, GaussianMixture):
         msg = (
-            "StratifiedSamples requires a GaussianMixture distribution, "
+            "sampling.Stratified requires a GaussianMixture distribution, "
             f"got {type(distribution).__name__}."
         )
         raise TypeError(msg)
@@ -178,7 +178,7 @@ def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.N
         raise ValueError(msg)
     if n_samples < n_positive:
         msg = (
-            "StratifiedSamples requires at least one sample per positive-weight component, "
+            "sampling.Stratified requires at least one sample per positive-weight component, "
             f"got n_samples={n_samples} for {n_positive} positive components."
         )
         raise ValueError(msg)

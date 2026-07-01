@@ -6,16 +6,13 @@ import numpy as np
 import pytest
 
 import gmm_divergence as gd
-from gmm_divergence import (
+from gmm_divergence import Gaussian, GaussianMixture, fit_mixture_weights, prune_mixture
+from gmm_divergence.fitting import (
     BidirectionalKL,
-    Gaussian,
-    GaussianMixture,
     JensenShannon,
     MomentMatching,
     SimplexSLSQP,
     SoftmaxLBFGSB,
-    fit_mixture_weights,
-    prune_mixture,
 )
 from gmm_divergence.fitting._objectives import (
     forward_kl,
@@ -135,8 +132,7 @@ def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
         p,
         candidates,
         objective=JensenShannon(
-            p_sampling=gd.DrawSamples(2_000, rng=123),
-            q_sampling=gd.DrawSamples(2_000, rng=123),
+            p_sampling=gd.sampling.Draw(2_000, rng=123), q_sampling=gd.sampling.Draw(2_000, rng=123)
         ),
     )
 
@@ -162,8 +158,8 @@ def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
         p,
         candidates,
         objective=JensenShannon(
-            p_sampling=gd.StratifiedSamples(2_000, rng=123),
-            q_sampling=gd.StratifiedSamples(2_000, rng=123),
+            p_sampling=gd.sampling.Stratified(2_000, rng=123),
+            q_sampling=gd.sampling.Stratified(2_000, rng=123),
         ),
     )
 

@@ -4,7 +4,7 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import Literal, TypeAlias
 
-from gmm_divergence._core._sampling import DrawSamples, SampleSpec
+from gmm_divergence._core._sampling import Draw, SampleSpec
 
 Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 
@@ -28,13 +28,13 @@ class MonteCarlo:
     This is the most general estimator: it can be used whenever `p` can be
     sampled and both `p` and `q` can evaluate log densities.
 
-    Sampling is configured explicitly with `DrawSamples(...)`,
-    `UseSamples(...)`, or `StratifiedSamples(...)`. Adaptive standard-error
-    control requires `DrawSamples(...)` because it must draw additional
+    Sampling is configured explicitly with `sampling.Draw(...)`,
+    `sampling.Samples(...)`, or `sampling.Stratified(...)`. Adaptive standard-error
+    control requires `sampling.Draw(...)` because it must draw additional
     batches.
     """
 
-    sampling: SampleSpec = field(default_factory=DrawSamples)
+    sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification used to estimate the expectation under p."""
     target_standard_error: float | None = None
     """Optional standard-error target for adaptive sampling."""
@@ -50,10 +50,10 @@ class MonteCarlo:
     """
 
     def __post_init__(self) -> None:
-        if not isinstance(self.sampling, (DrawSamples,)):
+        if not isinstance(self.sampling, (Draw,)):
             if self.target_standard_error is None:
                 return
-            msg = "target_standard_error requires sampling=DrawSamples(...)."
+            msg = "target_standard_error requires sampling=sampling.Draw(...)."
             raise ValueError(msg)
 
         sampling_count = self.sampling.n_samples
@@ -90,8 +90,8 @@ class Unscented:
 
 
 @dataclass(frozen=True, slots=True)
-class GaussianApproximation:
-    r"""Gaussian-approximation KL estimator configuration.
+class MomentMatchedGaussian:
+    r"""Moment-matched Gaussian KL estimator configuration.
 
     Approximates one or both inputs with Gaussian summaries and then computes a
     Gaussian KL surrogate for
@@ -155,7 +155,7 @@ EstimationMethod: TypeAlias = Literal[
     "monte_carlo", "unscented", "gaussian_approximation", "closed_form", "variational"
 ]
 KLMethod: TypeAlias = (
-    EstimationMethod | MonteCarlo | Unscented | GaussianApproximation | ClosedForm | Variational
+    EstimationMethod | MonteCarlo | Unscented | MomentMatchedGaussian | ClosedForm | Variational
 )
 
 

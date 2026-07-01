@@ -197,24 +197,23 @@ q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 fit = gd.fit_mixture_weights(
     p,
     [q1, q2],
-    objective=gd.JensenShannon(
-        p_sampling=gd.DrawSamples(10_000, rng=102),
-        q_sampling=gd.DrawSamples(10_000, rng=102),
+    objective=gd.fitting.JensenShannon(
+        p_sampling=gd.sampling.Draw(10_000, rng=102), q_sampling=gd.sampling.Draw(10_000, rng=102)
     ),
 )
 ```
 
 For fitting objectives, `p_sampling` controls samples from the reference
 distribution and `q_sampling` controls one fixed batch per candidate
-distribution. Use `UseSamples(...)` for precomputed reference samples and
-`UseSampleBatches(...)` for precomputed candidate batches. `StratifiedSamples`
-can be used for either side when the sampled distributions are Gaussian
+distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples and
+`gd.sampling.SampleBatches(...)` for precomputed candidate batches.
+`gd.sampling.Stratified(...)` can be used for either side when the sampled distributions are Gaussian
 mixtures.
 
 
 ## Example
 
-The [`fit_mixture_weights`](../reference/fit_weights.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_mixture_weights`](../reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -234,7 +233,7 @@ result = gd.fit_mixture_weights(
     p,
     [q1, q2],
     method="simplex_slsqp",
-    objective=gd.ForwardKL(sampling=gd.DrawSamples(10_000, rng=102)),
+    objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102)),
 )
 
 assert result.converged
@@ -251,5 +250,5 @@ the optimized objective depends on the selected fit direction.
     The `fit_mixture_weights` function also supports fitting mixture weights
     using the reverse KL divergence and the bidirectional KL divergence by
     setting the `objective` parameter. See the [API
-    reference](../reference/fit_weights.md#gmm_divergence.fit_mixture_weights) for
+    reference](../reference/root.md#gmm_divergence.fit_mixture_weights) for
     details.

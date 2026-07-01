@@ -51,10 +51,15 @@ q = gd.GaussianMixture.from_components([
 ])
 
 result = gd.kl_divergence(
-    p, q, method=gd.MonteCarlo(sampling=gd.DrawSamples(50_000, rng=0))
+    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
 )
 print(result.value, result.monte_carlo_stats.standard_error)
 ```
+
+The top-level module keeps the common distribution classes and primary helper
+functions. Configuration objects are grouped by domain, for example
+`gd.divergence.MonteCarlo`, `gd.sampling.Draw`, `gd.fitting.ForwardKL`, and
+`gd.covariance.DiagonalLoading`.
 
 ## Fitting Mixture Weights
 
@@ -64,6 +69,8 @@ candidates = [
     gd.Gaussian.univariate(mean=1.5, variance=1.0),
 ]
 
-fit = gd.fit_mixture_weights(p, candidates, objective=gd.MomentMatching(fit_second_moments=True))
+fit = gd.fit_mixture_weights(
+    p, candidates, objective=gd.fitting.MomentMatching(fit_second_moments=True)
+)
 print(fit.weights)
 ```

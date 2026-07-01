@@ -65,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-[`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) function. For example:
+[`kl_divergence`](../reference/root.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-9"
 import gmm_divergence as gd
@@ -85,7 +85,7 @@ q = gd.GaussianMixture.from_components(
 )
 
 kl_estimate = gd.kl_divergence(
-    p, q, method=gd.MonteCarlo(sampling=gd.DrawSamples(10_000, rng=9126))
+    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
 )
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
@@ -106,7 +106,8 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
 
     
 !!! note "Other methods"
-    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) for details.
+    The `kl_divergence` function also supports other estimation methods. See
+    the [divergence API reference](../reference/divergence.md) for details.
 
 ## Sampling configuration
 
@@ -120,14 +121,14 @@ p = gd.GaussianMixture.from_components([
     gd.Gaussian.univariate(mean=1.0, variance=1.0),
 ])
 
-drawn = gd.MonteCarlo(sampling=gd.DrawSamples(10_000, rng=9126))
-reused = gd.MonteCarlo(sampling=gd.UseSamples(p.sample(10_000, rng=9126)))
-stratified = gd.MonteCarlo(sampling=gd.StratifiedSamples(10_000, rng=9126))
+drawn = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+reused = gd.divergence.MonteCarlo(sampling=gd.sampling.Samples(p.sample(10_000, rng=9126)))
+stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(10_000, rng=9126))
 ```
 
-`DrawSamples` is the default and works for any sampleable distribution.
-`UseSamples` is useful when comparing several methods on exactly the same
-reference samples. `StratifiedSamples` is only valid when the reference
+`gd.sampling.Draw` is the default and works for any sampleable distribution.
+`gd.sampling.Samples` is useful when comparing several methods on exactly the same
+reference samples. `gd.sampling.Stratified` is only valid when the reference
 distribution is a `GaussianMixture`; it allocates fixed sample counts to
 positive-weight components instead of relying on random component counts.
 
@@ -150,15 +151,13 @@ q = gd.GaussianMixture.from_components([
 result = gd.kl_divergence(
     p,
     q,
-    method=gd.MonteCarlo(
-        sampling=gd.DrawSamples(10_000, rng=9126),
-        target_standard_error=1e-3,
-        max_samples=100_000,
+    method=gd.divergence.MonteCarlo(
+        sampling=gd.sampling.Draw(10_000, rng=9126), target_standard_error=1e-3, max_samples=100_000
     ),
 )
 ```
 
-The initial `DrawSamples` count is always evaluated first. Additional batches
+The initial `gd.sampling.Draw` count is always evaluated first. Additional batches
 are drawn until the target is met or `max_samples` is reached.
 
 [^hershey2007approximating]:

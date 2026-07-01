@@ -9,9 +9,9 @@ import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
 from gmm_divergence._core._sampling import (
-    DrawSamples,
+    Draw,
     SampleSpec,
-    StratifiedSamples,
+    Stratified,
     resolve_sample_batches,
     resolve_samples,
 )
@@ -93,7 +93,7 @@ def _objective_rng(objective: FitObjectiveConfig) -> np.random.Generator | int |
 
 
 def _sample_spec_rng(spec: SampleSpec) -> np.random.Generator | int | None:
-    if isinstance(spec, (DrawSamples, StratifiedSamples)):
+    if isinstance(spec, (Draw, Stratified)):
         return spec.rng
     return None
 
@@ -113,7 +113,7 @@ def _resolve_objective_samples(
         case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
             return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
         case MomentMatching():
-            return resolve_samples(p, DrawSamples(10_000)), None
+            return resolve_samples(p, Draw(10_000)), None
 
 
 def fit_mixture_weights(
@@ -184,7 +184,7 @@ def fit_mixture_weights(
         options={"maxiter": optimizer.max_iterations},
     )
     rng = _objective_rng(objective)
-    diagnostic_sampling = DrawSamples(resolved_num_p_samples, rng=rng)
+    diagnostic_sampling = Draw(resolved_num_p_samples, rng=rng)
     weights: Weights = weights_from_result(result.x)
     fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
     return KLFitResult(

@@ -15,11 +15,12 @@ if TYPE_CHECKING:
     from matplotlib.figure import Figure
 
     from gmm_divergence._core._types import FloatArray
+    from gmm_divergence.fitting import FitObjective
 
 
 @dataclass(frozen=True)
 class ObjectiveFit:
-    objective: gd.FitObjective
+    objective: FitObjective
     result: gd.KLFitResult
 
     @property
@@ -95,35 +96,30 @@ def grid_spacing(x: FloatArray, y: FloatArray) -> tuple[float, float]:
 def fit_weight_objectives(
     p: gd.Gaussian, q_i: list[gd.Gaussian], *, rng: int = 124, samples: int = 20_000
 ) -> list[ObjectiveFit]:
-    objectives: tuple[gd.FitObjective, ...] = (
-        "forward",
-        "reverse",
-        "bidirectional",
-        "jensen_shannon",
-    )
+    objectives: tuple[FitObjective, ...] = ("forward", "reverse", "bidirectional", "jensen_shannon")
 
     fits: list[ObjectiveFit] = []
     for objective in objectives:
         if objective == "forward":
-            fit_objective = gd.ForwardKL(sampling=gd.DrawSamples(samples, rng=rng))
+            fit_objective = gd.fitting.ForwardKL(sampling=gd.sampling.Draw(samples, rng=rng))
 
         elif objective == "reverse":
-            fit_objective = gd.ReverseKL(
-                p_sampling=gd.DrawSamples(samples, rng=rng),
-                q_sampling=gd.DrawSamples(samples, rng=rng),
+            fit_objective = gd.fitting.ReverseKL(
+                p_sampling=gd.sampling.Draw(samples, rng=rng),
+                q_sampling=gd.sampling.Draw(samples, rng=rng),
             )
 
         elif objective == "bidirectional":
-            fit_objective = gd.BidirectionalKL(
-                p_sampling=gd.DrawSamples(samples, rng=rng),
-                q_sampling=gd.DrawSamples(samples, rng=rng),
+            fit_objective = gd.fitting.BidirectionalKL(
+                p_sampling=gd.sampling.Draw(samples, rng=rng),
+                q_sampling=gd.sampling.Draw(samples, rng=rng),
                 alpha=0.5,
             )
 
         elif objective == "jensen_shannon":
-            fit_objective = gd.JensenShannon(
-                p_sampling=gd.DrawSamples(samples, rng=rng),
-                q_sampling=gd.DrawSamples(samples, rng=rng),
+            fit_objective = gd.fitting.JensenShannon(
+                p_sampling=gd.sampling.Draw(samples, rng=rng),
+                q_sampling=gd.sampling.Draw(samples, rng=rng),
             )
 
         else:
@@ -137,7 +133,7 @@ def fit_weight_objectives(
     return fits
 
 
-def objective_display_name(objective: gd.FitObjective) -> str:
+def objective_display_name(objective: FitObjective) -> str:
     return objective.replace("_", " ").title()
 
 

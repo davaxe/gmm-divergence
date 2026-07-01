@@ -27,11 +27,11 @@ if TYPE_CHECKING:
 def test_regularize_covariance_supports_string_methods_and_top_level_exports() -> None:
     covariance = [[1.0, 0.2], [0.2, 0.5]]
 
-    regularized = gd.regularize_covariance(covariance)
+    regularized = gd.covariance.regularize_covariance(covariance)
 
     assert isinstance(gd.covariance, object)
-    assert isinstance(gd.DiagonalLoading(), DiagonalLoading)
-    assert isinstance(gd.RelativeToTrace(), RelativeToTrace)
+    assert isinstance(gd.covariance.DiagonalLoading(), DiagonalLoading)
+    assert isinstance(gd.covariance.RelativeToTrace(), RelativeToTrace)
     assert regularized.shape == (2, 2)
     assert regularized.dtype == np.float64
     assert regularized[0, 0] == pytest.approx(1.0 + 1e-6)
@@ -41,7 +41,7 @@ def test_regularize_covariance_supports_string_methods_and_top_level_exports() -
 def test_estimate_epsilon_relative_trace_matches_mean_variance_scale() -> None:
     covariance = np.diag([2.0, 8.0]).astype(np.float64)
 
-    eps = gd.estimate_epsilon(covariance, method=gd.RelativeToTrace(c=0.1))
+    eps = gd.covariance.estimate_epsilon(covariance, method=gd.covariance.RelativeToTrace(c=0.1))
 
     assert eps == pytest.approx(0.5)
 
