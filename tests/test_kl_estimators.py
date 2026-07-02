@@ -12,7 +12,7 @@ from gmm_divergence import Gaussian, GaussianMixture, kl_divergence
 from gmm_divergence.divergence import MonteCarlo
 
 if TYPE_CHECKING:
-    from gmm_divergence.divergence import KLMethod
+    from gmm_divergence.divergence import DivergenceSpec, KLMethod
 
 EstimatorString: TypeAlias = Literal[
     "closed_form", "unscented", "variational", "gaussian_approximation"
@@ -365,6 +365,51 @@ def test_jensen_shannon_divergence_is_zero_for_identical_mixtures() -> None:
     assert result.value == pytest.approx(0.0, abs=1e-14)
 
 
+def test_estimate_divergence_dispatches_existing_divergence_helpers() -> None:
+    p = Gaussian.from_arrays(mean=[0.5], covariance=[[1.2]])
+    q = Gaussian.from_arrays(mean=[-0.25], covariance=[[0.9]])
+
+    kl = gd.estimate_divergence(p, q, divergence="kl")
+    configured_kl = gd.estimate_divergence(
+        p, q, divergence=gd.divergence.KLDivergence(method="closed_form")
+    )
+    symmetric = gd.estimate_divergence(
+        p, q, divergence=gd.divergence.SymmetricKLDivergence(method="closed_form")
+    )
+
+    assert kl.value == pytest.approx(gd.kl_divergence(p, q, method="closed_form").value)
+    assert configured_kl.value == pytest.approx(kl.value)
+    assert symmetric.value == pytest.approx(
+        gd.symmetric_kl_divergence(p, q, method="closed_form").value
+    )
+
+
+def test_estimate_divergence_dispatches_existing_jensen_shannon_helper() -> None:
+    mixture = GaussianMixture.from_arrays(
+        weights=[0.35, 0.65], means=[[-1.0], [1.25]], covariances=[[[0.35]], [[0.8]]]
+    )
+    samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
+    method = MonteCarlo(sampling=gd.sampling.Samples(samples))
+
+    result = gd.estimate_divergence(
+        mixture, mixture, divergence=gd.divergence.JensenShannonDivergence(method=method)
+    )
+
+    assert result.method == "jensen_shannon"
+    assert result.value == pytest.approx(
+        gd.jensen_shannon_divergence(mixture, mixture, method=method).value
+    )
+
+
+def test_estimate_divergence_rejects_unknown_divergence() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+
+    with pytest.raises(ValueError, match="Unknown divergence method"):
+        _ = gd.estimate_divergence(
+            p, p, divergence=cast("DivergenceSpec", cast("object", "not-a-divergence"))
+        )
+
+
 def test_public_exports_include_curated_root_api_and_namespaces() -> None:
     assert gd.sampling.Draw(n_samples=1).n_samples == 1
     assert gd.sampling.Stratified(n_samples=1).n_samples == 1
@@ -375,5 +420,9 @@ def test_public_exports_include_curated_root_api_and_namespaces() -> None:
     assert gd.component_kl_matrix is not None
     assert gd.symmetric_kl_divergence is not None
     assert gd.jensen_shannon_divergence is not None
+    assert gd.estimate_divergence is not None
+    assert gd.divergence.KLDivergence(method="closed_form").method == "closed_form"
     assert gd.fitting.TopKSelector(k=1).k == 1
     assert gd.fitting.ToleranceSelector(delta=0.1).delta == pytest.approx(0.1)
+    assert gd.fitting.score_candidates is not None
+    assert gd.fitting.rank_candidates is not None

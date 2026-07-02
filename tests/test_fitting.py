@@ -82,6 +82,49 @@ def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
         )
 
 
+def test_score_and_rank_candidates_expose_selector_scoring_logic() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    candidates = [
+        Gaussian.univariate(mean=0.0, variance=1.0),
+        Gaussian.univariate(mean=2.0, variance=1.0),
+        Gaussian.univariate(mean=-1.0, variance=2.0),
+    ]
+
+    scores = gd.fitting.score_candidates(p, candidates, method="closed_form")
+    ranked = gd.fitting.rank_candidates(p, candidates, method="closed_form", limit=2)
+
+    assert scores.shape == (3,)
+    assert scores[0] == pytest.approx(0.0)
+    assert ranked[0] == (0, pytest.approx(0.0))
+    assert [index for index, _score in ranked] == [0, 2]
+
+    bidirectional = gd.fitting.score_candidates(
+        p, candidates, direction="bidirectional", alpha=0.25, method="closed_form"
+    )
+    expected = 0.25 * gd.kl_divergence(p, candidates[2], method="closed_form").value + 0.75 * (
+        gd.kl_divergence(candidates[2], p, method="closed_form").value
+    )
+    assert bidirectional[2] == pytest.approx(expected)
+
+
+def test_score_and_rank_candidates_validate_inputs() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+
+    with pytest.raises(ValueError, match="at least one candidate"):
+        _ = gd.fitting.score_candidates(p, [], method="closed_form")
+
+    with pytest.raises(ValueError, match="limit must be a positive integer"):
+        _ = gd.fitting.rank_candidates(p, [p], method="closed_form", limit=0)
+
+    with pytest.raises(ValueError, match="direction must be"):
+        _ = gd.fitting.score_candidates(
+            p,
+            [p],
+            direction="sideways",  # pyright: ignore[reportArgumentType]
+            method="closed_form",
+        )
+
+
 def test_prune_mixture_removes_small_weights_and_keeps_valid_mixture() -> None:
     mixture = GaussianMixture.from_arrays(
         weights=[0.8, 0.00001, 0.19999],

@@ -172,3 +172,39 @@ KLMethod: TypeAlias = (
     | ClosedForm
     | Variational
 )
+
+
+@dataclass(frozen=True, slots=True)
+class KLDivergence:
+    """Configuration for the directed Kullback-Leibler divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used to estimate ``KL(p || q)``."""
+    prefer_closed_form: bool = True
+    """Use closed-form Gaussian KL when both inputs are single Gaussian."""
+
+
+@dataclass(frozen=True, slots=True)
+class SymmetricKLDivergence:
+    """Configuration for the symmetric Kullback-Leibler divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used for each directed KL estimate."""
+    prefer_closed_form: bool = True
+    """Use closed-form Gaussian KL in each direction when possible."""
+
+
+@dataclass(frozen=True, slots=True)
+class JensenShannonDivergence:
+    """Configuration for the Jensen-Shannon divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used for the KL estimates against the midpoint mixture."""
+    prefer_closed_form: bool = True
+    """Pass through closed-form preference to the underlying KL estimates."""
+
+
+DivergenceName: TypeAlias = Literal["kl", "symmetric_kl", "jensen_shannon"]
+DivergenceSpec: TypeAlias = (
+    DivergenceName | KLDivergence | SymmetricKLDivergence | JensenShannonDivergence
+)

@@ -23,6 +23,7 @@ if TYPE_CHECKING:
     from gmm_divergence.divergence._options import KLMethod
 
 DistributionT = TypeVar("DistributionT", bound=Distribution, default=Distribution)
+_DEFAULT_SCORING_METHOD = MonteCarlo(sampling=Draw(rng=0))
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,61 @@ class CandidateSelector(Protocol, Generic[DistributionT]):
         ...
 
 
+def score_candidates(
+    p: DistributionT,
+    q_i: Sequence[DistributionT],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
+    alpha: float = 0.5,
+    method: KLMethod | None = None,
+    prefer_closed_form: bool = True,
+) -> FloatArray:
+    """Return KL-based scores for candidate distributions.
+
+    Lower scores indicate closer candidates.
+    """
+    _validate_candidate_sequence(q_i)
+    _validate_kl_selector_base(direction=direction, alpha=alpha)
+    return _compute_kl_values(
+        p,
+        q_i,
+        direction=direction,
+        alpha=alpha,
+        kl_method=_DEFAULT_SCORING_METHOD if method is None else method,
+        prefer_closed_form=prefer_closed_form,
+    )
+
+
+def rank_candidates(
+    p: DistributionT,
+    q_i: Sequence[DistributionT],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
+    alpha: float = 0.5,
+    method: KLMethod | None = None,
+    prefer_closed_form: bool = True,
+    limit: int | None = None,
+) -> list[tuple[int, float]]:
+    """Return candidate indices and scores sorted from best to worst."""
+    scores = score_candidates(
+        p,
+        q_i,
+        direction=direction,
+        alpha=alpha,
+        method=_DEFAULT_SCORING_METHOD if method is None else method,
+        prefer_closed_form=prefer_closed_form,
+    )
+    if limit is not None and (isinstance(limit, bool) or limit <= 0):
+        msg = f"limit must be a positive integer when provided, got {limit}."
+        raise ValueError(msg)
+    ranked_indices = np.argsort(scores)
+    if limit is None:
+        return [(int(index), float(scores[index])) for index in ranked_indices]
+    return [(int(index), float(scores[index])) for index in ranked_indices[:limit]]
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
 class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     direction: Literal["forward", "reverse", "bidirectional"] = "forward"
@@ -51,20 +107,16 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
 
-    def _kl_divergence(self, p: Distribution, q: Distribution) -> float:
-        return kl_divergence(p, q, method=self.kl_method, prefer_closed_form=True).value
-
     def _compute_kl_values(self, p: DistributionT, q_i: Sequence[DistributionT]) -> FloatArray:
         """Compute pairwise KL divergence values between p and each q_i."""
-        match self.direction:
-            case "forward":
-                return np.array([self._kl_divergence(p, q) for q in q_i], dtype=np.float64)
-            case "reverse":
-                return np.array([self._kl_divergence(q, p) for q in q_i], dtype=np.float64)
-            case "bidirectional":
-                forward = np.array([self._kl_divergence(p, q) for q in q_i], dtype=np.float64)
-                reverse = np.array([self._kl_divergence(q, p) for q in q_i], dtype=np.float64)
-                return self.alpha * forward + (1 - self.alpha) * reverse
+        return _compute_kl_values(
+            p,
+            q_i,
+            direction=self.direction,
+            alpha=self.alpha,
+            kl_method=self.kl_method,
+            prefer_closed_form=True,
+        )
 
     @override
     def select(
@@ -171,3 +223,41 @@ def _validate_kl_selector_base(
     if direction == "bidirectional" and not 0 <= alpha <= 1:
         msg = f"alpha must be in [0, 1] for bidirectional KL, got {alpha}."
         raise ValueError(msg)
+
+
+def _validate_candidate_sequence(q_i: Sequence[DistributionT]) -> None:
+    if len(q_i) == 0:
+        msg = "q_i must contain at least one candidate distribution."
+        raise ValueError(msg)
+
+
+def _kl_divergence_value(
+    p: Distribution, q: Distribution, /, *, kl_method: KLMethod, prefer_closed_form: bool
+) -> float:
+    return kl_divergence(p, q, method=kl_method, prefer_closed_form=prefer_closed_form).value
+
+
+def _compute_kl_values(
+    p: DistributionT,
+    q_i: Sequence[DistributionT],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"],
+    alpha: float,
+    kl_method: KLMethod,
+    prefer_closed_form: bool,
+) -> FloatArray:
+    def kl(p: Distribution, q: Distribution) -> float:
+        return _kl_divergence_value(
+            p, q, kl_method=kl_method, prefer_closed_form=prefer_closed_form
+        )
+
+    match direction:
+        case "forward":
+            return np.array([kl(p, q) for q in q_i], dtype=np.float64)
+        case "reverse":
+            return np.array([kl(q, p) for q in q_i], dtype=np.float64)
+        case "bidirectional":
+            forward = np.array([kl(p, q) for q in q_i], dtype=np.float64)
+            reverse = np.array([kl(q, p) for q in q_i], dtype=np.float64)
+            return alpha * forward + (1 - alpha) * reverse
