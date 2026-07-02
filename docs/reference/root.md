@@ -17,7 +17,7 @@ configuration objects.
 | `kl_divergence`, `symmetric_kl_divergence`, `jensen_shannon_divergence` | Main divergence helpers |
 | `component_kl_matrix` | Pairwise component KL diagnostics |
 | `fit_mixture_weights`, `prune_mixture` | Main fitting helpers |
-| `DivergenceResult`, `KLFitResult` | Result containers |
+| `DivergenceResult`, `FitResult` | Result containers |
 
 ## What Lives In Namespaces
 
@@ -73,4 +73,4 @@ configuration objects are documented on their namespace pages.
 
 ::: gmm_divergence.DivergenceResult
 
-::: gmm_divergence.KLFitResult
+::: gmm_divergence.FitResult

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.distributions._gaussian import Gaussian
@@ -25,8 +25,6 @@ from gmm_divergence.results import DivergenceResult
 if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._base import Distribution
-
-OptionsT = TypeVar("OptionsT")
 
 KL_REGISTRY = Registry(
     label="KL",
@@ -139,7 +137,7 @@ def kl_divergence(
 
     match spec.name:
         case "monte_carlo":
-            options = _cast_options(options, MonteCarlo)
+            options = cast_options(options, MonteCarlo)
             return kl_monte_carlo(
                 p,
                 q,
@@ -152,7 +150,7 @@ def kl_divergence(
             p = _require_unscented_input(p, spec.name)
             return kl_unscented(p, q)
         case "gaussian_approximation":
-            options = _cast_options(options, MomentMatchedGaussian)
+            options = cast_options(options, MomentMatchedGaussian)
             p, q = _require_gaussian_family_pair(p, q, spec.name)
             return kl_gaussian_approximation(p, q, approximation=options.approximation)
         case "closed_form":
@@ -309,13 +307,6 @@ def _sum_num_samples(*results: DivergenceResult) -> int | None:
             return None
         total += result.num_samples
     return total
-
-
-def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
-    if not isinstance(options, option_type):
-        msg = "Dispatcher returned an option object with the wrong type."
-        raise TypeError(msg)
-    return options
 
 
 def _validate_same_dimension(p: Distribution, q: Distribution) -> None:

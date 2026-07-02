@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from math import isfinite
 from typing import TYPE_CHECKING, cast
 
 import numpy as np
@@ -153,6 +154,34 @@ def as_positive_sample_count(n_samples: object, /, *, name: str = "n_samples") -
         msg = f"{name} must be a positive integer, got {n_samples}."
         raise ValueError(msg)
     return n_samples
+
+
+def validate_positive_int(value: int, /, *, name: str) -> None:
+    """Validate a positive integer option."""
+    if isinstance(value, bool) or value <= 0:
+        msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)
+
+
+def validate_positive_finite(value: float, /, *, name: str) -> None:
+    """Validate a positive finite scalar option."""
+    if not isfinite(value) or value <= 0.0:
+        msg = f"{name} must be a positive finite value, got {value}."
+        raise ValueError(msg)
+
+
+def validate_nonnegative_finite(value: float, /, *, name: str) -> None:
+    """Validate a nonnegative finite scalar option."""
+    if not isfinite(value) or value < 0.0:
+        msg = f"{name} must be a nonnegative finite value, got {value}."
+        raise ValueError(msg)
+
+
+def validate_unit_interval(value: float, /, *, name: str) -> None:
+    """Validate a finite scalar in the closed unit interval."""
+    if not isfinite(value) or not 0.0 <= value <= 1.0:
+        msg = f"{name} must be a finite value in [0, 1], got {value}."
+        raise ValueError(msg)
 
 
 def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None:

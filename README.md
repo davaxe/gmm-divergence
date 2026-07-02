@@ -27,12 +27,6 @@ This project is not yet intended for stable production use. A pre-release is ava
 python -m pip install gmm-divergence
 ```
 
-For development, install it from a local checkout:
-
-```bash
-python -m pip install -e .
-```
-
 ## Quick Example
 
 ```python

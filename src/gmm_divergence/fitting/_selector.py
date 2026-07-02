@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import TYPE_CHECKING, Generic, Literal, Protocol
 
 import numpy as np
@@ -12,6 +11,7 @@ import numpy.typing as npt
 from typing_extensions import TypeVar, override
 
 from gmm_divergence._core._sampling import Draw
+from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence.distributions._base import Distribution
 from gmm_divergence.divergence._api import kl_divergence
 from gmm_divergence.divergence._options import MonteCarlo
@@ -90,9 +90,7 @@ class ThresholdSelector(_KLSelectorBase[DistributionT]):
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        if not isfinite(self.threshold) or self.threshold < 0.0:
-            msg = f"threshold must be a nonnegative finite value, got {self.threshold}."
-            raise ValueError(msg)
+        validate_nonnegative_finite(self.threshold, name="threshold")
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -115,9 +113,7 @@ class ToleranceSelector(_KLSelectorBase[DistributionT]):
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        if not isfinite(self.delta) or self.delta < 0.0:
-            msg = f"delta must be a nonnegative finite value, got {self.delta}."
-            raise ValueError(msg)
+        validate_nonnegative_finite(self.delta, name="delta")
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:

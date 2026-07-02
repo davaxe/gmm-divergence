@@ -25,7 +25,7 @@ if TYPE_CHECKING:
     from collections.abc import Callable
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.fitting import WeightFitMethod
+    from gmm_divergence.fitting import FitMethod
 
 
 def _finite_difference_gradient(
@@ -56,17 +56,14 @@ def test_fit_mixture_weights_recovers_known_component_weights(
         Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
         Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
     ]
+    objective = MomentMatching(fit_second_moments=True)
+    result = fit_mixture_weights(p, candidates, method=method, objective=objective)
 
-    result = fit_mixture_weights(
-        p, candidates, method=method, objective=MomentMatching(fit_second_moments=True)
-    )
-
-    assert result.fit_objective == "moment_matching"
+    assert result.fit_objective == objective
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=1e-7)
     assert float(np.sum(result.weights)) == pytest.approx(1.0)
     assert result.objective_value < 1e-8
-    assert result.forward_kl.value == pytest.approx(0.0, abs=1e-8)
 
 
 def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
@@ -81,10 +78,7 @@ def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
 
     with pytest.raises(ValueError, match="Unknown fit optimizer method"):
         _ = fit_mixture_weights(
-            p,
-            [p],
-            method=cast("WeightFitMethod", cast("object", "unknown")),
-            objective=MomentMatching(),
+            p, [p], method=cast("FitMethod", cast("object", "unknown")), objective=MomentMatching()
         )
 
 
@@ -128,21 +122,18 @@ def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
         Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
     ]
 
-    result = fit_mixture_weights(
-        p,
-        candidates,
-        objective=JensenShannon(
-            p_sampling=gd.sampling.Draw(2_000, rng=123), q_sampling=gd.sampling.Draw(2_000, rng=123)
-        ),
+    objective = JensenShannon(
+        p_sampling=gd.sampling.Draw(2_000, rng=123), q_sampling=gd.sampling.Draw(2_000, rng=123)
     )
+    result = fit_mixture_weights(p, candidates, objective=objective)
 
-    assert result.fit_objective == "jensen_shannon"
+    assert result.fit_objective == objective
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
     assert float(np.sum(result.weights)) == pytest.approx(1.0)
 
     default_result = fit_mixture_weights(p, candidates, objective="jensen_shannon")
-    assert default_result.fit_objective == "jensen_shannon"
+    assert default_result.fit_objective == JensenShannon()
 
 
 def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
@@ -153,17 +144,13 @@ def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
         GaussianMixture.from_components([Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]])]),
         GaussianMixture.from_components([Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]])]),
     ]
-
-    result = fit_mixture_weights(
-        p,
-        candidates,
-        objective=JensenShannon(
-            p_sampling=gd.sampling.Stratified(2_000, rng=123),
-            q_sampling=gd.sampling.Stratified(2_000, rng=123),
-        ),
+    objective = gd.fitting.JensenShannon(
+        p_sampling=gd.sampling.Stratified(2_000, rng=123),
+        q_sampling=gd.sampling.Stratified(2_000, rng=123),
     )
+    result = fit_mixture_weights(p, candidates, objective=objective)
 
-    assert result.fit_objective == "jensen_shannon"
+    assert result.fit_objective == objective
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
 

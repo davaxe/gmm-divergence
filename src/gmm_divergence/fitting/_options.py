@@ -7,6 +7,8 @@ from math import isfinite
 from typing import Literal, TypeAlias
 
 from gmm_divergence._core._sampling import Draw, SampleBatchSpec, SampleSpec
+from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
+from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
 
 @dataclass(frozen=True, slots=True)
@@ -222,24 +224,13 @@ class MomentMatching:
     """Whether to include covariance information in the objective."""
 
 
-FitMethodName: TypeAlias = Literal["softmax_lbfgsb", "simplex_slsqp"]
-FitObjective: TypeAlias = Literal[
-    "forward", "reverse", "bidirectional", "jensen_shannon", "moment_matching"
-]
 FitParameterization: TypeAlias = Literal["simplex", "softmax"]
-WeightFitMethod: TypeAlias = FitMethodName | SoftmaxLBFGSB | SimplexSLSQP
-WeightFitObjective: TypeAlias = (
-    FitObjective | ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
+FitMethod: TypeAlias = Literal["softmax_lbfgsb", "simplex_slsqp"] | SoftmaxLBFGSB | SimplexSLSQP
+FitObjective: TypeAlias = (
+    Literal["forward", "reverse", "bidirectional", "jensen_shannon", "moment_matching"]
+    | ForwardKL
+    | ReverseKL
+    | BidirectionalKL
+    | JensenShannon
+    | MomentMatching
 )
-
-
-def _validate_positive_float(value: float, /, *, name: str) -> None:
-    if not isfinite(value) or value <= 0.0:
-        msg = f"{name} must be a positive finite value, got {value}."
-        raise ValueError(msg)
-
-
-def _validate_positive_int(value: int, /, *, name: str) -> None:
-    if isinstance(value, bool) or value <= 0:
-        msg = f"{name} must be a positive integer, got {value}."
-        raise ValueError(msg)

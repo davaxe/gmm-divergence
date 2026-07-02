@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 
     from gmm_divergence._core._types import Weights
     from gmm_divergence.distributions._combine import CombinedGaussianMixture
-    from gmm_divergence.fitting._options import FitObjective
+    from gmm_divergence.fitting._options import FitMethod, FitObjective
 
 
 @dataclass(frozen=True, slots=True)
@@ -40,8 +40,8 @@ class DivergenceResult:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class KLFitResult:
-    """Result of fitting a Gaussian mixture to minimize KL divergence.
+class FitResult:
+    """Result of fitting a Gaussian mixture.
 
     Primary result when using
     [`fit_mixture_weights`][gmm_divergence.fitting.fit_mixture_weights]
@@ -50,18 +50,16 @@ class KLFitResult:
 
     weights: Weights
     """The fitted mixture weights as a 1D array."""
-    fit_objective: FitObjective
-    """The KL objective used to fit the mixture weights."""
     objective_value: float
     """The final scalar objective value minimized by the optimizer."""
-    forward_kl: DivergenceResult
-    """Estimated forward KL divergence, `KL(p || q_w)`."""
-    reverse_kl: DivergenceResult
-    """Estimated reverse KL divergence, `KL(q_w || p)`."""
     scipy_result: OptimizeResult | None
     """The full result object returned by the optimization routine, if used."""
     fitted_mixture: CombinedGaussianMixture
     """The full combined Gaussian mixture corresponding to the fitted weights."""
+    fit_objective: FitObjective
+    """The objective used to fit the mixture weights."""
+    fit_method: FitMethod
+    """The optimization method used to fit the mixture weights."""
     alpha: float | None = None
     """Forward-objective weight used by bidirectional fitting, if applicable."""
     iterations: int | None = None

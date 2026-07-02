@@ -6,9 +6,9 @@ import numpy as np
 
 from gmm_divergence import (
     DivergenceResult,
+    FitResult,
     Gaussian,
     GaussianMixture,
-    KLFitResult,
     fit_mixture_weights,
     kl_divergence,
 )
@@ -66,7 +66,7 @@ def test_benchmark_moment_matching_fit(benchmark: BenchmarkFixture) -> None:
     ]
 
     result = cast(
-        "KLFitResult", benchmark(fit_mixture_weights, p, candidates, objective="moment_matching")
+        "FitResult", benchmark(fit_mixture_weights, p, candidates, objective="moment_matching")
     )
 
     assert result.converged is True

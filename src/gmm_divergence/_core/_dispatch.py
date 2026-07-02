@@ -7,6 +7,7 @@ if TYPE_CHECKING:
     from collections.abc import Iterable
 
 OptionsT_co = TypeVar("OptionsT_co", covariant=True)
+OptionsT = TypeVar("OptionsT")
 
 
 @dataclass(frozen=True, slots=True)
@@ -61,3 +62,11 @@ class Registry:
             )
             raise TypeError(msg)
         return spec, method
+
+
+def cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
+    """Return dispatcher options with a checked concrete type."""
+    if not isinstance(options, option_type):
+        msg = "Dispatcher returned an option object with the wrong type."
+        raise TypeError(msg)
+    return options

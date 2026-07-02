@@ -161,15 +161,7 @@ def reverse_kl(
     eps: float = 1e-300,
 ) -> ObjectiveFn:
     """Build a simplex objective for fixed-sample reverse KL, `KL(q_w || p)`."""
-    q_samples = np.asarray(q_samples, dtype=np.float64)
-    n_components, n_samples, dim = q_samples.shape
-    q_samples_flat = q_samples.reshape(-1, dim)
-
-    log_p_on_q_samples = np.asarray(p.logpdf(q_samples_flat), dtype=np.float64).reshape(
-        n_components, n_samples
-    )
-    log_q_flat = logpdf_matrix(q_components, q_samples_flat)
-    log_q_on_q_samples = log_q_flat.reshape(n_components, n_samples, n_components)
+    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(p, q_components, q_samples)
 
     return _ReverseKL(
         log_q_on_q_samples=log_q_on_q_samples, log_p_on_q_samples=log_p_on_q_samples, eps=eps
@@ -220,17 +212,10 @@ def jensen_shannon(
 ) -> ObjectiveFn:
     """Build a simplex objective for Jensen-Shannon divergence."""
     p_samples = np.asarray(p_samples, dtype=np.float64)
-    q_samples = np.asarray(q_samples, dtype=np.float64)
-    n_components, n_samples, dim = q_samples.shape
-    q_samples_flat = q_samples.reshape(-1, dim)
+    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(p, q_components, q_samples)
 
     log_q_on_p_samples = logpdf_matrix(q_components, p_samples)
     log_p_on_p_samples = np.asarray(p.logpdf(p_samples), dtype=np.float64)
-    log_p_on_q_samples = np.asarray(p.logpdf(q_samples_flat), dtype=np.float64).reshape(
-        n_components, n_samples
-    )
-    log_q_flat = logpdf_matrix(q_components, q_samples_flat)
-    log_q_on_q_samples = log_q_flat.reshape(n_components, n_samples, n_components)
 
     return _JensenShannon(
         log_q_on_p_samples=log_q_on_p_samples,
@@ -239,6 +224,21 @@ def jensen_shannon(
         log_p_on_q_samples=log_p_on_q_samples,
         eps=eps,
     )
+
+
+def _candidate_sample_logpdfs(
+    p: GaussianLike, q_components: Sequence[GaussianLike], q_samples: FloatArray
+) -> tuple[FloatArray, FloatArray]:
+    q_samples = np.asarray(q_samples, dtype=np.float64)
+    n_components, n_samples, dim = q_samples.shape
+    q_samples_flat = q_samples.reshape(-1, dim)
+
+    log_p_on_q_samples = np.asarray(p.logpdf(q_samples_flat), dtype=np.float64).reshape(
+        n_components, n_samples
+    )
+    log_q_flat = logpdf_matrix(q_components, q_samples_flat)
+    log_q_on_q_samples = log_q_flat.reshape(n_components, n_samples, n_components)
+    return log_p_on_q_samples, log_q_on_q_samples
 
 
 @dataclass(frozen=True, slots=True)
@@ -343,106 +343,6 @@ def moment_matching(
     return _MomentMatching(p_moments=p_moments, q_moments=q_moments)
 
 
-def softmax_forward_kl(
-    p: GaussianLike | None,
-    q_components: Sequence[GaussianLike],
-    p_samples: FloatArray,
-    *,
-    include_constant: bool = False,
-    eps: float = 1e-300,
-) -> ObjectiveFn:
-    """Build a softmax-logit objective for forward KL."""
-    return with_softmax(
-        forward_kl(
-            p=p,
-            q_components=q_components,
-            p_samples=p_samples,
-            include_constant=include_constant,
-            eps=eps,
-        )
-    )
-
-
-def softmax_reverse_kl(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
-    q_samples: FloatArray,
-    *,
-    eps: float = 1e-300,
-) -> ObjectiveFn:
-    """Build a softmax-logit objective for reverse KL."""
-    return with_softmax(reverse_kl(p=p, q_components=q_components, q_samples=q_samples, eps=eps))
-
-
-def softmax_bidirectional_kl(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
-    p_samples: FloatArray | None = None,
-    q_samples: FloatArray | None = None,
-    *,
-    alpha: float = 0.5,
-    include_forward_constant: bool = False,
-    eps: float = 1e-300,
-) -> ObjectiveFn:
-    """Build a weighted forward/reverse KL objective over softmax logits."""
-    return with_softmax(
-        bidirectional_kl(
-            p=p,
-            q_components=q_components,
-            p_samples=p_samples,
-            q_samples=q_samples,
-            alpha=alpha,
-            include_forward_constant=include_forward_constant,
-            eps=eps,
-        )
-    )
-
-
-def softmax_jensen_shannon(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
-    p_samples: FloatArray,
-    q_samples: FloatArray,
-    *,
-    eps: float = 1e-300,
-) -> ObjectiveFn:
-    """Build a Jensen-Shannon objective over softmax logits."""
-    return with_softmax(
-        jensen_shannon(
-            p=p, q_components=q_components, p_samples=p_samples, q_samples=q_samples, eps=eps
-        )
-    )
-
-
-def _build_softmax_objective(
-    *,
-    objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    p_samples: FloatArray,
-    q_samples: FloatArray | None,
-) -> ObjectiveFn:
-    match objective:
-        case ForwardKL():
-            return softmax_forward_kl(p, q_i, p_samples)
-        case ReverseKL():
-            if q_samples is None:
-                msg = "q_samples is required for reverse KL."
-                raise ValueError(msg)
-            return softmax_reverse_kl(p, q_i, q_samples)
-        case BidirectionalKL(alpha=alpha):
-            return softmax_bidirectional_kl(
-                p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha
-            )
-        case JensenShannon():
-            if q_samples is None:
-                msg = "q_samples is required for Jensen-Shannon."
-                raise ValueError(msg)
-            return softmax_jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
-        case MomentMatching(fit_second_moments=fit_second_moments):
-            return with_softmax(moment_matching(p, q_i, second_moments=fit_second_moments))
-
-
 def _build_simplex_objective(
     *,
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
@@ -479,12 +379,11 @@ def build_objective(
     p_samples: FloatArray,
     q_samples: FloatArray | None,
 ) -> ObjectiveFn:
+    simplex_objective = _build_simplex_objective(
+        objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
+    )
     match parameterization:
         case "softmax":
-            return _build_softmax_objective(
-                objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
-            )
+            return with_softmax(simplex_objective)
         case "simplex":
-            return _build_simplex_objective(
-                objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
-            )
+            return simplex_objective

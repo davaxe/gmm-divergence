@@ -5,13 +5,19 @@ from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
 
-from gmm_divergence._core._validation import as_covariance, as_covariances
+from gmm_divergence._core._validation import (
+    as_covariance,
+    as_covariances,
+    validate_positive_finite,
+    validate_positive_int,
+)
 from gmm_divergence.covariance._epsilon import (
     EpsilonMethod,
     EpsilonSpec,
     ResidualVariance,
     estimate_epsilon,
 )
+from gmm_divergence.covariance._shape import check_covariance_shape
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -53,7 +59,7 @@ def diagonal_loading(
     if copy:
         covariance_arr = covariance_arr.copy()
 
-    match _check_covariance_shape(covariance_arr, batched=batched):
+    match check_covariance_shape(covariance_arr, batched=batched):
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False)
             _apply_diagonal_loading_single(covariance_arr, resolved_eps)
@@ -105,7 +111,7 @@ def linear_shrinkage(
     if copy:
         covariance_arr = covariance_arr.copy()
 
-    match _check_covariance_shape(covariance_arr, batched=batched):
+    match check_covariance_shape(covariance_arr, batched=batched):
         case "single":
             d = covariance_arr.shape[0]
             shrinkage_target = np.eye(d) * np.trace(covariance_arr) / d
@@ -158,7 +164,7 @@ def diagonal_shrinkage(
     if copy:
         covariance_arr = covariance_arr.copy()
 
-    match _check_covariance_shape(covariance_arr, batched=batched):
+    match check_covariance_shape(covariance_arr, batched=batched):
         case "single":
             diag = np.diag(covariance_arr)
             covariance_arr += alpha * (np.diag(diag) - covariance_arr)
@@ -214,13 +220,11 @@ def eigenvalue_clipping(
 ) -> Covariance | Covariances:
     """Clip covariance eigenvalues from below."""
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    if min_eigenvalue <= 0.0 or not np.isfinite(min_eigenvalue):
-        msg = f"min_eigenvalue must be a positive finite value, got {min_eigenvalue}."
-        raise ValueError(msg)
+    validate_positive_finite(min_eigenvalue, name="min_eigenvalue")
     if copy:
         covariance_arr = covariance_arr.copy()
 
-    match _check_covariance_shape(covariance_arr, batched=batched):
+    match check_covariance_shape(covariance_arr, batched=batched):
         case "single":
             eigvals, eigvecs = np.linalg.eigh(covariance_arr)
             clipped_eigvals = np.clip(eigvals, a_min=min_eigenvalue, a_max=None)
@@ -282,13 +286,11 @@ def lowrank(
 ) -> Covariance | Covariances:
     """Approximate a covariance with a low-rank structure plus diagonal loading."""
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    if rank <= 0:
-        msg = f"rank must be a positive integer, got {rank}."
-        raise ValueError(msg)
+    validate_positive_int(rank, name="rank")
     if copy:
         covariance_arr = covariance_arr.copy()
 
-    match _check_covariance_shape(covariance_arr, batched=batched):
+    match check_covariance_shape(covariance_arr, batched=batched):
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False, rank=rank)
             covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
@@ -363,32 +365,3 @@ def _apply_diagonal_loading_batched(covariance: FloatArray, eps: float | FloatAr
         msg = f"Batched epsilon must have shape ({covariance.shape[0]},), got {eps_arr.shape}."
         raise ValueError(msg)
     covariance[:, idx, idx] += eps_arr[:, None]
-
-
-def _check_covariance_shape(
-    covariance: FloatArray, *, batched: bool | None = None
-) -> Literal["single", "batched"]:
-    if covariance.ndim == 2:
-        if batched is True:
-            msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
-        if covariance.shape[0] != covariance.shape[1]:
-            msg = f"Expected covariance with shape (d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
-        return "single"
-
-    if covariance.ndim == 3:
-        if batched is False:
-            msg = f"Expected single covariance with shape (d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
-        if covariance.shape[1] != covariance.shape[2]:
-            msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
-        return "batched"
-
-    msg = f"covariance must have shape (d, d) or (n, d, d), got {covariance.shape}."
-    raise ValueError(msg)

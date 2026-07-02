@@ -3,6 +3,7 @@
 from gmm_divergence.fitting._api import fit_mixture_weights, prune_mixture
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
+    FitMethod,
     FitObjective,
     FitParameterization,
     ForwardKL,
@@ -11,8 +12,6 @@ from gmm_divergence.fitting._options import (
     ReverseKL,
     SimplexSLSQP,
     SoftmaxLBFGSB,
-    WeightFitMethod,
-    WeightFitObjective,
 )
 from gmm_divergence.fitting._selector import (
     CandidateSelection,
@@ -27,6 +26,7 @@ __all__ = [
     "BidirectionalKL",
     "CandidateSelection",
     "CandidateSelector",
+    "FitMethod",
     "FitObjective",
     "FitParameterization",
     "ForwardKL",
@@ -39,8 +39,6 @@ __all__ = [
     "ThresholdSelector",
     "ToleranceSelector",
     "TopKSelector",
-    "WeightFitMethod",
-    "WeightFitObjective",
     "fit_mixture_weights",
     "prune_mixture",
 ]

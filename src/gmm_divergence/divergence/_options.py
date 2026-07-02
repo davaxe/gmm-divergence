@@ -1,15 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import Literal, TypeAlias
 
 from gmm_divergence._core._sampling import Draw, SampleSpec
+from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
+from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
 Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, init=False)
 class MonteCarlo:
     r"""Monte Carlo KL estimator configuration.
 
@@ -46,10 +47,22 @@ class MonteCarlo:
     batch_size: int | None = None
     """Batch size for additional adaptive samples.
 
-    If omitted, adaptive Monte Carlo uses the initial draw count.
+    If omitted, adaptive Monte Carlo uses the initial draw count as the batch size.
     """
 
-    def __post_init__(self) -> None:
+    def __init__(
+        self,
+        sampling: int | SampleSpec | None = None,
+        target_standard_error: float | None = None,
+        max_samples: int | None = None,
+        batch_size: int | None = None,
+    ) -> None:
+        if isinstance(sampling, int):
+            sampling = Draw(n_samples=sampling)
+        object.__setattr__(self, "sampling", sampling or Draw())
+        object.__setattr__(self, "target_standard_error", target_standard_error)
+        object.__setattr__(self, "max_samples", max_samples)
+        object.__setattr__(self, "batch_size", batch_size)
         if not isinstance(self.sampling, (Draw,)):
             if self.target_standard_error is None:
                 return
@@ -151,21 +164,11 @@ class ClosedForm:
     """
 
 
-EstimationMethod: TypeAlias = Literal[
-    "monte_carlo", "unscented", "gaussian_approximation", "closed_form", "variational"
-]
 KLMethod: TypeAlias = (
-    EstimationMethod | MonteCarlo | Unscented | MomentMatchedGaussian | ClosedForm | Variational
+    Literal["monte_carlo", "unscented", "gaussian_approximation", "closed_form", "variational"]
+    | MonteCarlo
+    | Unscented
+    | MomentMatchedGaussian
+    | ClosedForm
+    | Variational
 )
-
-
-def _validate_positive_int(value: int, /, *, name: str) -> None:
-    if isinstance(value, bool) or value <= 0:
-        msg = f"{name} must be a positive integer, got {value}."
-        raise ValueError(msg)
-
-
-def _validate_positive_float(value: float, /, *, name: str) -> None:
-    if not isfinite(value) or value <= 0.0:
-        msg = f"{name} must be a positive finite value, got {value}."
-        raise ValueError(msg)

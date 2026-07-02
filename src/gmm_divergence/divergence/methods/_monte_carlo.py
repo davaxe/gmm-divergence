@@ -12,7 +12,7 @@ from gmm_divergence._core._sampling import (
     resolve_samples,
     stratified_mixture_samples,
 )
-from gmm_divergence._core._validation import as_positive_sample_count
+from gmm_divergence._core._validation import as_positive_sample_count, validate_positive_finite
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
@@ -111,9 +111,7 @@ def _kl_monte_carlo_adaptive(
     if not isinstance(sampling, Draw):
         msg = "Adaptive Monte Carlo requires sampling=sampling.Draw(...)."
         raise TypeError(msg)
-    if target_standard_error <= 0.0 or not np.isfinite(target_standard_error):
-        msg = f"target_standard_error must be a positive finite value, got {target_standard_error}."
-        raise ValueError(msg)
+    validate_positive_finite(target_standard_error, name="target_standard_error")
 
     initial_samples = as_positive_sample_count(sampling.n_samples, name="n_samples")
     max_samples = 10 * initial_samples if max_samples is None else max_samples
@@ -176,16 +174,12 @@ def _kl_monte_carlo_stratified(
     standard_error = float(np.sqrt(variance_of_estimator))
     sample_variance = float(variance_of_estimator * sampling.n_samples)
 
-    return DivergenceResult(
+    return _monte_carlo_result(
         value=value,
-        method="monte_carlo",
         num_samples=sampling.n_samples,
-        monte_carlo_stats=MonteCarloStatistics(
-            sample_mean=value,
-            sample_variance=sample_variance,
-            standard_error=standard_error,
-            effective_sample_size=sampling.n_samples,
-        ),
+        sample_variance=sample_variance,
+        standard_error=standard_error,
+        effective_sample_size=sampling.n_samples,
     )
 
 
@@ -239,16 +233,12 @@ def _result_from_pointwise(pointwise_kl: npt.NDArray[np.float64]) -> DivergenceR
         sample_variance = float("nan")
         standard_error = float("nan")
 
-    return DivergenceResult(
+    return _monte_carlo_result(
         value=value,
-        method="monte_carlo",
         num_samples=num_samples,
-        monte_carlo_stats=MonteCarloStatistics(
-            sample_mean=value,
-            sample_variance=sample_variance,
-            standard_error=standard_error,
-            effective_sample_size=num_samples,
-        ),
+        sample_variance=sample_variance,
+        standard_error=standard_error,
+        effective_sample_size=num_samples,
     )
 
 
@@ -260,6 +250,23 @@ def _result_from_stats(stats: _RunningStats) -> DivergenceResult:
         float(np.sqrt(sample_variance / num_samples)) if num_samples > 1 else float("nan")
     )
 
+    return _monte_carlo_result(
+        value=value,
+        num_samples=num_samples,
+        sample_variance=sample_variance,
+        standard_error=standard_error,
+        effective_sample_size=num_samples,
+    )
+
+
+def _monte_carlo_result(
+    *,
+    value: float,
+    num_samples: int,
+    sample_variance: float,
+    standard_error: float,
+    effective_sample_size: int,
+) -> DivergenceResult:
     return DivergenceResult(
         value=value,
         method="monte_carlo",
@@ -268,6 +275,6 @@ def _result_from_stats(stats: _RunningStats) -> DivergenceResult:
             sample_mean=value,
             sample_variance=sample_variance,
             standard_error=standard_error,
-            effective_sample_size=num_samples,
+            effective_sample_size=effective_sample_size,
         ),
     )

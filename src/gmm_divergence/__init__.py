@@ -11,13 +11,13 @@ from gmm_divergence.divergence import (
     symmetric_kl_divergence,
 )
 from gmm_divergence.fitting import fit_mixture_weights, prune_mixture
-from gmm_divergence.results import DivergenceResult, KLFitResult
+from gmm_divergence.results import DivergenceResult, FitResult
 
 __all__ = [
     "DivergenceResult",
+    "FitResult",
     "Gaussian",
     "GaussianMixture",
-    "KLFitResult",
     "combine_gaussians",
     "component_kl_matrix",
     "covariance",

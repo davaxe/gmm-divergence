@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Literal, TypeVar, overload
+from typing import TYPE_CHECKING, Literal, overload
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence.covariance._options import (
     CovarianceRegularizer,
     DiagonalLoading,
@@ -23,8 +23,6 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import Covariance, Covariances
-
-OptionsT = TypeVar("OptionsT")
 
 _REGISTRY = Registry(
     label="covariance regularizer",
@@ -115,31 +113,24 @@ def regularize_covariance(
 
     match spec.name:
         case "diagonal_loading":
-            options = _cast_options(options, DiagonalLoading)
+            options = cast_options(options, DiagonalLoading)
             return diagonal_loading(covariance, eps=options.eps, batched=batched, copy=copy)
         case "linear_shrinkage":
-            options = _cast_options(options, LinearShrinkage)
+            options = cast_options(options, LinearShrinkage)
             return linear_shrinkage(covariance, alpha=options.alpha, batched=batched, copy=copy)
         case "diagonal_shrinkage":
-            options = _cast_options(options, DiagonalShrinkage)
+            options = cast_options(options, DiagonalShrinkage)
             return diagonal_shrinkage(covariance, alpha=options.alpha, batched=batched, copy=copy)
         case "eigenvalue_clipping":
-            options = _cast_options(options, EigenvalueClipping)
+            options = cast_options(options, EigenvalueClipping)
             return eigenvalue_clipping(
                 covariance, min_eigenvalue=options.min_eigenvalue, batched=batched, copy=copy
             )
         case "lowrank":
-            options = _cast_options(options, LowRank)
+            options = cast_options(options, LowRank)
             return lowrank(
                 covariance, rank=options.rank, eps=options.eps, batched=batched, copy=copy
             )
         case _:
             msg = "Unhandled covariance regularizer registry entry."
             raise AssertionError(msg)
-
-
-def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
-    if not isinstance(options, option_type):
-        msg = "Dispatcher returned an option object with the wrong type."
-        raise TypeError(msg)
-    return options
