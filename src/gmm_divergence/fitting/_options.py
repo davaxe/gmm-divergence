@@ -57,6 +57,13 @@ class SimplexSLSQP:
     """Optimizer convergence tolerance."""
     max_iterations: int = 1000
     """Maximum number of optimizer iterations."""
+    min_weight: float = 1e-12
+    """Minimum weight threshold for the optimizer.
+
+    Ideally, this would be zero, but SLSQP can fail when weights are exactly
+    zero. Setting it to small positive values avoids numerical issues while
+    still allowing the optimizer to effectively prune components with negligible
+    weights."""
 
     def __post_init__(self) -> None:
         _validate_positive_float(self.tol, name="tol")

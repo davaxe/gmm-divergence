@@ -52,11 +52,11 @@ def main() -> None:
     res = gd.fit_mixture_weights(
         target,
         components,
-        method="softmax_lbfgsb",
+        method="simplex_slsqp",
         objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=0)),
-        candidate_selector=gd.fitting.ToleranceSelector(delta=15, mode="relative"),
+        candidate_selector=gd.fitting.TopKSelector(6),
     )
-    print(f"Fitted forward KL: {res.forward_kl.value}")
+    print(f"Fitted forward KL: {res.forward_kl.value} (converged: {res.converged})")
     print(f"Fitted weights for target '{args.target}':")
     for candidate_index, weight in res.candidate_weights():
         label = component_labels[candidate_index]

@@ -134,7 +134,7 @@ def fit_mixture_weights(
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
     resolved_num_p_samples = int(resolved_p_samples.shape[0])
 
-    if parameterization == "softmax":
+    if parameterization == "softmax" and isinstance(optimizer, SoftmaxLBFGSB):
         x0 = (
             np.array(x0, dtype=np.float64)
             if x0 is not None
@@ -147,7 +147,7 @@ def fit_mixture_weights(
         def weights_from_result(values: FloatArray) -> Weights:
             return softmax(values)
 
-    else:
+    elif parameterization == "simplex" and isinstance(optimizer, SimplexSLSQP):
         x0 = (
             as_weights(x0, expected_length=q_component, name="Initial weights")
             if x0 is not None
@@ -160,11 +160,19 @@ def fit_mixture_weights(
             ub=np.array([1.0], dtype=np.float64),
         )
         bounds = Bounds(
-            lb=np.zeros(q_component, dtype=np.float64), ub=np.ones(q_component, dtype=np.float64)
+            lb=np.full(q_component, optimizer.min_weight, dtype=np.float64),
+            ub=np.ones(q_component, dtype=np.float64),
         )
 
         def weights_from_result(values: FloatArray) -> Weights:
             return values.astype(np.float64)
+
+    else:
+        msg = (
+            f"Incompatible parameterization '{parameterization}' and"
+            f"optimizer '{type(optimizer).__name__}' combination."
+        )
+        raise ValueError(msg)
 
     result = minimize(
         build_objective(
