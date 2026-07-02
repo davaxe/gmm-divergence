@@ -101,7 +101,9 @@ def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() ->
         _ = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=covariance)
 
     gaussian = Gaussian.from_regularized_arrays(
-        mean=[0.0, 1.0], covariance=covariance, regularization=gd.DiagonalLoading(eps=1e-3)
+        mean=[0.0, 1.0],
+        covariance=covariance,
+        regularization=gd.covariance.DiagonalLoading(eps=1e-3),
     )
 
     assert gaussian.covariance == pytest.approx(np.array([[1.001, 0.0], [0.0, 0.001]]))
@@ -116,7 +118,7 @@ def test_gaussian_mixture_from_regularized_arrays_regularizes_covariance_batch()
         weights=[2.0, 1.0],
         means=[[0.0, 0.0], [2.0, -1.0]],
         covariances=covariances,
-        regularization=gd.EigenvalueClipping(min_eigenvalue=0.1),
+        regularization=gd.covariance.EigenvalueClipping(min_eigenvalue=0.1),
     )
 
     assert mixture.weights == pytest.approx([2.0 / 3.0, 1.0 / 3.0])

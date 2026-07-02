@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from math import isfinite
 from typing import TYPE_CHECKING, Literal, TypeAlias
 
+from gmm_divergence._core._validation import validate_positive_finite, validate_positive_int
+from gmm_divergence._core._validation import validate_unit_interval as _validate_unit_interval
+
 if TYPE_CHECKING:
     from gmm_divergence.covariance._epsilon import EpsilonSpec
 
@@ -102,9 +105,7 @@ class EigenvalueClipping:
     """Smallest allowed eigenvalue after clipping."""
 
     def __post_init__(self) -> None:
-        if not isfinite(self.min_eigenvalue) or self.min_eigenvalue <= 0.0:
-            msg = f"min_eigenvalue must be a positive finite value, got {self.min_eigenvalue}."
-            raise ValueError(msg)
+        validate_positive_finite(self.min_eigenvalue, name="min_eigenvalue")
 
 
 @dataclass(frozen=True, slots=True)
@@ -136,9 +137,7 @@ class LowRank:
     """Diagonal loading amount or epsilon heuristic."""
 
     def __post_init__(self) -> None:
-        if isinstance(self.rank, bool) or self.rank <= 0:
-            msg = f"rank must be a positive integer, got {self.rank}."
-            raise ValueError(msg)
+        validate_positive_int(self.rank, name="rank")
         _validate_epsilon_spec(self.eps, name="eps")
 
 
@@ -154,12 +153,6 @@ CovarianceRegularizer: TypeAlias = (
     | EigenvalueClipping
     | LowRank
 )
-
-
-def _validate_unit_interval(value: float, /, *, name: str) -> None:
-    if not isfinite(value) or not 0.0 <= value <= 1.0:
-        msg = f"{name} must be a finite value in [0, 1], got {value}."
-        raise ValueError(msg)
 
 
 def _validate_epsilon_spec(value: EpsilonSpec, /, *, name: str) -> None:

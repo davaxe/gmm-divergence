@@ -65,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-[`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) function. For example:
+[`kl_divergence`](../reference/root.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-9"
 import gmm_divergence as gd
@@ -84,7 +84,9 @@ q = gd.GaussianMixture.from_components(
     ]
 )
 
-kl_estimate = gd.kl_divergence(p, q, method=gd.MonteCarlo(rng=9126))
+kl_estimate = gd.kl_divergence(
+    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+)
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
 
@@ -104,7 +106,31 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
 
     
 !!! note "Other methods"
-    The `kl_divergence` function also supports other estimation methods. See the [`kl_divergence`](../reference/kl_based_estimators.md#gmm_divergence.kl_divergence) for details.
+    The `kl_divergence` function also supports other estimation methods. See
+    the [divergence API reference](../reference/divergence.md) for details.
+
+## Sampling configuration
+
+Monte Carlo sampling is configured with explicit sample specifications:
+
+```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components([
+    gd.Gaussian.univariate(mean=0.0, variance=1.0),
+    gd.Gaussian.univariate(mean=1.0, variance=1.0),
+])
+
+drawn = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+reused = gd.divergence.MonteCarlo(sampling=gd.sampling.Samples(p.sample(10_000, rng=9126)))
+stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(10_000, rng=9126))
+```
+
+`gd.sampling.Draw` is the default and works for any sampleable distribution.
+`gd.sampling.Samples` is useful when comparing several methods on exactly the same
+reference samples. `gd.sampling.Stratified` is only valid when the reference
+distribution is a `GaussianMixture`; it allocates fixed sample counts to
+positive-weight components instead of relying on random component counts.
 
 !!! tip "Adaptive Monte Carlo"
     To spend more samples only when the estimate is still noisy, pass a target
@@ -125,14 +151,14 @@ q = gd.GaussianMixture.from_components([
 result = gd.kl_divergence(
     p,
     q,
-    method=gd.MonteCarlo(
-        sampling=10_000, target_standard_error=1e-3, max_samples=100_000, rng=9126
+    method=gd.divergence.MonteCarlo(
+        sampling=gd.sampling.Draw(10_000, rng=9126), target_standard_error=1e-3, max_samples=100_000
     ),
 )
 ```
 
-The initial `sampling` count is always evaluated first. Additional batches are
-drawn until the target is met or `max_samples` is reached.
+The initial `gd.sampling.Draw` count is always evaluated first. Additional batches
+are drawn until the target is met or `max_samples` is reached.
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

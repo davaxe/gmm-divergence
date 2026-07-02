@@ -18,7 +18,6 @@ if TYPE_CHECKING:
 class MixtureMapping:
     source_index: npt.NDArray[np.intp]
     """Index of the original input distribution for each flattened output component."""
-
     local_component_index: npt.NDArray[np.intp]
     """Component index within the original input mixture for each flattened output component."""
 

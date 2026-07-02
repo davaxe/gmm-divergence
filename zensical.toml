@@ -18,20 +18,14 @@ nav = [
   },
   { "API reference" = [
       "reference/index.md",
-      { "Distributions" = [
-          "reference/distributions.md",
-          { "Details" = "reference/distribution_details.md" }
-      ] },
-      { "Covariance regularization" = "reference/covariance.md" },
-      { "Divergence estimation" = [
-          "reference/kl_based_estimators.md",
-          { "Configuration" = "reference/kl_configuration.md" }
-      ] },
-      { "Mixture weight fitting" = [
-          "reference/fit_weights.md",
-          { "Configuration" = "reference/fit_configuration.md" }
-      ] },
-      { "Results" = "reference/results.md" }
+      { "Top-level API" = "reference/root.md" },
+      { "Namespaces" = [
+      { "Distributions" = "reference/distributions.md" },
+      { "Divergence" = "reference/divergence.md" },
+      { "Fitting" = "reference/fitting.md" },
+      { "Sampling" = "reference/sampling.md" },
+      { "Covariance" = "reference/covariance.md" }
+      ]}
   ]
   },
 ]

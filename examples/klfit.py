@@ -53,10 +53,15 @@ def main() -> None:
         target,
         components,
         method="softmax_lbfgsb",
-        objective=gd.ForwardKL(rng=0),
-        candidate_selector=gd.fitting.KLToleranceSelector(delta=15, mode="relative"),
+        objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=0)),
+        candidate_selector=gd.fitting.TopKSelector(6),
     )
-    print(f"Fitted forward KL: {res.forward_kl.value}")
+    forward_kl = gd.kl_divergence(
+        target,
+        res.fitted_mixture.mixture,
+        method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(100_000, rng=0)),
+    )
+    print(f"Fitted forward KL: {forward_kl.value} (converged: {res.converged})")
     print(f"Fitted weights for target '{args.target}':")
     for candidate_index, weight in res.candidate_weights():
         label = component_labels[candidate_index]

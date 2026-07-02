@@ -21,13 +21,9 @@ if TYPE_CHECKING:
 class Gaussian(GaussianFamily):
     mean: FloatArray
     """Mean array of shape (n_features,)."""
-
     covariance: Covariance
     """Covariance array of shape (n_features, n_features)."""
-
     _chol: FloatArray | None = field(default=None, init=False, repr=False)
-    """Cached Cholesky factor."""
-
     _log_det: float | None = field(default=None, init=False, repr=False)
 
     @classmethod

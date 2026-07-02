@@ -8,8 +8,8 @@ from gmm_divergence.divergence._api import (
 )
 from gmm_divergence.divergence._options import (
     ClosedForm,
-    GaussianApproximation,
     KLMethod,
+    MomentMatchedGaussian,
     MonteCarlo,
     Unscented,
     Variational,
@@ -17,8 +17,8 @@ from gmm_divergence.divergence._options import (
 
 __all__ = [
     "ClosedForm",
-    "GaussianApproximation",
     "KLMethod",
+    "MomentMatchedGaussian",
     "MonteCarlo",
     "Unscented",
     "Variational",

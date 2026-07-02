@@ -2,22 +2,18 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, TypeAlias, TypeVar, overload
+from typing import TYPE_CHECKING, Literal, TypeAlias, overload
 
 import numpy as np
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
+from gmm_divergence._core._validation import validate_positive_finite
+from gmm_divergence.covariance._shape import check_covariance_shape
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import FloatArray
-
-
-def _validate_positive_finite(value: float, *, name: str) -> None:
-    if not np.isfinite(value) or value <= 0.0:
-        msg = f"{name} must be a positive finite value, got {value}."
-        raise ValueError(msg)
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,7 +33,7 @@ class RelativeToTrace:
     r"""Multiplier $c$ in $\varepsilon = c\,\mathrm{tr}(\Sigma)/d$."""
 
     def __post_init__(self) -> None:
-        _validate_positive_finite(self.c, name="c")
+        validate_positive_finite(self.c, name="c")
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,7 +80,7 @@ class ResidualVariance:
     r"""Target rank $r$ used to define the discarded spectrum."""
 
     def __post_init__(self) -> None:
-        _validate_positive_finite(self.c, name="c")
+        validate_positive_finite(self.c, name="c")
         if self.r is not None and (isinstance(self.r, bool) or self.r <= 0):
             msg = f"r must be a positive integer when provided, got {self.r}."
             raise ValueError(msg)
@@ -97,8 +93,6 @@ EpsilonMethod: TypeAlias = (
     EpsilonMethodName | RelativeToTrace | TargetConditionNumber | ResidualVariance
 )
 EpsilonSpec: TypeAlias = float | EpsilonMethod
-
-OptionsT = TypeVar("OptionsT")
 
 _EPSILON_REGISTRY = Registry(
     label="covariance epsilon heuristic",
@@ -170,18 +164,18 @@ def estimate_epsilon(
         `(n,)` is returned with one epsilon per covariance.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    shape_kind = _check_covariance_shape(covariance_arr, batched=batched)
+    shape_kind = check_covariance_shape(covariance_arr, batched=batched)
     spec, options = _EPSILON_REGISTRY.resolve(method)
 
     match spec.name:
         case "relative_trace":
-            options = _cast_options(options, RelativeToTrace)
+            options = cast_options(options, RelativeToTrace)
             return _relative_trace(covariance_arr, c=options.c, batched=shape_kind)
         case "target_condition_number":
-            options = _cast_options(options, TargetConditionNumber)
+            options = cast_options(options, TargetConditionNumber)
             return _target_condition_number(covariance_arr, kappa=options.kappa, batched=shape_kind)
         case "residual_variance":
-            options = _cast_options(options, ResidualVariance)
+            options = cast_options(options, ResidualVariance)
             return _residual_variance(
                 covariance_arr, c=options.c, rank=options.r, batched=shape_kind
             )
@@ -193,7 +187,7 @@ def estimate_epsilon(
 def _relative_trace(
     covariance: FloatArray, *, c: float, batched: Literal["single", "batched"]
 ) -> float | FloatArray:
-    _validate_positive_finite(c, name="c")
+    validate_positive_finite(c, name="c")
     if batched == "single":
         dim = covariance.shape[0]
         scale = max(float(np.trace(covariance) / dim), 0.0)
@@ -229,7 +223,7 @@ def _target_condition_number(
 def _residual_variance(
     covariance: FloatArray, *, c: float, rank: int | None, batched: Literal["single", "batched"]
 ) -> float | FloatArray:
-    _validate_positive_finite(c, name="c")
+    validate_positive_finite(c, name="c")
     if rank is None:
         msg = "ResidualVariance.r must be provided when using the residual_variance heuristic."
         raise ValueError(msg)
@@ -259,35 +253,3 @@ def _n_discarded(dim: int, *, rank: int) -> int:
 
 def _symmetrize(covariance: FloatArray) -> FloatArray:
     return 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
-
-
-def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
-    if not isinstance(options, option_type):
-        msg = "Dispatcher returned an option object with the wrong type."
-        raise TypeError(msg)
-    return options
-
-
-def _check_covariance_shape(
-    covariance: FloatArray, *, batched: bool | None = None
-) -> Literal["single", "batched"]:
-    if covariance.ndim == 2:
-        if batched is True:
-            msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
-            raise ValueError(msg)
-        if covariance.shape[0] != covariance.shape[1]:
-            msg = f"Expected covariance with shape (d, d), got {covariance.shape}."
-            raise ValueError(msg)
-        return "single"
-
-    if covariance.ndim == 3:
-        if batched is False:
-            msg = f"Expected single covariance with shape (d, d), got {covariance.shape}."
-            raise ValueError(msg)
-        if covariance.shape[1] != covariance.shape[2]:
-            msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
-            raise ValueError(msg)
-        return "batched"
-
-    msg = f"covariance must have shape (d, d) or (n, d, d), got {covariance.shape}."
-    raise ValueError(msg)

@@ -8,22 +8,21 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
-from gmm_divergence._core._sampling import resolve_sample_batches, resolve_samples
+from gmm_divergence._core._sampling import Draw, resolve_sample_batches, resolve_samples
 from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._combine import combine_gaussians
-from gmm_divergence.divergence import MonteCarlo, kl_divergence
 from gmm_divergence.fitting._objectives import build_objective, softmax
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
-    FitObjective,
     FitParameterization,
     ForwardKL,
+    JensenShannon,
     MomentMatching,
     ReverseKL,
     SimplexSLSQP,
     SoftmaxLBFGSB,
 )
-from gmm_divergence.results import KLFitResult
+from gmm_divergence.results import FitResult
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
@@ -34,8 +33,8 @@ if TYPE_CHECKING:
     from gmm_divergence.fitting._selector import CandidateSelection, CandidateSelector
 
 
-FitObjectiveConfig: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | MomentMatching
-FitOptimizerConfig: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
+FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
+FitOptimizer: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
 
 
 def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
@@ -55,65 +54,47 @@ def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
     return q_component
 
 
-def _objective_name(objective: FitObjectiveConfig) -> FitObjective:
-    match objective:
-        case ForwardKL():
-            return "forward"
-        case ReverseKL():
-            return "reverse"
-        case BidirectionalKL():
-            return "bidirectional"
-        case MomentMatching():
-            return "moment_matching"
-
-
-def _objective_alpha(objective: FitObjectiveConfig) -> float | None:
+def _objective_alpha(objective: FitObjective) -> float | None:
     if isinstance(objective, BidirectionalKL):
         return objective.alpha
-    return None
-
-
-def _objective_rng(objective: FitObjectiveConfig) -> np.random.Generator | int | None:
-    if isinstance(objective, (ForwardKL, ReverseKL, BidirectionalKL)):
-        return objective.rng
     return None
 
 
 def _resolve_objective_samples(
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
-    objective: FitObjectiveConfig,
+    objective: FitObjective,
 ) -> tuple[FloatArray, FloatArray | None]:
     match objective:
-        case ForwardKL(sampling=sampling, rng=rng):
-            return resolve_samples(p, sampling, rng), None
-        case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
-        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, rng=rng):
-            return resolve_samples(p, p_sampling, rng), resolve_sample_batches(q_i, q_sampling, rng)
+        case ForwardKL(sampling=sampling):
+            return resolve_samples(p, sampling), None
+        case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+        case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
+            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
         case MomentMatching():
-            return resolve_samples(p, 10_000, None), None
+            return resolve_samples(p, Draw(10_000)), None
 
 
 def fit_mixture_weights(
     *,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
-    objective: FitObjectiveConfig,
-    optimizer: FitOptimizerConfig,
-    parameterization: FitParameterization,
+    objective: FitObjective,
+    optimizer: FitOptimizer,
     x0: npt.ArrayLike | None = None,
     candidate_selection: CandidateSelector[Gaussian | GaussianMixture] | None = None,
-) -> KLFitResult:
+) -> FitResult:
     selection: CandidateSelection[Gaussian | GaussianMixture] | None = None
     if candidate_selection is not None:
         selection = candidate_selection.select(p, q_i)
         q_i = [q_i[int(i)] for i in selection.selected_indices]
     q_component = _validate_q_i(q_i, p.dim)
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
-    resolved_num_p_samples = int(resolved_p_samples.shape[0])
-
-    if parameterization == "softmax":
+    if isinstance(optimizer, SoftmaxLBFGSB):
+        parameterization: FitParameterization = "softmax"
         x0 = (
             np.array(x0, dtype=np.float64)
             if x0 is not None
@@ -127,6 +108,7 @@ def fit_mixture_weights(
             return softmax(values)
 
     else:
+        parameterization = "simplex"
         x0 = (
             as_weights(x0, expected_length=q_component, name="Initial weights")
             if x0 is not None
@@ -139,7 +121,8 @@ def fit_mixture_weights(
             ub=np.array([1.0], dtype=np.float64),
         )
         bounds = Bounds(
-            lb=np.zeros(q_component, dtype=np.float64), ub=np.ones(q_component, dtype=np.float64)
+            lb=np.full(q_component, optimizer.min_weight, dtype=np.float64),
+            ub=np.ones(q_component, dtype=np.float64),
         )
 
         def weights_from_result(values: FloatArray) -> Weights:
@@ -162,19 +145,13 @@ def fit_mixture_weights(
         tol=optimizer.tol,
         options={"maxiter": optimizer.max_iterations},
     )
-    rng = _objective_rng(objective)
     weights: Weights = weights_from_result(result.x)
     fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
-    return KLFitResult(
+    return FitResult(
         weights=weights,
-        fit_objective=_objective_name(objective),
+        fit_objective=objective,
+        fit_method=optimizer,
         objective_value=float(result.fun),
-        forward_kl=kl_divergence(
-            p, fitted_mixture.mixture, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
-        ),
-        reverse_kl=kl_divergence(
-            fitted_mixture.mixture, p, method=MonteCarlo(sampling=resolved_num_p_samples, rng=rng)
-        ),
         scipy_result=result,
         fitted_mixture=fitted_mixture,
         alpha=_objective_alpha(objective),

@@ -6,13 +6,14 @@ import numpy as np
 
 from gmm_divergence import (
     DivergenceResult,
+    FitResult,
     Gaussian,
     GaussianMixture,
-    KLFitResult,
-    MonteCarlo,
     fit_mixture_weights,
     kl_divergence,
 )
+from gmm_divergence.divergence import MonteCarlo
+from gmm_divergence.sampling import Samples
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -49,7 +50,8 @@ def test_benchmark_monte_carlo_kl(benchmark: BenchmarkFixture) -> None:
     samples = p.sample(750, rng=321)
 
     result = cast(
-        "DivergenceResult", benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=samples))
+        "DivergenceResult",
+        benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=Samples(samples))),
     )
 
     assert result.num_samples == 750
@@ -64,7 +66,7 @@ def test_benchmark_moment_matching_fit(benchmark: BenchmarkFixture) -> None:
     ]
 
     result = cast(
-        "KLFitResult", benchmark(fit_mixture_weights, p, candidates, objective="moment_matching")
+        "FitResult", benchmark(fit_mixture_weights, p, candidates, objective="moment_matching")
     )
 
     assert result.converged is True

@@ -13,7 +13,9 @@ The package currently includes:
 - Sampling from Gaussian mixtures
 - KL divergence estimators based on closed-form Gaussian KL, Monte Carlo sampling,
   unscented sigma points, Gaussian approximations, and variational bounds
-- Mixture-weight fitting with forward, reverse, bidirectional, and moment-matching objectives
+- Explicit sampling controls for drawn, reused, and stratified Monte Carlo samples
+- Mixture-weight fitting with forward, reverse, bidirectional, Jensen-Shannon, and
+  moment-matching objectives
 - Covariance regularization utilities for diagonal loading, shrinkage, eigenvalue clipping,
   and low-rank approximation
 
@@ -23,12 +25,6 @@ This project is not yet intended for stable production use. A pre-release is ava
 
 ```bash
 python -m pip install gmm-divergence
-```
-
-For development, install it from a local checkout:
-
-```bash
-python -m pip install -e .
 ```
 
 ## Quick Example
@@ -48,9 +44,16 @@ q = gd.GaussianMixture.from_components([
     gd.Gaussian.univariate(mean=1.8, variance=1.2),
 ])
 
-result = gd.kl_divergence(p, q, method=gd.MonteCarlo(sampling=50_000, rng=0))
+result = gd.kl_divergence(
+    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
+)
 print(result.value, result.monte_carlo_stats.standard_error)
 ```
+
+The top-level module keeps the common distribution classes and primary helper
+functions. Configuration objects are grouped by domain, for example
+`gd.divergence.MonteCarlo`, `gd.sampling.Draw`, `gd.fitting.ForwardKL`, and
+`gd.covariance.DiagonalLoading`.
 
 ## Fitting Mixture Weights
 
@@ -60,6 +63,8 @@ candidates = [
     gd.Gaussian.univariate(mean=1.5, variance=1.0),
 ]
 
-fit = gd.fit_mixture_weights(p, candidates, objective=gd.MomentMatching(fit_second_moments=True))
+fit = gd.fit_mixture_weights(
+    p, candidates, objective=gd.fitting.MomentMatching(fit_second_moments=True)
+)
 print(fit.weights)
 ```

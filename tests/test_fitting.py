@@ -5,23 +5,27 @@ from typing import TYPE_CHECKING, cast
 import numpy as np
 import pytest
 
-from gmm_divergence import (
+import gmm_divergence as gd
+from gmm_divergence import Gaussian, GaussianMixture, fit_mixture_weights, prune_mixture
+from gmm_divergence.fitting import (
     BidirectionalKL,
-    Gaussian,
-    GaussianMixture,
+    JensenShannon,
     MomentMatching,
     SimplexSLSQP,
     SoftmaxLBFGSB,
-    fit_mixture_weights,
-    prune_mixture,
 )
-from gmm_divergence.fitting._objectives import forward_kl, moment_matching, reverse_kl
+from gmm_divergence.fitting._objectives import (
+    forward_kl,
+    jensen_shannon,
+    moment_matching,
+    reverse_kl,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Callable
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.fitting import WeightFitMethod
+    from gmm_divergence.fitting import FitMethod
 
 
 def _finite_difference_gradient(
@@ -52,17 +56,14 @@ def test_fit_mixture_weights_recovers_known_component_weights(
         Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
         Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
     ]
+    objective = MomentMatching(fit_second_moments=True)
+    result = fit_mixture_weights(p, candidates, method=method, objective=objective)
 
-    result = fit_mixture_weights(
-        p, candidates, method=method, objective=MomentMatching(fit_second_moments=True)
-    )
-
-    assert result.fit_objective == "moment_matching"
+    assert result.fit_objective == objective
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=1e-7)
     assert float(np.sum(result.weights)) == pytest.approx(1.0)
     assert result.objective_value < 1e-8
-    assert result.forward_kl.value == pytest.approx(0.0, abs=1e-8)
 
 
 def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
@@ -77,10 +78,7 @@ def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
 
     with pytest.raises(ValueError, match="Unknown fit optimizer method"):
         _ = fit_mixture_weights(
-            p,
-            [p],
-            method=cast("WeightFitMethod", cast("object", "unknown")),
-            objective=MomentMatching(),
+            p, [p], method=cast("FitMethod", cast("object", "unknown")), objective=MomentMatching()
         )
 
 
@@ -115,6 +113,48 @@ def test_fit_options_reject_invalid_parameters() -> None:
         _ = BidirectionalKL(alpha=1.5)
 
 
+def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
+        Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
+    ]
+
+    objective = JensenShannon(
+        p_sampling=gd.sampling.Draw(2_000, rng=123), q_sampling=gd.sampling.Draw(2_000, rng=123)
+    )
+    result = fit_mixture_weights(p, candidates, objective=objective)
+
+    assert result.fit_objective == objective
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
+    assert float(np.sum(result.weights)) == pytest.approx(1.0)
+
+    default_result = fit_mixture_weights(p, candidates, objective="jensen_shannon")
+    assert default_result.fit_objective == JensenShannon()
+
+
+def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        GaussianMixture.from_components([Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]])]),
+        GaussianMixture.from_components([Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]])]),
+    ]
+    objective = gd.fitting.JensenShannon(
+        p_sampling=gd.sampling.Stratified(2_000, rng=123),
+        q_sampling=gd.sampling.Stratified(2_000, rng=123),
+    )
+    result = fit_mixture_weights(p, candidates, objective=objective)
+
+    assert result.fit_objective == objective
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
+
+
 def test_fit_objective_gradients_match_finite_differences() -> None:
     p = GaussianMixture.from_arrays(
         weights=[0.45, 0.55], means=[[-1.0], [1.3]], covariances=[[[0.6]], [[1.2]]]
@@ -132,6 +172,7 @@ def test_fit_objective_gradients_match_finite_differences() -> None:
     objectives = [
         forward_kl(p, candidates, p_samples),
         reverse_kl(p, candidates, q_samples),
+        jensen_shannon(p, candidates, p_samples, q_samples),
         moment_matching(p, candidates, second_moments=True),
     ]
 

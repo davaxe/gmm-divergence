@@ -35,39 +35,29 @@ class MixtureDiagnostics:
 
     n_components: int
     """Number of components in the mixture."""
-
     dim: int
     """Dimensionality of the mixture."""
-
     weight_sum: float
     """Sum of the weights of the components."""
-
     max_weight: float
     """Maximum weight among the components."""
-
     min_weight: float
     """Minimum weight among the components."""
-
     weights_entropy: float
     """Entropy of the weights of the components in nats."""
-
     covar_condition_numbers: list[float]
+    """Condition numbers of the covariance matrices of the components."""
 
 
 @dataclass(frozen=True, slots=True, repr=False)
 class GaussianMixture(GaussianFamily):
     weights: Weights
     """Weight array of shape (n_components,)."""
-
     means: FloatArray
     """Mean array of shape (n_components, n_features)."""
-
     covariances: Covariances
     """Covariance array of shape (n_components, n_features, n_features)."""
-
     _chol: FloatArray | None = field(default=None, init=False, repr=False)
-    """Cached Cholesky factors."""
-
     _log_dets: FloatArray | None = field(default=None, init=False, repr=False)
 
     @classmethod

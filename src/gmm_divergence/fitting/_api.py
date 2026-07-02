@@ -2,22 +2,24 @@
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
 import numpy as np
 import numpy.typing as npt
 
 import gmm_divergence.fitting._fit as wfit
-from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
+from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
+    FitMethod,
+    FitObjective,
     ForwardKL,
+    JensenShannon,
     MomentMatching,
     ReverseKL,
     SimplexSLSQP,
     SoftmaxLBFGSB,
-    WeightFitMethod,
-    WeightFitObjective,
 )
 
 if TYPE_CHECKING:
@@ -26,9 +28,7 @@ if TYPE_CHECKING:
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.fitting._selector import CandidateSelector
-    from gmm_divergence.results import KLFitResult
-
-OptionsT = TypeVar("OptionsT")
+    from gmm_divergence.results import FitResult
 
 _OPTIMIZER_REGISTRY = Registry(
     label="fit optimizer",
@@ -44,6 +44,7 @@ _OBJECTIVE_REGISTRY = Registry(
         MethodSpec(name="forward", option_type=ForwardKL, default=ForwardKL()),
         MethodSpec(name="reverse", option_type=ReverseKL, default=ReverseKL()),
         MethodSpec(name="bidirectional", option_type=BidirectionalKL, default=BidirectionalKL()),
+        MethodSpec(name="jensen_shannon", option_type=JensenShannon, default=JensenShannon()),
         MethodSpec(name="moment_matching", option_type=MomentMatching, default=MomentMatching()),
     ),
 )
@@ -54,11 +55,11 @@ def fit_mixture_weights(
     q_i: Sequence[Gaussian | GaussianMixture],
     /,
     *,
-    method: WeightFitMethod = "softmax_lbfgsb",
-    objective: WeightFitObjective = "forward",
+    method: FitMethod = "softmax_lbfgsb",
+    objective: FitObjective = "forward",
     x0: npt.ArrayLike | None = None,
     candidate_selector: CandidateSelector[Gaussian | GaussianMixture] | None = None,
-) -> KLFitResult:
+) -> FitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
 
     Fits nonnegative weights `w_i` such that the weighted mixture
@@ -83,14 +84,15 @@ def fit_mixture_weights(
     objective : str or WeightFitObjective configuration, optional
         Objective used for fitting. Passing a string runs that objective with
         defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
-        or `MomentMatching(...)` for objective-specific options.
+        `JensenShannon(...)`, or `MomentMatching(...)` for objective-specific
+        options.
     x0 : array-like, optional
         Initial weights for the optimized variables. If `None`, the optimizer's
         default initialization is used.
 
     Returns
     -------
-    KLFitResult
+    FitResult
         Result containing the fitted weights, fitted mixture, fit objective,
         objective value, forward/reverse KL diagnostics, and optimizer metadata.
 
@@ -100,26 +102,24 @@ def fit_mixture_weights(
 
     match method_spec.name:
         case "softmax_lbfgsb":
-            optimizer = _cast_options(optimizer, SoftmaxLBFGSB)
+            optimizer = cast_options(optimizer, SoftmaxLBFGSB)
             objective_config = _cast_fit_objective(objective_config)
             return wfit.fit_mixture_weights(
                 p=p,
                 q_i=q_i,
                 objective=objective_config,
                 optimizer=optimizer,
-                parameterization="softmax",
                 x0=x0,
                 candidate_selection=candidate_selector,
             )
         case "simplex_slsqp":
-            optimizer = _cast_options(optimizer, SimplexSLSQP)
+            optimizer = cast_options(optimizer, SimplexSLSQP)
             objective_config = _cast_fit_objective(objective_config)
             return wfit.fit_mixture_weights(
                 p=p,
                 q_i=q_i,
                 objective=objective_config,
                 optimizer=optimizer,
-                parameterization="simplex",
                 x0=x0,
                 candidate_selection=candidate_selector,
             )
@@ -153,9 +153,7 @@ def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> Gaus
     ValueError
         If all components are pruned.
     """
-    if not np.isfinite(min_weight) or min_weight < 0.0:
-        msg = f"min_weight must be a nonnegative finite value, got {min_weight}."
-        raise ValueError(msg)
+    validate_nonnegative_finite(min_weight, name="min_weight")
 
     weights = mixture.weights
     keep_mask = weights >= min_weight
@@ -166,15 +164,10 @@ def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> Gaus
     return mixture.select_components(np.nonzero(keep_mask)[0])
 
 
-def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
-    if not isinstance(options, option_type):
-        msg = "Dispatcher returned an option object with the wrong type."
-        raise TypeError(msg)
-    return options
-
-
-def _cast_fit_objective(options: object) -> wfit.FitObjectiveConfig:
-    if not isinstance(options, (ForwardKL, ReverseKL, BidirectionalKL, MomentMatching)):
+def _cast_fit_objective(options: object) -> wfit.FitObjective:
+    if not isinstance(
+        options, (ForwardKL, ReverseKL, BidirectionalKL, JensenShannon, MomentMatching)
+    ):
         msg = "Dispatcher returned an objective object with the wrong type."
         raise TypeError(msg)
     return options

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeVar
+from typing import TYPE_CHECKING
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry
+from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.divergence._options import (
     ClosedForm,
-    GaussianApproximation,
     KLMethod,
+    MomentMatchedGaussian,
     MonteCarlo,
     Unscented,
     Variational,
@@ -26,8 +26,6 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._base import Distribution
 
-OptionsT = TypeVar("OptionsT")
-
 KL_REGISTRY = Registry(
     label="KL",
     specs=(
@@ -35,8 +33,8 @@ KL_REGISTRY = Registry(
         MethodSpec(name="unscented", option_type=Unscented, default=Unscented()),
         MethodSpec(
             name="gaussian_approximation",
-            option_type=GaussianApproximation,
-            default=GaussianApproximation(),
+            option_type=MomentMatchedGaussian,
+            default=MomentMatchedGaussian(),
         ),
         MethodSpec(name="closed_form", option_type=ClosedForm, default=ClosedForm()),
         MethodSpec(name="variational", option_type=Variational, default=Variational()),
@@ -75,8 +73,8 @@ def kl_divergence(
     method : str or KL method configuration, default="monte_carlo"
         Method used to compute or estimate the KL divergence. Passing a string
         runs that method with its defaults. Use a method configuration object,
-        such as `MonteCarlo(sampling=50_000, rng=0)`, for method-specific
-        options.
+        such as `divergence.MonteCarlo(sampling=sampling.Draw(50_000, rng=0))`, for
+        method-specific options.
     prefer_closed_form : bool, default=False
         If `True`, the function will attempt use closed form if both inputs are
         Gaussian, even if the user specified a different method.
@@ -116,11 +114,21 @@ def kl_divergence(
     Configure Monte Carlo sampling:
 
     ```python
-    samples = p.sample(50_000, rng=0)
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=samples))
+    result = kl_divergence(
+        p,
+        q,
+        method=divergence.MonteCarlo(sampling=sampling.Draw(50_000, rng=0)),
+    )
     ```
 
+    Use precomputed samples:
 
+    ```python
+    samples = p.sample(50_000, rng=0)
+    result = kl_divergence(
+        p, q, method=divergence.MonteCarlo(sampling=sampling.Samples(samples))
+    )
+    ```
     """
     _validate_same_dimension(p, q)
     spec, options = KL_REGISTRY.resolve(method)
@@ -129,12 +137,11 @@ def kl_divergence(
 
     match spec.name:
         case "monte_carlo":
-            options = _cast_options(options, MonteCarlo)
+            options = cast_options(options, MonteCarlo)
             return kl_monte_carlo(
                 p,
                 q,
                 sampling=options.sampling,
-                rng=options.rng,
                 target_standard_error=options.target_standard_error,
                 max_samples=options.max_samples,
                 batch_size=options.batch_size,
@@ -143,7 +150,7 @@ def kl_divergence(
             p = _require_unscented_input(p, spec.name)
             return kl_unscented(p, q)
         case "gaussian_approximation":
-            options = _cast_options(options, GaussianApproximation)
+            options = cast_options(options, MomentMatchedGaussian)
             p, q = _require_gaussian_family_pair(p, q, spec.name)
             return kl_gaussian_approximation(p, q, approximation=options.approximation)
         case "closed_form":
@@ -300,13 +307,6 @@ def _sum_num_samples(*results: DivergenceResult) -> int | None:
             return None
         total += result.num_samples
     return total
-
-
-def _cast_options(options: object, option_type: type[OptionsT]) -> OptionsT:
-    if not isinstance(options, option_type):
-        msg = "Dispatcher returned an option object with the wrong type."
-        raise TypeError(msg)
-    return options
 
 
 def _validate_same_dimension(p: Distribution, q: Distribution) -> None:
