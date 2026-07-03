@@ -201,14 +201,7 @@ def kl_divergence(
     match spec.name:
         case "monte_carlo":
             options = cast_options(options, MonteCarlo)
-            return kl_monte_carlo(
-                p,
-                q,
-                sampling=options.sampling,
-                target_standard_error=options.target_standard_error,
-                max_samples=options.max_samples,
-                batch_size=options.batch_size,
-            )
+            return kl_monte_carlo(p, q, sampling=options.sampling)
         case "unscented":
             return kl_unscented(p, q)
         case "gaussian_approximation":

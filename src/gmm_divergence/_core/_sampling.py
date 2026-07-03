@@ -11,6 +11,7 @@ from gmm_divergence._core._validation import (
     as_sample_batches,
     as_weights,
 )
+from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
@@ -133,12 +134,8 @@ def stratified_mixture_samples(
     distribution: GaussianLike, spec: Stratified
 ) -> StratifiedSampleResult:
     """Draw stratified samples from a Gaussian mixture."""
-    if not isinstance(distribution, GaussianMixture):
-        msg = (
-            "sampling.Stratified requires a GaussianMixture distribution, "
-            f"got {type(distribution).__name__}."
-        )
-        raise TypeError(msg)
+    if isinstance(distribution, Gaussian):
+        distribution = GaussianMixture.from_components([distribution], weights=[1.0])
 
     counts = stratified_component_counts(distribution.weights, spec.n_samples)
     rng = np.random.default_rng(spec.rng)

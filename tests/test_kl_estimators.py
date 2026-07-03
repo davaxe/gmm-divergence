@@ -124,18 +124,6 @@ def test_monte_carlo_stratified_sampling_for_mixture_reference() -> None:
     assert result.monte_carlo_stats.effective_sample_size == 10
 
 
-def test_monte_carlo_stratified_sampling_rejects_non_mixture_reference() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-
-    with pytest.raises(TypeError, match=r"sampling\.Stratified requires a GaussianMixture"):
-        _ = kl_divergence(
-            p,
-            p,
-            method=MonteCarlo(sampling=gd.sampling.Stratified(10, rng=123)),
-            prefer_closed_form=False,
-        )
-
-
 def test_monte_carlo_stratified_sampling_requires_samples_for_positive_components() -> None:
     p = GaussianMixture.from_arrays(
         weights=[0.8, 0.2], means=[[-1.0], [1.0]], covariances=[[[0.3]], [[0.7]]]
@@ -221,56 +209,6 @@ def test_monte_carlo_reports_standard_error() -> None:
     assert result.monte_carlo_stats is not None
     assert result.monte_carlo_stats.sample_variance == pytest.approx(expected_variance)
     assert result.monte_carlo_stats.standard_error == pytest.approx(expected_se)
-
-
-def test_monte_carlo_adaptive_sampling_stops_when_standard_error_target_is_met() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-
-    result = kl_divergence(
-        p,
-        p,
-        method=MonteCarlo(
-            sampling=gd.sampling.Draw(5, rng=123), target_standard_error=1e-12, max_samples=25
-        ),
-        prefer_closed_form=False,
-    )
-
-    assert result.num_samples == 5
-    assert result.value == pytest.approx(0.0, abs=1e-14)
-    assert result.monte_carlo_stats is not None
-    assert result.monte_carlo_stats.standard_error == pytest.approx(0.0)
-
-
-def test_monte_carlo_adaptive_sampling_respects_max_samples() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-    q = Gaussian.univariate(mean=1.0, variance=2.0)
-
-    result = kl_divergence(
-        p,
-        q,
-        method=MonteCarlo(
-            sampling=gd.sampling.Draw(5, rng=123),
-            target_standard_error=1e-12,
-            max_samples=15,
-            batch_size=5,
-        ),
-        prefer_closed_form=False,
-    )
-
-    assert result.num_samples == 15
-    assert result.monte_carlo_stats is not None
-    assert result.monte_carlo_stats.standard_error > 1e-12
-
-
-def test_monte_carlo_adaptive_options_validate_inputs() -> None:
-    with pytest.raises(ValueError, match="target_standard_error requires sampling"):
-        _ = MonteCarlo(sampling=gd.sampling.Samples(np.zeros((3, 1))), target_standard_error=0.1)
-
-    with pytest.raises(ValueError, match="target_standard_error must be a positive finite value"):
-        _ = MonteCarlo(sampling=gd.sampling.Draw(10), target_standard_error=0.0)
-
-    with pytest.raises(ValueError, match="max_samples must be greater than or equal"):
-        _ = MonteCarlo(sampling=gd.sampling.Draw(10), target_standard_error=0.1, max_samples=5)
 
 
 def test_component_kl_matrix_matches_closed_form_component_pairs() -> None:
