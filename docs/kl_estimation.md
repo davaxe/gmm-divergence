@@ -128,9 +128,9 @@ stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(10_000, rn
 
 `gd.sampling.Draw` is the default and works for any sampleable distribution.
 `gd.sampling.Samples` is useful when comparing several methods on exactly the same
-reference samples. `gd.sampling.Stratified` is only valid when the reference
-distribution is a `GaussianMixture`; it allocates fixed sample counts to
-positive-weight components instead of relying on random component counts.
+reference samples. `gd.sampling.Stratified` allocates fixed sample counts to
+positive-weight components instead of relying on random component counts; a
+single Gaussian is treated as a one-component mixture.
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

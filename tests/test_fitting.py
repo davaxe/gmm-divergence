@@ -198,6 +198,40 @@ def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
     assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
 
 
+def test_fit_mixture_weights_accepts_precomputed_candidate_sample_batches() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        Gaussian.univariate(mean=-2.0, variance=0.5),
+        Gaussian.univariate(mean=1.5, variance=1.2),
+    ]
+    q_samples = np.asarray([candidate.sample(500, rng=123) for candidate in candidates])
+    objective = gd.fitting.ReverseKL(
+        p_sampling=gd.sampling.Draw(500, rng=123), q_sampling=gd.sampling.SampleBatches(q_samples)
+    )
+
+    result = fit_mixture_weights(p, candidates, objective=objective)
+
+    assert result.fit_objective == objective
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.15)
+
+
+def test_precomputed_candidate_sample_batches_validate_shape_early() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    candidates = [
+        Gaussian.univariate(mean=-1.0, variance=1.0),
+        Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
+    objective = gd.fitting.ReverseKL(
+        q_sampling=gd.sampling.SampleBatches(np.zeros((2, 5, 2), dtype=np.float64))
+    )
+
+    with pytest.raises(ValueError, match="samples must have feature dimension 1"):
+        _ = fit_mixture_weights(p, candidates, objective=objective)
+
+
 def test_fit_objective_gradients_match_finite_differences() -> None:
     p = GaussianMixture.from_arrays(
         weights=[0.45, 0.55], means=[[-1.0], [1.3]], covariances=[[[0.6]], [[1.2]]]

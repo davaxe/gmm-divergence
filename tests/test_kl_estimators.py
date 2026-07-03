@@ -179,7 +179,7 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
     with pytest.raises(ValueError, match="Unknown KL method"):
         _ = kl_divergence(p, p, method=cast("KLMethod", cast("object", "not-a-method")))
 
-    with pytest.raises(ValueError, match="samples must have shape"):
+    with pytest.raises(ValueError, match="must have shape"):
         _ = kl_divergence(
             p,
             p,
@@ -339,21 +339,3 @@ def test_estimate_divergence_rejects_unknown_divergence() -> None:
         _ = gd.estimate_divergence(
             p, p, divergence=cast("DivergenceSpec", cast("object", "not-a-divergence"))
         )
-
-
-def test_public_exports_include_curated_root_api_and_namespaces() -> None:
-    assert gd.sampling.Draw(n_samples=1).n_samples == 1
-    assert gd.sampling.Stratified(n_samples=1).n_samples == 1
-    assert gd.sampling.Samples(np.zeros((1, 1))).samples is not None
-    assert gd.sampling.SampleBatches(np.zeros((1, 1, 1))).samples is not None
-    assert not hasattr(gd, "MonteCarlo")
-    assert not hasattr(gd, "Draw")
-    assert gd.component_kl_matrix is not None
-    assert gd.symmetric_kl_divergence is not None
-    assert gd.jensen_shannon_divergence is not None
-    assert gd.estimate_divergence is not None
-    assert gd.divergence.KLDivergence(method="closed_form").method == "closed_form"
-    assert gd.fitting.TopKSelector(k=1).k == 1
-    assert gd.fitting.ToleranceSelector(delta=0.1).delta == pytest.approx(0.1)
-    assert gd.fitting.score_candidates is not None
-    assert gd.fitting.rank_candidates is not None

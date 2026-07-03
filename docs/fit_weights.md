@@ -207,8 +207,8 @@ For fitting objectives, `p_sampling` controls samples from the reference
 distribution and `q_sampling` controls one fixed batch per candidate
 distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples and
 `gd.sampling.SampleBatches(...)` for precomputed candidate batches.
-`gd.sampling.Stratified(...)` can be used for either side when the sampled distributions are Gaussian
-mixtures.
+`gd.sampling.Stratified(...)` can be used for either side; a single Gaussian is
+treated as a one-component mixture.
 
 
 ## Example

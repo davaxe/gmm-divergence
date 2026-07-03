@@ -5,13 +5,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence._core._sampling import (
-    Draw,
-    SampleSpec,
-    Stratified,
-    resolve_samples,
-    stratified_mixture_samples,
-)
+from gmm_divergence._core._sampling import Draw, SampleSpec, Stratified, stratified_mixture_samples
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
@@ -66,7 +60,7 @@ def kl_monte_carlo(
     if isinstance(sampling, Stratified):
         return _kl_monte_carlo_stratified(p, q, sampling=sampling)
 
-    samples = resolve_samples(p, sampling)
+    samples = sampling.sample(p)
     pointwise_kl = _pointwise_kl(p, q, samples)
     return _result_from_pointwise(pointwise_kl)
 
