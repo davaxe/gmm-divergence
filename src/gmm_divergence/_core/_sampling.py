@@ -5,7 +5,12 @@ from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 
-from gmm_divergence._core._validation import as_points, as_positive_sample_count, as_sample_batches
+from gmm_divergence._core._validation import (
+    as_points,
+    as_positive_sample_count,
+    as_sample_batches,
+    as_weights,
+)
 from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
@@ -14,12 +19,12 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._base import Distribution
+    from gmm_divergence.distributions._typing import GaussianLike
 
 
 @dataclass(frozen=True, slots=True)
 class Draw:
-    """Draw fresh samples from the distribution being estimated.
+    """Draw fresh samples from the Gaussian-family distribution being estimated.
 
     Use this when the estimator or fitting objective should own sampling.
     Passing a seed or generator through `rng` makes repeated calls
@@ -57,7 +62,7 @@ class Stratified:
 
 @dataclass(frozen=True, slots=True)
 class Samples:
-    """Use precomputed samples from a single reference distribution."""
+    """Use precomputed samples from a single Gaussian-family reference distribution."""
 
     samples: npt.ArrayLike
     """Sample array with shape `(n_samples, n_features)`."""
@@ -65,7 +70,7 @@ class Samples:
 
 @dataclass(frozen=True, slots=True)
 class SampleBatches:
-    """Use precomputed sample batches for a sequence of candidate distributions."""
+    """Use precomputed sample batches for a sequence of candidate Gaussian distributions."""
 
     samples: npt.ArrayLike
     """Sample array with shape `(n_distributions, n_samples, n_features)`."""
@@ -75,7 +80,7 @@ SampleSpec: TypeAlias = Draw | Stratified | Samples
 SampleBatchSpec: TypeAlias = Draw | Stratified | SampleBatches
 
 
-def resolve_samples(distribution: Distribution, spec: SampleSpec) -> FloatArray:
+def resolve_samples(distribution: GaussianLike, spec: SampleSpec) -> FloatArray:
     """Return samples described by a single-distribution sample specification."""
     match spec:
         case Draw(n_samples=n_samples, rng=rng):
@@ -87,7 +92,7 @@ def resolve_samples(distribution: Distribution, spec: SampleSpec) -> FloatArray:
 
 
 def resolve_sample_batches(
-    distributions: Sequence[Distribution], spec: SampleBatchSpec
+    distributions: Sequence[GaussianLike], spec: SampleBatchSpec
 ) -> FloatArray:
     """Return sample batches described by a sample-batch specification."""
     match spec:
@@ -125,7 +130,7 @@ class StratifiedSampleResult:
 
 
 def stratified_mixture_samples(
-    distribution: Distribution, spec: Stratified
+    distribution: GaussianLike, spec: Stratified
 ) -> StratifiedSampleResult:
     """Draw stratified samples from a Gaussian mixture."""
     if not isinstance(distribution, GaussianMixture):
@@ -162,32 +167,20 @@ def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.N
     component that still contributes mass to the mixture.
     """
     n_samples = as_positive_sample_count(n_samples, name="n_samples")
-    weights_arr = np.asarray(weights, dtype=np.float64)
-
-    if weights_arr.ndim != 1 or weights_arr.shape[0] == 0:
-        msg = "weights must be a non-empty 1D array."
-        raise ValueError(msg)
-    if not np.all(np.isfinite(weights_arr)) or np.any(weights_arr < 0.0):
-        msg = "weights must contain finite nonnegative values."
-        raise ValueError(msg)
-
+    weights_arr = as_weights(weights, name="weights", normalize=True)
+    expected = weights_arr * n_samples
     positive = weights_arr > 0.0
     n_positive = int(np.count_nonzero(positive))
-    if n_positive == 0:
-        msg = "weights must contain at least one positive value."
-        raise ValueError(msg)
     if n_samples < n_positive:
         msg = (
             "sampling.Stratified requires at least one sample per positive-weight component, "
             f"got n_samples={n_samples} for {n_positive} positive components."
         )
         raise ValueError(msg)
-
     normalized = weights_arr / float(np.sum(weights_arr))
     expected = normalized * n_samples
     counts = np.floor(expected).astype(np.intp)
     counts[positive & (counts == 0)] = 1
-
     while int(np.sum(counts)) > n_samples:
         adjustable = np.flatnonzero(counts > 1)
         excess = counts[adjustable] - expected[adjustable]

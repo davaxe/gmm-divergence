@@ -10,7 +10,6 @@ import numpy as np
 
 from gmm_divergence._core._numeric import logsumexp
 from gmm_divergence._core._types import FloatArray
-from gmm_divergence.distributions._base import GaussianFamily, gaussian_family_raw_moment_vector
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitParameterization,
@@ -24,9 +23,9 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import Weights
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.distributions._typing import GaussianLike
 
 
-GaussianLike = GaussianFamily
 ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
 
 
@@ -387,3 +386,15 @@ def build_objective(
             return with_softmax(simplex_objective)
         case "simplex":
             return simplex_objective
+
+
+def gaussian_family_raw_moment_vector(
+    distribution: GaussianLike, /, *, second_moments: bool = False
+) -> FloatArray:
+    """Return the raw moment vector used by moment-matching objectives."""
+    mean, covariance = distribution.moments()
+    if not second_moments:
+        return mean
+
+    raw_second = covariance + np.outer(mean, mean)
+    return np.concatenate([mean.ravel(), raw_second.ravel()]).astype(np.float64)

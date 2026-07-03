@@ -5,14 +5,13 @@ from typing import TYPE_CHECKING
 import numpy as np
 
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
-from gmm_divergence.distributions._base import gaussian_family_moments
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
-    from gmm_divergence.distributions._base import GaussianFamily
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.distributions._typing import GaussianLike
     from gmm_divergence.divergence._options import Approximation
 
 
@@ -74,11 +73,11 @@ def _moment_matching_approximation(distribution: Gaussian | GaussianMixture) -> 
     if isinstance(distribution, Gaussian):
         return distribution
 
-    mean, covariance = gaussian_family_moments(distribution)
+    mean, covariance = distribution.moments()
     return Gaussian(mean=mean, covariance=covariance)
 
 
-def _nearest_component_pair_approximation(p: GaussianFamily, q: GaussianFamily) -> float:
+def _nearest_component_pair_approximation(p: GaussianLike, q: GaussianLike) -> float:
     _, means_p, covariances_p = p.component_arrays()
     _, means_q, covariances_q = q.component_arrays()
     kl_matrix = pairwise_gaussian_kl(means_p, covariances_p, means_q, covariances_q)

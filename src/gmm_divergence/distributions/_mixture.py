@@ -15,17 +15,12 @@ from gmm_divergence._core._validation import (
     as_weights,
 )
 from gmm_divergence.covariance import regularize_covariance
-from gmm_divergence.distributions._base import (
-    GaussianComponentArrays,
-    GaussianFamily,
-    gaussian_family_moments,
-)
 from gmm_divergence.distributions._gaussian import Gaussian
 
 if TYPE_CHECKING:
     from collections.abc import Iterator, Sequence
 
-    from gmm_divergence._core._types import Covariances, FloatArray, Weights
+    from gmm_divergence._core._types import Covariance, Covariances, FloatArray, Weights
     from gmm_divergence.covariance import CovarianceRegularizer
 
 
@@ -50,7 +45,7 @@ class MixtureDiagnostics:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class GaussianMixture(GaussianFamily):
+class GaussianMixture:
     weights: Weights
     """Weight array of shape (n_components,)."""
     means: FloatArray
@@ -139,7 +134,6 @@ class GaussianMixture(GaussianFamily):
         """Number of components in the Gaussian mixture."""
         return self.weights.shape[0]
 
-    @override
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian mixture at given points."""
         x = as_points(x, n_features=self.dim, name="x")
@@ -165,10 +159,13 @@ class GaussianMixture(GaussianFamily):
         object.__setattr__(self, "_log_dets", log_dets)
         return log_dets
 
-    @override
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian mixture."""
         return sample_gmm(self, n_samples=n_samples, rng=rng)
+
+    def pdf(self, x: npt.ArrayLike) -> FloatArray:
+        """Evaluate the density of the Gaussian mixture at given points."""
+        return np.exp(self.logpdf(x))
 
     def get_component(self, index: int) -> Gaussian:
         """Return the Gaussian component at the specified index."""
@@ -216,13 +213,17 @@ class GaussianMixture(GaussianFamily):
             return None
         if self.n_components == 1:
             return self.get_component(0)
-        mean, covariance = gaussian_family_moments(self)
-        return Gaussian(mean=mean, covariance=covariance)
+        mean, covariance = self.moments()
+        return Gaussian(mean=mean.astype(np.float64, copy=False), covariance=covariance)
 
-    @override
-    def component_arrays(self) -> GaussianComponentArrays:
+    def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
         """Return the weights, means, and covariances as arrays."""
         return self.weights, self.means, self.covariances
+
+    @property
+    def dim(self) -> int:
+        """Dimensionality of the Gaussian mixture."""
+        return self.means.shape[1]
 
     def __iter__(self) -> Iterator[tuple[float, Gaussian]]:
         """Iterate over the Gaussian components of the mixture."""
@@ -245,6 +246,19 @@ class GaussianMixture(GaussianFamily):
             weights_entropy=weights_entropy,
             covar_condition_numbers=covar_condition_numbers,
         )
+
+    def moments(self) -> tuple[FloatArray, Covariance]:
+        """Return the mean and covariance of the Gaussian mixture."""
+        weights, means, covariances = self.component_arrays()
+        mean = np.sum(weights[:, None] * means, axis=0)
+        mean_delta = means - mean
+        covariance = np.sum(
+            weights[:, None, None]
+            * (covariances + mean_delta[:, :, None] * mean_delta[:, None, :]),
+            axis=0,
+        )
+        covariance = 0.5 * (covariance + covariance.T)
+        return mean.astype(np.float64, copy=False), covariance
 
 
 def sample_gmm(

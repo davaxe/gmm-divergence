@@ -17,12 +17,12 @@ from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
 if TYPE_CHECKING:
-    from gmm_divergence.distributions._base import Distribution
+    from gmm_divergence.distributions._typing import GaussianLike
 
 
 def kl_monte_carlo(
-    p: Distribution,
-    q: Distribution,
+    p: GaussianLike,
+    q: GaussianLike,
     /,
     *,
     sampling: SampleSpec | None = None,
@@ -47,9 +47,9 @@ def kl_monte_carlo(
 
     Parameters
     ----------
-    p : Distribution
+    p : Gaussian or GaussianMixture
         Reference distribution to sample from.
-    q : Distribution
+    q : Gaussian or GaussianMixture
         Approximating distribution evaluated at the sampled points.
     sampling : SampleSpec, optional
         Sampling specification for the expectation under `p`, such as
@@ -99,8 +99,8 @@ def kl_monte_carlo(
 
 
 def _kl_monte_carlo_adaptive(
-    p: Distribution,
-    q: Distribution,
+    p: GaussianLike,
+    q: GaussianLike,
     /,
     *,
     sampling: SampleSpec,
@@ -142,7 +142,7 @@ def _kl_monte_carlo_adaptive(
 
 
 def _kl_monte_carlo_stratified(
-    p: Distribution, q: Distribution, /, *, sampling: Stratified
+    p: GaussianLike, q: GaussianLike, /, *, sampling: Stratified
 ) -> DivergenceResult:
     result = stratified_mixture_samples(p, sampling)
     pointwise_kl = _pointwise_kl(p, q, result.samples)
@@ -217,7 +217,7 @@ class _RunningStats:
 
 
 def _pointwise_kl(
-    p: Distribution, q: Distribution, samples: npt.ArrayLike
+    p: GaussianLike, q: GaussianLike, samples: npt.ArrayLike
 ) -> npt.NDArray[np.float64]:
     return np.asarray(p.logpdf(samples) - q.logpdf(samples), dtype=np.float64)
 

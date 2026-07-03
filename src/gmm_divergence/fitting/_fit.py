@@ -85,9 +85,9 @@ def fit_mixture_weights(
     objective: FitObjective,
     optimizer: FitOptimizer,
     x0: npt.ArrayLike | None = None,
-    candidate_selection: CandidateSelector[Gaussian | GaussianMixture] | None = None,
+    candidate_selection: CandidateSelector | None = None,
 ) -> FitResult:
-    selection: CandidateSelection[Gaussian | GaussianMixture] | None = None
+    selection: CandidateSelection | None = None
     if candidate_selection is not None:
         selection = candidate_selection.select(p, q_i)
         q_i = [q_i[int(i)] for i in selection.selected_indices]

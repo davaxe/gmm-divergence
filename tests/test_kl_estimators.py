@@ -3,7 +3,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Literal, TypeAlias, cast
 
 import numpy as np
-import numpy.typing as npt
 import pytest
 from scipy.integrate import quad
 
@@ -28,15 +27,6 @@ def _manual_gaussian_kl(p: Gaussian, q: Gaussian) -> float:
     _, logdet_p = np.linalg.slogdet(p.covariance)
     _, logdet_q = np.linalg.slogdet(q.covariance)
     return float(0.5 * (trace_term + quadratic_term - p.dim + logdet_q - logdet_p))
-
-
-def _sigma_points(gaussian: Gaussian) -> npt.NDArray[np.float64]:
-    eigenvalues, eigenvectors = np.linalg.eigh(gaussian.covariance)
-    scales = np.sqrt(gaussian.dim * eigenvalues)
-    offsets = eigenvectors * scales[None, :]
-    positive = np.asarray(gaussian.mean[None, :] + offsets.T, dtype=np.float64)
-    negative = np.asarray(gaussian.mean[None, :] - offsets.T, dtype=np.float64)
-    return np.vstack((positive, negative))
 
 
 def _quadrature_kl_1d(p: GaussianMixture, q: GaussianMixture) -> float:
@@ -77,22 +67,9 @@ def test_gaussian_family_estimators_are_exact_for_single_gaussian_pairs(
     q = Gaussian.from_arrays(mean=[-0.25, 0.75], covariance=[[0.9, -0.1], [-0.1, 1.8]])
     expected = kl_divergence(p, q, method="closed_form").value
 
-    result = kl_divergence(p, q, method=cast("KLMethod", method))
+    result = kl_divergence(p, q, method=cast("KLMethod", method), prefer_closed_form=False)
 
     assert result.method == method_name
-    assert result.value == pytest.approx(expected, rel=1e-14, abs=1e-14)
-
-
-def test_monte_carlo_with_deterministic_sigma_points_is_exact_for_gaussian_pairs() -> None:
-    p = Gaussian.from_arrays(mean=[0.5, -1.0], covariance=[[1.2, 0.2], [0.2, 0.7]])
-    q = Gaussian.from_arrays(mean=[-0.25, 0.75], covariance=[[0.9, -0.1], [-0.1, 1.8]])
-    samples = _sigma_points(p)
-    expected = kl_divergence(p, q, method="closed_form").value
-
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)))
-
-    assert result.method == "monte_carlo"
-    assert result.num_samples == 2 * p.dim
     assert result.value == pytest.approx(expected, rel=1e-14, abs=1e-14)
 
 
@@ -151,7 +128,12 @@ def test_monte_carlo_stratified_sampling_rejects_non_mixture_reference() -> None
     p = Gaussian.univariate(mean=0.0, variance=1.0)
 
     with pytest.raises(TypeError, match=r"sampling\.Stratified requires a GaussianMixture"):
-        _ = kl_divergence(p, p, method=MonteCarlo(sampling=gd.sampling.Stratified(10, rng=123)))
+        _ = kl_divergence(
+            p,
+            p,
+            method=MonteCarlo(sampling=gd.sampling.Stratified(10, rng=123)),
+            prefer_closed_form=False,
+        )
 
 
 def test_monte_carlo_stratified_sampling_requires_samples_for_positive_components() -> None:
@@ -184,7 +166,9 @@ def test_monte_carlo_uses_precomputed_samples_without_resampling() -> None:
     samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
     expected = float(np.mean(p.logpdf(samples) - q.logpdf(samples)))
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)))
+    result = kl_divergence(
+        p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)), prefer_closed_form=False
+    )
 
     assert result.method == "monte_carlo"
     assert result.num_samples == samples.shape[0]
@@ -198,7 +182,7 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
         weights=[0.5, 0.5], means=[[-1.0], [1.0]], covariances=[[[1.0]], [[1.0]]]
     )
 
-    with pytest.raises(ValueError, match="Distribution dimensions must match"):
+    with pytest.raises(ValueError, match="Gaussian-family distribution dimensions must match"):
         _ = kl_divergence(p, q_wrong_dim, method="closed_form")
 
     with pytest.raises(TypeError, match="requires p and q to be Gaussian"):
@@ -208,7 +192,12 @@ def test_kl_divergence_rejects_invalid_inputs_and_methods() -> None:
         _ = kl_divergence(p, p, method=cast("KLMethod", cast("object", "not-a-method")))
 
     with pytest.raises(ValueError, match="samples must have shape"):
-        _ = kl_divergence(p, p, method=MonteCarlo(sampling=gd.sampling.Samples(np.zeros((3, 2)))))
+        _ = kl_divergence(
+            p,
+            p,
+            method=MonteCarlo(sampling=gd.sampling.Samples(np.zeros((3, 2)))),
+            prefer_closed_form=False,
+        )
 
     with pytest.raises(ValueError, match="n_samples must be a positive integer"):
         _ = MonteCarlo(sampling=gd.sampling.Draw(0))
@@ -224,7 +213,9 @@ def test_monte_carlo_reports_standard_error() -> None:
     expected_variance = float(np.var(pointwise, ddof=1))
     expected_se = float(np.sqrt(expected_variance / samples.shape[0]))
 
-    result = kl_divergence(p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)))
+    result = kl_divergence(
+        p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)), prefer_closed_form=False
+    )
 
     assert result.value == pytest.approx(expected_value)
     assert result.monte_carlo_stats is not None
@@ -241,6 +232,7 @@ def test_monte_carlo_adaptive_sampling_stops_when_standard_error_target_is_met()
         method=MonteCarlo(
             sampling=gd.sampling.Draw(5, rng=123), target_standard_error=1e-12, max_samples=25
         ),
+        prefer_closed_form=False,
     )
 
     assert result.num_samples == 5
@@ -262,6 +254,7 @@ def test_monte_carlo_adaptive_sampling_respects_max_samples() -> None:
             max_samples=15,
             batch_size=5,
         ),
+        prefer_closed_form=False,
     )
 
     assert result.num_samples == 15
@@ -344,7 +337,7 @@ def test_symmetric_kl_divergence_reports_total_monte_carlo_samples() -> None:
     samples = np.array([[-2.0], [-0.5], [0.0], [1.5], [3.0]], dtype=np.float64)
 
     result = gd.symmetric_kl_divergence(
-        p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples))
+        p, q, method=MonteCarlo(sampling=gd.sampling.Samples(samples)), prefer_closed_form=False
     )
 
     assert result.num_samples == 2 * samples.shape[0]

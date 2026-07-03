@@ -12,7 +12,7 @@ configuration objects.
 
 | Symbol | Purpose |
 | --- | --- |
-| `Gaussian`, `GaussianMixture` | Core distribution classes |
+| `Gaussian`, `GaussianMixture` | Core Gaussian-family classes |
 | `combine_gaussians` | Build a combined Gaussian mixture |
 | `kl_divergence`, `symmetric_kl_divergence`, `jensen_shannon_divergence` | Main divergence helpers |
 | `component_kl_matrix` | Pairwise component KL diagnostics |
@@ -29,7 +29,7 @@ Configuration and specialized helpers are grouped by namespace:
 | `gmm_divergence.fitting` | Objectives, optimizers, and candidate selectors |
 | `gmm_divergence.sampling` | Sampling specifications such as `Draw` and `Samples` |
 | `gmm_divergence.covariance` | Covariance regularizers and epsilon heuristics |
-| `gmm_divergence.distributions` | Distribution details and combination metadata |
+| `gmm_divergence.distributions` | Gaussian-family details and combination metadata |
 
 ## Example
 

@@ -8,17 +8,16 @@ from typing_extensions import override
 
 from gmm_divergence._core._validation import as_covariance, as_points, as_positive_sample_count
 from gmm_divergence.covariance import regularize_covariance
-from gmm_divergence.distributions._base import GaussianComponentArrays, GaussianFamily
 
 if TYPE_CHECKING:
     import numpy.typing as npt
 
-    from gmm_divergence._core._types import Covariance, FloatArray
+    from gmm_divergence._core._types import Covariance, Covariances, FloatArray, Weights
     from gmm_divergence.covariance import CovarianceRegularizer
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class Gaussian(GaussianFamily):
+class Gaussian:
     mean: FloatArray
     """Mean array of shape (n_features,)."""
     covariance: Covariance
@@ -109,14 +108,12 @@ class Gaussian(GaussianFamily):
         object.__setattr__(self, "_log_det", log_det)
         return log_det
 
-    @override
     def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
         """Draw samples from the Gaussian."""
         n_samples = as_positive_sample_count(n_samples)
         rng = np.random.default_rng(rng)
         return rng.multivariate_normal(mean=self.mean, cov=self.covariance, size=n_samples)
 
-    @override
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian at given points."""
         x = as_points(x, n_features=self.dim, name="x")
@@ -130,10 +127,22 @@ class Gaussian(GaussianFamily):
         log_det = self.log_det()
         return -0.5 * (d * np.log(2 * np.pi) + log_det + mahalanobis)
 
-    @override
-    def component_arrays(self) -> GaussianComponentArrays:
+    def pdf(self, x: npt.ArrayLike) -> FloatArray:
+        """Evaluate the density of the Gaussian at given points."""
+        return np.exp(self.logpdf(x))
+
+    def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
         """Return the mean and covariance as component arrays."""
         return np.array([1.0]), self.mean[None, :], self.covariance[None, :, :]
+
+    def moments(self) -> tuple[FloatArray, Covariance]:
+        """Return the mean and covariance of the Gaussian."""
+        return self.mean, self.covariance
+
+    @property
+    def dim(self) -> int:
+        """Dimensionality of the Gaussian."""
+        return self.mean.shape[0]
 
     @override
     def __repr__(self) -> str:
