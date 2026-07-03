@@ -1,12 +1,12 @@
 """Public sampling configuration API."""
 
 from gmm_divergence._core._sampling import (
+    BatchSampleSpec,
     Draw,
     SampleBatches,
-    SampleBatchSpec,
     Samples,
     SampleSpec,
     Stratified,
 )
 
-__all__ = ["Draw", "SampleBatchSpec", "SampleBatches", "SampleSpec", "Samples", "Stratified"]
+__all__ = ["BatchSampleSpec", "Draw", "SampleBatches", "SampleSpec", "Samples", "Stratified"]

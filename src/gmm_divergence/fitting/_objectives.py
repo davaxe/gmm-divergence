@@ -10,7 +10,6 @@ import numpy as np
 
 from gmm_divergence._core._numeric import logsumexp
 from gmm_divergence._core._types import FloatArray
-from gmm_divergence.distributions._base import GaussianFamily, gaussian_family_raw_moment_vector
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitParameterization,
@@ -24,9 +23,9 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import Weights
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.distributions._typing import GaussianLike
 
 
-GaussianLike = GaussianFamily
 ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
 
 
@@ -348,11 +347,14 @@ def _build_simplex_objective(
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
-    p_samples: FloatArray,
+    p_samples: FloatArray | None,
     q_samples: FloatArray | None,
 ) -> ObjectiveFn:
     match objective:
         case ForwardKL():
+            if p_samples is None:
+                msg = "p_samples is required for forward KL."
+                raise ValueError(msg)
             return forward_kl(p, q_i, p_samples)
         case ReverseKL():
             if q_samples is None:
@@ -362,8 +364,8 @@ def _build_simplex_objective(
         case BidirectionalKL(alpha=alpha):
             return bidirectional_kl(p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha)
         case JensenShannon():
-            if q_samples is None:
-                msg = "q_samples is required for Jensen-Shannon."
+            if q_samples is None or p_samples is None:
+                msg = "Both p_samples and q_samples are required for Jensen-Shannon."
                 raise ValueError(msg)
             return jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
         case MomentMatching(fit_second_moments=fit_second_moments):
@@ -376,7 +378,7 @@ def build_objective(
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
-    p_samples: FloatArray,
+    p_samples: FloatArray | None,
     q_samples: FloatArray | None,
 ) -> ObjectiveFn:
     simplex_objective = _build_simplex_objective(
@@ -387,3 +389,15 @@ def build_objective(
             return with_softmax(simplex_objective)
         case "simplex":
             return simplex_objective
+
+
+def gaussian_family_raw_moment_vector(
+    distribution: GaussianLike, /, *, second_moments: bool = False
+) -> FloatArray:
+    """Return the raw moment vector used by moment-matching objectives."""
+    mean, covariance = distribution.moments()
+    if not second_moments:
+        return mean
+
+    raw_second = covariance + np.outer(mean, mean)
+    return np.concatenate([mean.ravel(), raw_second.ravel()]).astype(np.float64)

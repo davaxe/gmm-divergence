@@ -12,6 +12,14 @@ page documents estimator configuration classes from `gmm_divergence.divergence`.
         members: false
         show_root_full_path: true
 
+::: gmm_divergence.divergence.estimate_divergence
+
+::: gmm_divergence.divergence.KLDivergence
+
+::: gmm_divergence.divergence.SymmetricKLDivergence
+
+::: gmm_divergence.divergence.JensenShannonDivergence
+
 
 ::: gmm_divergence.divergence.MonteCarlo
 

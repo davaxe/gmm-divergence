@@ -34,6 +34,10 @@ classes from `gmm_divergence.fitting`.
 
 ## Candidate Selectors
 
+::: gmm_divergence.fitting.score_candidates
+
+::: gmm_divergence.fitting.rank_candidates
+
 ::: gmm_divergence.fitting.TopKSelector
 
 ::: gmm_divergence.fitting.ThresholdSelector

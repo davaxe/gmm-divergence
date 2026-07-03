@@ -58,7 +58,7 @@ def fit_mixture_weights(
     method: FitMethod = "softmax_lbfgsb",
     objective: FitObjective = "forward",
     x0: npt.ArrayLike | None = None,
-    candidate_selector: CandidateSelector[Gaussian | GaussianMixture] | None = None,
+    candidate_selector: CandidateSelector | None = None,
 ) -> FitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
 

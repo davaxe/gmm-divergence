@@ -8,12 +8,10 @@ from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import Covariances, FloatArray
-    from gmm_divergence.distributions._base import Distribution
-    from gmm_divergence.distributions._gaussian import Gaussian
-    from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.distributions._typing import GaussianLike
 
 
-def kl_unscented(p: Gaussian | GaussianMixture, q: Distribution, /) -> DivergenceResult:
+def kl_unscented(p: GaussianLike, q: GaussianLike, /) -> DivergenceResult:
     r"""Estimate KL divergence using unscented sigma points.
 
     Estimates
@@ -36,7 +34,7 @@ def kl_unscented(p: Gaussian | GaussianMixture, q: Distribution, /) -> Divergenc
     ----------
     p : Gaussian or GaussianMixture
         Reference distribution used to generate the sigma points.
-    q : Distribution
+    q : Gaussian or GaussianMixture
         Approximating distribution evaluated at the sigma points.
 
     Returns

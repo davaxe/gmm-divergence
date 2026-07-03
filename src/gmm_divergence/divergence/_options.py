@@ -4,8 +4,6 @@ from dataclasses import dataclass, field
 from typing import Literal, TypeAlias
 
 from gmm_divergence._core._sampling import Draw, SampleSpec
-from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
-from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
 Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 
@@ -37,51 +35,11 @@ class MonteCarlo:
 
     sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification used to estimate the expectation under p."""
-    target_standard_error: float | None = None
-    """Optional standard-error target for adaptive sampling."""
-    max_samples: int | None = None
-    """Maximum sample count when adaptive sampling is enabled.
 
-    If omitted, adaptive Monte Carlo uses ten times the initial draw count.
-    """
-    batch_size: int | None = None
-    """Batch size for additional adaptive samples.
-
-    If omitted, adaptive Monte Carlo uses the initial draw count as the batch size.
-    """
-
-    def __init__(
-        self,
-        sampling: int | SampleSpec | None = None,
-        target_standard_error: float | None = None,
-        max_samples: int | None = None,
-        batch_size: int | None = None,
-    ) -> None:
+    def __init__(self, sampling: int | SampleSpec | None = None) -> None:
         if isinstance(sampling, int):
             sampling = Draw(n_samples=sampling)
         object.__setattr__(self, "sampling", sampling or Draw())
-        object.__setattr__(self, "target_standard_error", target_standard_error)
-        object.__setattr__(self, "max_samples", max_samples)
-        object.__setattr__(self, "batch_size", batch_size)
-        if not isinstance(self.sampling, (Draw,)):
-            if self.target_standard_error is None:
-                return
-            msg = "target_standard_error requires sampling=sampling.Draw(...)."
-            raise ValueError(msg)
-
-        sampling_count = self.sampling.n_samples
-        if self.target_standard_error is not None:
-            _validate_positive_float(self.target_standard_error, name="target_standard_error")
-        if self.max_samples is not None:
-            _validate_positive_int(self.max_samples, name="max_samples")
-            if self.max_samples < sampling_count:
-                msg = (
-                    "max_samples must be greater than or equal to the initial sampling count, "
-                    f"got max_samples={self.max_samples} and sampling={sampling_count}."
-                )
-                raise ValueError(msg)
-        if self.batch_size is not None:
-            _validate_positive_int(self.batch_size, name="batch_size")
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,4 +129,40 @@ KLMethod: TypeAlias = (
     | MomentMatchedGaussian
     | ClosedForm
     | Variational
+)
+
+
+@dataclass(frozen=True, slots=True)
+class KLDivergence:
+    """Configuration for the directed Kullback-Leibler divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used to estimate ``KL(p || q)``."""
+    prefer_closed_form: bool = True
+    """Use closed-form Gaussian KL when both inputs are single Gaussian."""
+
+
+@dataclass(frozen=True, slots=True)
+class SymmetricKLDivergence:
+    """Configuration for the symmetric Kullback-Leibler divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used for each directed KL estimate."""
+    prefer_closed_form: bool = True
+    """Use closed-form Gaussian KL in each direction when possible."""
+
+
+@dataclass(frozen=True, slots=True)
+class JensenShannonDivergence:
+    """Configuration for the Jensen-Shannon divergence."""
+
+    method: KLMethod = "monte_carlo"
+    """Method used for the KL estimates against the midpoint mixture."""
+    prefer_closed_form: bool = True
+    """Pass through closed-form preference to the underlying KL estimates."""
+
+
+DivergenceName: TypeAlias = Literal["kl", "symmetric_kl", "jensen_shannon"]
+DivergenceSpec: TypeAlias = (
+    DivergenceName | KLDivergence | SymmetricKLDivergence | JensenShannonDivergence
 )

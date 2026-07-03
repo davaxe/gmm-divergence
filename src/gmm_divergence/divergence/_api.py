@@ -6,12 +6,15 @@ from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.distributions._gaussian import Gaussian
-from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.divergence._options import (
     ClosedForm,
+    DivergenceSpec,
+    JensenShannonDivergence,
+    KLDivergence,
     KLMethod,
     MomentMatchedGaussian,
     MonteCarlo,
+    SymmetricKLDivergence,
     Unscented,
     Variational,
 )
@@ -24,7 +27,7 @@ from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._base import Distribution
+    from gmm_divergence.distributions._typing import GaussianLike
 
 KL_REGISTRY = Registry(
     label="KL",
@@ -41,16 +44,75 @@ KL_REGISTRY = Registry(
     ),
 )
 
+_DIVERGENCE_REGISTRY = Registry(
+    label="divergence",
+    specs=(
+        MethodSpec(name="kl", option_type=KLDivergence, default=KLDivergence()),
+        MethodSpec(
+            name="symmetric_kl", option_type=SymmetricKLDivergence, default=SymmetricKLDivergence()
+        ),
+        MethodSpec(
+            name="jensen_shannon",
+            option_type=JensenShannonDivergence,
+            default=JensenShannonDivergence(),
+        ),
+    ),
+)
+
+
+def estimate_divergence(
+    p: GaussianLike, q: GaussianLike, /, *, divergence: DivergenceSpec = "kl"
+) -> DivergenceResult:
+    """Estimate a supported divergence between two Gaussian-family distributions.
+
+    This is the general divergence dispatch API. It currently routes to the
+    already-supported KL, symmetric KL, and Jensen-Shannon helpers; it does not
+    introduce new divergence estimators.
+
+    Parameters
+    ----------
+    p, q : Gaussian or GaussianMixture
+        The two Gaussian-family distributions to compare.
+    divergence : str or divergence configuration, default="kl"
+        Divergence family to estimate. Supported string values are ``"kl"``,
+        ``"symmetric_kl"``, and ``"jensen_shannon"``. Configuration objects such
+        as ``divergence.KLDivergence(...)`` can carry the KL estimation method.
+
+    Returns
+    -------
+    DivergenceResult
+        Result object containing the estimated divergence and metadata about
+        the computation.
+
+    """
+    spec, options = _DIVERGENCE_REGISTRY.resolve(divergence)
+    match spec.name:
+        case "kl" if isinstance(options, KLDivergence):
+            return kl_divergence(
+                p, q, method=options.method, prefer_closed_form=options.prefer_closed_form
+            )
+        case "symmetric_kl" if isinstance(options, SymmetricKLDivergence):
+            return symmetric_kl_divergence(
+                p, q, method=options.method, prefer_closed_form=options.prefer_closed_form
+            )
+        case "jensen_shannon" if isinstance(options, JensenShannonDivergence):
+            return jensen_shannon_divergence(
+                p, q, method=options.method, prefer_closed_form=options.prefer_closed_form
+            )
+        case _:
+            msg = "Unhandled divergence registry entry."
+            raise AssertionError(msg)
+
 
 def kl_divergence(
-    p: Distribution,
-    q: Distribution,
+    p: GaussianLike,
+    q: GaussianLike,
     /,
     *,
     method: KLMethod = "monte_carlo",
-    prefer_closed_form: bool = False,
+    prefer_closed_form: bool = True,
 ) -> DivergenceResult:
-    r"""Compute the Kullback--Leibler divergence between two distributions.
+    r"""Compute the Kullback--Leibler divergence between two Gaussian-family distributions.
 
     Computes
 
@@ -68,14 +130,15 @@ def kl_divergence(
 
     Parameters
     ----------
-    p, q : Distribution
-        The two distributions to compare. They must have the same dimensionality.
+    p, q : Gaussian or GaussianMixture
+        The two Gaussian-family distributions to compare. They must have the
+        same dimensionality.
     method : str or KL method configuration, default="monte_carlo"
         Method used to compute or estimate the KL divergence. Passing a string
         runs that method with its defaults. Use a method configuration object,
         such as `divergence.MonteCarlo(sampling=sampling.Draw(50_000, rng=0))`, for
         method-specific options.
-    prefer_closed_form : bool, default=False
+    prefer_closed_form : bool, default=True
         If `True`, the function will attempt use closed form if both inputs are
         Gaussian, even if the user specified a different method.
 
@@ -138,35 +201,23 @@ def kl_divergence(
     match spec.name:
         case "monte_carlo":
             options = cast_options(options, MonteCarlo)
-            return kl_monte_carlo(
-                p,
-                q,
-                sampling=options.sampling,
-                target_standard_error=options.target_standard_error,
-                max_samples=options.max_samples,
-                batch_size=options.batch_size,
-            )
+            return kl_monte_carlo(p, q, sampling=options.sampling)
         case "unscented":
-            p = _require_unscented_input(p, spec.name)
             return kl_unscented(p, q)
         case "gaussian_approximation":
             options = cast_options(options, MomentMatchedGaussian)
-            p, q = _require_gaussian_family_pair(p, q, spec.name)
             return kl_gaussian_approximation(p, q, approximation=options.approximation)
         case "closed_form":
             p, q = _require_gaussian_pair(p, q, spec.name)
             return kl_closed_form(p, q)
         case "variational":
-            p, q = _require_gaussian_family_pair(p, q, spec.name)
             return kl_variational(p, q)
         case _:
             msg = "Unhandled KL method registry entry."
             raise AssertionError(msg)
 
 
-def component_kl_matrix(
-    p: Gaussian | GaussianMixture, q: Gaussian | GaussianMixture, /
-) -> FloatArray:
+def component_kl_matrix(p: GaussianLike, q: GaussianLike, /) -> FloatArray:
     r"""Return pairwise Gaussian-component KL divergences.
 
     The returned matrix has shape `(p_components, q_components)`, where entry
@@ -196,14 +247,14 @@ def component_kl_matrix(
 
 
 def symmetric_kl_divergence(
-    p: Distribution,
-    q: Distribution,
+    p: GaussianLike,
+    q: GaussianLike,
     /,
     *,
     method: KLMethod = "monte_carlo",
-    prefer_closed_form: bool = False,
+    prefer_closed_form: bool = True,
 ) -> DivergenceResult:
-    r"""Compute the symmetric KL divergence between two distributions.
+    r"""Compute the symmetric KL divergence between two Gaussian-family distributions.
 
     Computes
 
@@ -220,11 +271,12 @@ def symmetric_kl_divergence(
 
     Parameters
     ----------
-    p, q : Distribution
-        The two distributions to compare. They must have the same dimensionality.
+    p, q : Gaussian or GaussianMixture
+        The two Gaussian-family distributions to compare. They must have the
+        same dimensionality.
     method : str or KL method configuration, default="monte_carlo"
         Method used for each directed KL estimate.
-    prefer_closed_form : bool, default=False
+    prefer_closed_form : bool, default=True
         If `True`, each directed estimate will attempt to use closed form when
         both inputs are Gaussian.
 
@@ -245,12 +297,12 @@ def symmetric_kl_divergence(
 
 
 def jensen_shannon_divergence(
-    p: Gaussian | GaussianMixture,
-    q: Gaussian | GaussianMixture,
+    p: GaussianLike,
+    q: GaussianLike,
     /,
     *,
     method: KLMethod = "monte_carlo",
-    prefer_closed_form: bool = False,
+    prefer_closed_form: bool = True,
 ) -> DivergenceResult:
     r"""Compute the Jensen-Shannon divergence between two Gaussian-family distributions.
 
@@ -277,7 +329,7 @@ def jensen_shannon_divergence(
         same dimensionality.
     method : str or KL method configuration, default="monte_carlo"
         Method used for the two KL estimates against the midpoint mixture.
-    prefer_closed_form : bool, default=False
+    prefer_closed_form : bool, default=True
         Passed through to `kl_divergence`. Note that the midpoint is generally
         a Gaussian mixture, so closed form is only available for methods and
         inputs that support it.
@@ -309,14 +361,14 @@ def _sum_num_samples(*results: DivergenceResult) -> int | None:
     return total
 
 
-def _validate_same_dimension(p: Distribution, q: Distribution) -> None:
+def _validate_same_dimension(p: GaussianLike, q: GaussianLike) -> None:
     if p.dim != q.dim:
-        msg = f"Distribution dimensions must match, got {p.dim} and {q.dim}."
+        msg = f"Gaussian-family distribution dimensions must match, got {p.dim} and {q.dim}."
         raise ValueError(msg)
 
 
 def _require_gaussian_pair(
-    p: Distribution, q: Distribution, method: str
+    p: GaussianLike, q: GaussianLike, method: str
 ) -> tuple[Gaussian, Gaussian]:
     if not isinstance(p, Gaussian) or not isinstance(q, Gaussian):
         msg = (
@@ -325,27 +377,3 @@ def _require_gaussian_pair(
         )
         raise TypeError(msg)
     return p, q
-
-
-def _require_gaussian_family_pair(
-    p: Distribution, q: Distribution, method: str
-) -> tuple[Gaussian | GaussianMixture, Gaussian | GaussianMixture]:
-    if not isinstance(p, (Gaussian, GaussianMixture)) or not isinstance(
-        q, (Gaussian, GaussianMixture)
-    ):
-        msg = (
-            f"KL method '{method}' requires p and q to be Gaussian or GaussianMixture; "
-            f"got {type(p).__name__} and {type(q).__name__}."
-        )
-        raise TypeError(msg)
-    return p, q
-
-
-def _require_unscented_input(p: Distribution, method: str) -> Gaussian | GaussianMixture:
-    if not isinstance(p, (Gaussian, GaussianMixture)):
-        msg = (
-            f"KL method '{method}' requires p to be Gaussian or GaussianMixture; "
-            f"got {type(p).__name__}."
-        )
-        raise TypeError(msg)
-    return p
