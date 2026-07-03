@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from math import isfinite
 from typing import Literal, TypeAlias
 
-from gmm_divergence._core._sampling import Draw, SampleBatchSpec, SampleSpec
+from gmm_divergence._core._sampling import BatchSampleSpec, Draw, SampleSpec
 from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
 from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
@@ -98,7 +98,7 @@ class ForwardKL:
 
     Use `sampling.Draw(...)` to draw fresh samples, `sampling.Samples(...)` for
     precomputed reference samples, or `sampling.Stratified(...)` when `p` is a
-    Gaussian mixture and fixed per-component counts are desired.
+    Gaussian-family distribution and fixed per-component counts are desired.
     """
 
 
@@ -124,11 +124,11 @@ class ReverseKL:
 
     p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for diagnostics under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=Draw)
+    q_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
-    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.Stratified(...)` for fixed per-component counts, or
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
 
@@ -154,11 +154,11 @@ class BidirectionalKL:
 
     p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the forward term under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=Draw)
+    q_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for the reverse term under each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
-    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.Stratified(...)` for fixed per-component counts, or
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
     alpha: float = 0.5
@@ -196,11 +196,11 @@ class JensenShannon:
 
     p_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the term under p."""
-    q_sampling: SampleBatchSpec = field(default_factory=Draw)
+    q_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
-    `sampling.Stratified(...)` when every candidate is a Gaussian mixture, or
+    `sampling.Stratified(...)` for fixed per-component counts, or
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
 

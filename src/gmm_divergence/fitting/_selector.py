@@ -4,15 +4,14 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Generic, Literal, Protocol
+from typing import TYPE_CHECKING, Literal, Protocol
 
 import numpy as np
 import numpy.typing as npt
-from typing_extensions import TypeVar, override
+from typing_extensions import override
 
 from gmm_divergence._core._sampling import Draw
 from gmm_divergence._core._validation import validate_nonnegative_finite
-from gmm_divergence.distributions._base import Distribution
 from gmm_divergence.divergence._api import kl_divergence
 from gmm_divergence.divergence._options import MonteCarlo
 
@@ -20,30 +19,84 @@ if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from gmm_divergence._core._types import FloatArray
+    from gmm_divergence.distributions._typing import GaussianLike
     from gmm_divergence.divergence._options import KLMethod
 
-DistributionT = TypeVar("DistributionT", bound=Distribution, default=Distribution)
+_DEFAULT_SCORING_METHOD = MonteCarlo(sampling=Draw(rng=0))
 
 
 @dataclass(frozen=True, slots=True)
-class CandidateSelection(Generic[DistributionT]):
+class CandidateSelection:
     selected_indices: npt.NDArray[np.int_]
     rejected_indices: npt.NDArray[np.int_]
     scores: FloatArray | None = None
 
 
-class CandidateSelector(Protocol, Generic[DistributionT]):
+class CandidateSelector(Protocol):
     """Protocol for filtering candidate distributions during fitting."""
 
-    def select(
-        self, p: DistributionT, q_i: Sequence[DistributionT]
-    ) -> CandidateSelection[DistributionT]:
+    def select(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> CandidateSelection:
         """Filter candidate distributions based on the target distribution."""
         ...
 
 
+def score_candidates(
+    p: GaussianLike,
+    q_i: Sequence[GaussianLike],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
+    alpha: float = 0.5,
+    method: KLMethod | None = None,
+    prefer_closed_form: bool = True,
+) -> FloatArray:
+    """Return KL-based scores for candidate distributions.
+
+    Lower scores indicate closer candidates.
+    """
+    _validate_candidate_sequence(q_i)
+    _validate_kl_selector_base(direction=direction, alpha=alpha)
+    return _compute_kl_values(
+        p,
+        q_i,
+        direction=direction,
+        alpha=alpha,
+        kl_method=_DEFAULT_SCORING_METHOD if method is None else method,
+        prefer_closed_form=prefer_closed_form,
+    )
+
+
+def rank_candidates(
+    p: GaussianLike,
+    q_i: Sequence[GaussianLike],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
+    alpha: float = 0.5,
+    method: KLMethod | None = None,
+    prefer_closed_form: bool = True,
+    limit: int | None = None,
+) -> list[tuple[int, float]]:
+    """Return candidate indices and scores sorted from best to worst."""
+    scores = score_candidates(
+        p,
+        q_i,
+        direction=direction,
+        alpha=alpha,
+        method=_DEFAULT_SCORING_METHOD if method is None else method,
+        prefer_closed_form=prefer_closed_form,
+    )
+    if limit is not None and (isinstance(limit, bool) or limit <= 0):
+        msg = f"limit must be a positive integer when provided, got {limit}."
+        raise ValueError(msg)
+    ranked_indices = np.argsort(scores)
+    if limit is None:
+        return [(int(index), float(scores[index])) for index in ranked_indices]
+    return [(int(index), float(scores[index])) for index in ranked_indices[:limit]]
+
+
 @dataclass(frozen=True, slots=True, kw_only=True)
-class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
+class _KLSelectorBase(CandidateSelector, ABC):
     direction: Literal["forward", "reverse", "bidirectional"] = "forward"
     alpha: float = 0.5
     kl_method: KLMethod = field(default=MonteCarlo(sampling=Draw(rng=0)))
@@ -51,25 +104,19 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
 
-    def _kl_divergence(self, p: Distribution, q: Distribution) -> float:
-        return kl_divergence(p, q, method=self.kl_method, prefer_closed_form=True).value
-
-    def _compute_kl_values(self, p: DistributionT, q_i: Sequence[DistributionT]) -> FloatArray:
+    def _compute_kl_values(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> FloatArray:
         """Compute pairwise KL divergence values between p and each q_i."""
-        match self.direction:
-            case "forward":
-                return np.array([self._kl_divergence(p, q) for q in q_i], dtype=np.float64)
-            case "reverse":
-                return np.array([self._kl_divergence(q, p) for q in q_i], dtype=np.float64)
-            case "bidirectional":
-                forward = np.array([self._kl_divergence(p, q) for q in q_i], dtype=np.float64)
-                reverse = np.array([self._kl_divergence(q, p) for q in q_i], dtype=np.float64)
-                return self.alpha * forward + (1 - self.alpha) * reverse
+        return _compute_kl_values(
+            p,
+            q_i,
+            direction=self.direction,
+            alpha=self.alpha,
+            kl_method=self.kl_method,
+            prefer_closed_form=True,
+        )
 
     @override
-    def select(
-        self, p: DistributionT, q_i: Sequence[DistributionT]
-    ) -> CandidateSelection[DistributionT]:
+    def select(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> CandidateSelection:
         kl_values = self._compute_kl_values(p, q_i)
         mask = self._select_mask(kl_values)
         return CandidateSelection(
@@ -83,7 +130,7 @@ class _KLSelectorBase(CandidateSelector[DistributionT], ABC):
 
 
 @dataclass(frozen=True, slots=True)
-class ThresholdSelector(_KLSelectorBase[DistributionT]):
+class ThresholdSelector(_KLSelectorBase):
     """Select candidates whose KL score is at or below a fixed threshold."""
 
     threshold: float
@@ -99,7 +146,7 @@ class ThresholdSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class ToleranceSelector(_KLSelectorBase[DistributionT]):
+class ToleranceSelector(_KLSelectorBase):
     """Select candidates within a tolerance of the best KL score.
 
     In absolute mode, candidates with `KL <= min(KL) + delta` are kept. In
@@ -127,7 +174,7 @@ class ToleranceSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class TopKSelector(_KLSelectorBase[DistributionT]):
+class TopKSelector(_KLSelectorBase):
     k: int
 
     def __post_init__(self) -> None:
@@ -146,7 +193,7 @@ class TopKSelector(_KLSelectorBase[DistributionT]):
 
 
 @dataclass(frozen=True, slots=True)
-class QuantileSelector(_KLSelectorBase[DistributionT]):
+class QuantileSelector(_KLSelectorBase):
     quantile: float
 
     def __post_init__(self) -> None:
@@ -171,3 +218,41 @@ def _validate_kl_selector_base(
     if direction == "bidirectional" and not 0 <= alpha <= 1:
         msg = f"alpha must be in [0, 1] for bidirectional KL, got {alpha}."
         raise ValueError(msg)
+
+
+def _validate_candidate_sequence(q_i: Sequence[GaussianLike]) -> None:
+    if len(q_i) == 0:
+        msg = "q_i must contain at least one candidate distribution."
+        raise ValueError(msg)
+
+
+def _kl_divergence_value(
+    p: GaussianLike, q: GaussianLike, /, *, kl_method: KLMethod, prefer_closed_form: bool
+) -> float:
+    return kl_divergence(p, q, method=kl_method, prefer_closed_form=prefer_closed_form).value
+
+
+def _compute_kl_values(
+    p: GaussianLike,
+    q_i: Sequence[GaussianLike],
+    /,
+    *,
+    direction: Literal["forward", "reverse", "bidirectional"],
+    alpha: float,
+    kl_method: KLMethod,
+    prefer_closed_form: bool,
+) -> FloatArray:
+    def kl(p: GaussianLike, q: GaussianLike) -> float:
+        return _kl_divergence_value(
+            p, q, kl_method=kl_method, prefer_closed_form=prefer_closed_form
+        )
+
+    match direction:
+        case "forward":
+            return np.array([kl(p, q) for q in q_i], dtype=np.float64)
+        case "reverse":
+            return np.array([kl(q, p) for q in q_i], dtype=np.float64)
+        case "bidirectional":
+            forward = np.array([kl(p, q) for q in q_i], dtype=np.float64)
+            reverse = np.array([kl(q, p) for q in q_i], dtype=np.float64)
+            return alpha * forward + (1 - alpha) * reverse

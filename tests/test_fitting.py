@@ -82,6 +82,49 @@ def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
         )
 
 
+def test_score_and_rank_candidates_expose_selector_scoring_logic() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    candidates = [
+        Gaussian.univariate(mean=0.0, variance=1.0),
+        Gaussian.univariate(mean=2.0, variance=1.0),
+        Gaussian.univariate(mean=-1.0, variance=2.0),
+    ]
+
+    scores = gd.fitting.score_candidates(p, candidates, method="closed_form")
+    ranked = gd.fitting.rank_candidates(p, candidates, method="closed_form", limit=2)
+
+    assert scores.shape == (3,)
+    assert scores[0] == pytest.approx(0.0)
+    assert ranked[0] == (0, pytest.approx(0.0))
+    assert [index for index, _score in ranked] == [0, 2]
+
+    bidirectional = gd.fitting.score_candidates(
+        p, candidates, direction="bidirectional", alpha=0.25, method="closed_form"
+    )
+    expected = 0.25 * gd.kl_divergence(p, candidates[2], method="closed_form").value + 0.75 * (
+        gd.kl_divergence(candidates[2], p, method="closed_form").value
+    )
+    assert bidirectional[2] == pytest.approx(expected)
+
+
+def test_score_and_rank_candidates_validate_inputs() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+
+    with pytest.raises(ValueError, match="at least one candidate"):
+        _ = gd.fitting.score_candidates(p, [], method="closed_form")
+
+    with pytest.raises(ValueError, match="limit must be a positive integer"):
+        _ = gd.fitting.rank_candidates(p, [p], method="closed_form", limit=0)
+
+    with pytest.raises(ValueError, match="direction must be"):
+        _ = gd.fitting.score_candidates(
+            p,
+            [p],
+            direction="sideways",  # pyright: ignore[reportArgumentType]
+            method="closed_form",
+        )
+
+
 def test_prune_mixture_removes_small_weights_and_keeps_valid_mixture() -> None:
     mixture = GaussianMixture.from_arrays(
         weights=[0.8, 0.00001, 0.19999],
@@ -153,6 +196,40 @@ def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
     assert result.fit_objective == objective
     assert result.converged is True
     assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
+
+
+def test_fit_mixture_weights_accepts_precomputed_candidate_sample_batches() -> None:
+    p = GaussianMixture.from_arrays(
+        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+    )
+    candidates = [
+        Gaussian.univariate(mean=-2.0, variance=0.5),
+        Gaussian.univariate(mean=1.5, variance=1.2),
+    ]
+    q_samples = np.asarray([candidate.sample(500, rng=123) for candidate in candidates])
+    objective = gd.fitting.ReverseKL(
+        p_sampling=gd.sampling.Draw(500, rng=123), q_sampling=gd.sampling.SampleBatches(q_samples)
+    )
+
+    result = fit_mixture_weights(p, candidates, objective=objective)
+
+    assert result.fit_objective == objective
+    assert result.converged is True
+    assert result.weights == pytest.approx([0.25, 0.75], abs=0.15)
+
+
+def test_precomputed_candidate_sample_batches_validate_shape_early() -> None:
+    p = Gaussian.univariate(mean=0.0, variance=1.0)
+    candidates = [
+        Gaussian.univariate(mean=-1.0, variance=1.0),
+        Gaussian.univariate(mean=1.0, variance=1.0),
+    ]
+    objective = gd.fitting.ReverseKL(
+        q_sampling=gd.sampling.SampleBatches(np.zeros((2, 5, 2), dtype=np.float64))
+    )
+
+    with pytest.raises(ValueError, match="samples must have feature dimension 1"):
+        _ = fit_mixture_weights(p, candidates, objective=objective)
 
 
 def test_fit_objective_gradients_match_finite_differences() -> None:

@@ -20,6 +20,8 @@ from gmm_divergence.fitting._selector import (
     ThresholdSelector,
     ToleranceSelector,
     TopKSelector,
+    rank_candidates,
+    score_candidates,
 )
 
 __all__ = [
@@ -41,4 +43,6 @@ __all__ = [
     "TopKSelector",
     "fit_mixture_weights",
     "prune_mixture",
+    "rank_candidates",
+    "score_candidates",
 ]

@@ -11,7 +11,7 @@ primary functions. Configuration classes live in the namespace pages.
 | Page | Import namespace | Contents |
 | --- | --- | --- |
 | [Top-level API](root.md) | `gmm_divergence` | Root exports: common classes, helper functions, and results |
-| [Distributions](distributions.md) | `gmm_divergence.distributions` | Distribution metadata not exported at the root |
+| [Distributions](distributions.md) | `gmm_divergence.distributions` | Gaussian-family metadata not exported at the root |
 | [Divergence](divergence.md) | `gmm_divergence.divergence` | Estimator configuration |
 | [Fitting](fitting.md) | `gmm_divergence.fitting` | Objectives, optimizers, and selectors |
 | [Sampling](sampling.md) | `gmm_divergence.sampling` | Sample specifications used by Monte Carlo estimators |

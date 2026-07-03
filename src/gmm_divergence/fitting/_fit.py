@@ -8,7 +8,6 @@ import numpy as np
 import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
-from gmm_divergence._core._sampling import Draw, resolve_sample_batches, resolve_samples
 from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._combine import combine_gaussians
 from gmm_divergence.fitting._objectives import build_objective, softmax
@@ -54,28 +53,22 @@ def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
     return q_component
 
 
-def _objective_alpha(objective: FitObjective) -> float | None:
-    if isinstance(objective, BidirectionalKL):
-        return objective.alpha
-    return None
-
-
 def _resolve_objective_samples(
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     objective: FitObjective,
-) -> tuple[FloatArray, FloatArray | None]:
+) -> tuple[FloatArray | None, FloatArray | None]:
     match objective:
         case ForwardKL(sampling=sampling):
-            return resolve_samples(p, sampling), None
+            return sampling.sample(p), None
         case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling):
-            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
         case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling):
-            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
         case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
-            return resolve_samples(p, p_sampling), resolve_sample_batches(q_i, q_sampling)
+            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
         case MomentMatching():
-            return resolve_samples(p, Draw(10_000)), None
+            return None, None
 
 
 def fit_mixture_weights(
@@ -85,9 +78,9 @@ def fit_mixture_weights(
     objective: FitObjective,
     optimizer: FitOptimizer,
     x0: npt.ArrayLike | None = None,
-    candidate_selection: CandidateSelector[Gaussian | GaussianMixture] | None = None,
+    candidate_selection: CandidateSelector | None = None,
 ) -> FitResult:
-    selection: CandidateSelection[Gaussian | GaussianMixture] | None = None
+    selection: CandidateSelection | None = None
     if candidate_selection is not None:
         selection = candidate_selection.select(p, q_i)
         q_i = [q_i[int(i)] for i in selection.selected_indices]
@@ -154,7 +147,7 @@ def fit_mixture_weights(
         objective_value=float(result.fun),
         scipy_result=result,
         fitted_mixture=fitted_mixture,
-        alpha=_objective_alpha(objective),
+        alpha=objective.alpha if isinstance(objective, BidirectionalKL) else None,
         iterations=result.nit,
         converged=bool(result.success),
         used_candidate_indices=list(selection.selected_indices) if selection is not None else None,

@@ -1,25 +1,48 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
+from typing_extensions import override
 
-from gmm_divergence._core._validation import as_points, as_positive_sample_count, as_sample_batches
+from gmm_divergence._core._validation import (
+    as_points,
+    as_positive_sample_count,
+    as_sample_batches,
+    as_weights,
+)
+from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
+    from collections.abc import Callable, Sequence
 
     import numpy.typing as npt
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._base import Distribution
+    from gmm_divergence.distributions._typing import GaussianLike
+
+
+class SampleSpec(Protocol):
+    """Protocol for sampling specifications."""
+
+    def sample(self, distribution: GaussianLike) -> FloatArray:
+        """Return samples described by the specification."""
+        ...
+
+
+class BatchSampleSpec(Protocol):
+    """Protocol for sample specifications that can sample distribution sequences."""
+
+    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
+        """Return sample batches described by the specification."""
+        ...
 
 
 @dataclass(frozen=True, slots=True)
-class Draw:
-    """Draw fresh samples from the distribution being estimated.
+class Draw(SampleSpec, BatchSampleSpec):
+    """Draw fresh samples from the Gaussian-family distribution being estimated.
 
     Use this when the estimator or fitting objective should own sampling.
     Passing a seed or generator through `rng` makes repeated calls
@@ -34,16 +57,30 @@ class Draw:
     def __post_init__(self) -> None:
         _ = as_positive_sample_count(self.n_samples, name="n_samples")
 
+    @override
+    def sample(self, distribution: GaussianLike) -> FloatArray:
+        """Return the batch of samples corresponding to the given distribution."""
+        return distribution.sample(n_samples=self.n_samples, rng=self.rng)
+
+    @override
+    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
+        """Return one independently drawn sample batch per distribution."""
+        rng = np.random.default_rng(self.rng)
+        return _sample_each_distribution(
+            distributions,
+            lambda distribution: distribution.sample(n_samples=self.n_samples, rng=rng),
+        )
+
 
 @dataclass(frozen=True, slots=True)
-class Stratified:
-    """Draw stratified samples from a Gaussian mixture.
+class Stratified(SampleSpec, BatchSampleSpec):
+    """Draw stratified samples from a Gaussian-family distribution.
 
-    Component sample counts are allocated deterministically from the mixture
-    weights, then samples are drawn from each component. Every positive-weight
-    component receives at least one sample, so `n_samples` must be at least the
-    number of positive-weight components. This is only valid for
-    `GaussianMixture` distributions.
+    For a Gaussian mixture, component sample counts are allocated
+    deterministically from the mixture weights, then samples are drawn from each
+    component. Every positive-weight component receives at least one sample, so
+    `n_samples` must be at least the number of positive-weight components. A
+    single Gaussian is treated as a one-component mixture.
     """
 
     n_samples: int = 10_000
@@ -54,62 +91,75 @@ class Stratified:
     def __post_init__(self) -> None:
         _ = as_positive_sample_count(self.n_samples, name="n_samples")
 
+    @override
+    def sample(self, distribution: GaussianLike) -> FloatArray:
+        """Return the batch of samples corresponding to the given distribution."""
+        return stratified_mixture_samples(distribution, self).samples
+
+    @override
+    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
+        """Return one stratified sample batch per distribution."""
+        return _sample_each_distribution(
+            distributions,
+            lambda distribution: stratified_mixture_samples(distribution, self).samples,
+        )
+
 
 @dataclass(frozen=True, slots=True)
-class Samples:
-    """Use precomputed samples from a single reference distribution."""
+class Samples(SampleSpec):
+    """Use precomputed samples from a single Gaussian-family reference distribution."""
 
     samples: npt.ArrayLike
     """Sample array with shape `(n_samples, n_features)`."""
 
+    @override
+    def sample(self, distribution: GaussianLike) -> FloatArray:
+        """Return the batch of samples corresponding to the given distribution."""
+        return as_points(self.samples, n_features=distribution.dim, name="samples")
+
 
 @dataclass(frozen=True, slots=True)
-class SampleBatches:
+class SampleBatches(BatchSampleSpec):
     """Use precomputed sample batches for a sequence of candidate distributions."""
 
     samples: npt.ArrayLike
     """Sample array with shape `(n_distributions, n_samples, n_features)`."""
 
-
-SampleSpec: TypeAlias = Draw | Stratified | Samples
-SampleBatchSpec: TypeAlias = Draw | Stratified | SampleBatches
-
-
-def resolve_samples(distribution: Distribution, spec: SampleSpec) -> FloatArray:
-    """Return samples described by a single-distribution sample specification."""
-    match spec:
-        case Draw(n_samples=n_samples, rng=rng):
-            return distribution.sample(n_samples=n_samples, rng=rng)
-        case Stratified():
-            return stratified_mixture_samples(distribution, spec).samples
-        case Samples(samples=samples):
-            return as_points(samples, n_features=distribution.dim, name="samples")
+    @override
+    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
+        """Return precomputed sample batches for the given distributions."""
+        expected_dim = distributions[0].dim if distributions else 0
+        return as_sample_batches(
+            self.samples,
+            n_distributions=len(distributions),
+            n_features=expected_dim,
+            name="samples",
+        )
 
 
-def resolve_sample_batches(
-    distributions: Sequence[Distribution], spec: SampleBatchSpec
+def _sample_each_distribution(
+    distributions: Sequence[GaussianLike], sampler: Callable[[GaussianLike], FloatArray]
 ) -> FloatArray:
-    """Return sample batches described by a sample-batch specification."""
-    match spec:
-        case Draw(n_samples=n_samples, rng=rng):
-            rng = np.random.default_rng(rng)
-            return np.asarray(
-                [distribution.sample(n_samples, rng=rng) for distribution in distributions],
-                dtype=np.float64,
+    if len(distributions) == 0:
+        msg = "distributions must contain at least one distribution."
+        raise ValueError(msg)
+
+    validated: list[FloatArray] = []
+    n_samples: int | None = None
+    for index, distribution in enumerate(distributions):
+        batch = sampler(distribution)
+        batch_arr = as_points(batch, n_features=distribution.dim, name=f"samples[{index}]")
+        if n_samples is None:
+            n_samples = batch_arr.shape[0]
+        elif batch_arr.shape[0] != n_samples:
+            msg = (
+                "All sample batches must have the same number of samples, "
+                f"got {n_samples} and {batch_arr.shape[0]}."
             )
-        case Stratified():
-            return np.asarray(
-                [
-                    stratified_mixture_samples(distribution, spec).samples
-                    for distribution in distributions
-                ],
-                dtype=np.float64,
-            )
-        case SampleBatches(samples=samples):
-            expected_dim = distributions[0].dim if distributions else 0
-            return as_sample_batches(
-                samples, n_distributions=len(distributions), n_features=expected_dim, name="samples"
-            )
+            raise ValueError(msg)
+        validated.append(batch_arr)
+
+    return np.stack(validated).astype(np.float64, copy=False)
 
 
 @dataclass(frozen=True, slots=True)
@@ -125,15 +175,11 @@ class StratifiedSampleResult:
 
 
 def stratified_mixture_samples(
-    distribution: Distribution, spec: Stratified
+    distribution: GaussianLike, spec: Stratified
 ) -> StratifiedSampleResult:
     """Draw stratified samples from a Gaussian mixture."""
-    if not isinstance(distribution, GaussianMixture):
-        msg = (
-            "sampling.Stratified requires a GaussianMixture distribution, "
-            f"got {type(distribution).__name__}."
-        )
-        raise TypeError(msg)
+    if isinstance(distribution, Gaussian):
+        distribution = GaussianMixture.from_components([distribution], weights=[1.0])
 
     counts = stratified_component_counts(distribution.weights, spec.n_samples)
     rng = np.random.default_rng(spec.rng)
@@ -155,39 +201,22 @@ def stratified_mixture_samples(
 
 
 def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.NDArray[np.intp]:
-    """Allocate exact stratified sample counts from mixture weights.
-
-    Every component with positive weight receives at least one sample. This
-    avoids silently biasing stratified estimates by assigning zero samples to a
-    component that still contributes mass to the mixture.
-    """
+    """Allocate exact stratified sample counts from mixture weights."""
     n_samples = as_positive_sample_count(n_samples, name="n_samples")
-    weights_arr = np.asarray(weights, dtype=np.float64)
-
-    if weights_arr.ndim != 1 or weights_arr.shape[0] == 0:
-        msg = "weights must be a non-empty 1D array."
-        raise ValueError(msg)
-    if not np.all(np.isfinite(weights_arr)) or np.any(weights_arr < 0.0):
-        msg = "weights must contain finite nonnegative values."
-        raise ValueError(msg)
-
+    weights_arr = as_weights(weights, name="weights", normalize=True)
+    expected = weights_arr * n_samples
     positive = weights_arr > 0.0
     n_positive = int(np.count_nonzero(positive))
-    if n_positive == 0:
-        msg = "weights must contain at least one positive value."
-        raise ValueError(msg)
     if n_samples < n_positive:
         msg = (
             "sampling.Stratified requires at least one sample per positive-weight component, "
             f"got n_samples={n_samples} for {n_positive} positive components."
         )
         raise ValueError(msg)
-
     normalized = weights_arr / float(np.sum(weights_arr))
     expected = normalized * n_samples
     counts = np.floor(expected).astype(np.intp)
     counts[positive & (counts == 0)] = 1
-
     while int(np.sum(counts)) > n_samples:
         adjustable = np.flatnonzero(counts > 1)
         excess = counts[adjustable] - expected[adjustable]
