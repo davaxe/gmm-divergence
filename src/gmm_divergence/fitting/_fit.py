@@ -5,11 +5,14 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
-import numpy.typing as npt
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
 from gmm_divergence._core._validation import as_weights
-from gmm_divergence.distributions._combine import combine_gaussians
+from gmm_divergence.distributions._combine import (
+    CombinedGaussianMixture,
+    MixtureMapping,
+    combine_gaussians,
+)
 from gmm_divergence.fitting._objectives import build_objective, softmax
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
@@ -77,22 +80,24 @@ def fit_mixture_weights(
     q_i: Sequence[Gaussian | GaussianMixture],
     objective: FitObjective,
     optimizer: FitOptimizer,
-    x0: npt.ArrayLike | None = None,
     candidate_selection: CandidateSelector | None = None,
 ) -> FitResult:
+    original_count = len(q_i)
     selection: CandidateSelection | None = None
     if candidate_selection is not None:
         selection = candidate_selection.select(p, q_i)
-        q_i = [q_i[int(i)] for i in selection.selected_indices]
+        _validate_selection(selection, original_count)
+        q_i = [q_i[index] for index in selection.selected_indices]
     q_component = _validate_q_i(q_i, p.dim)
     resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
     if isinstance(optimizer, SoftmaxLBFGSB):
         parameterization: FitParameterization = "softmax"
-        x0 = (
-            np.array(x0, dtype=np.float64)
-            if x0 is not None
+        initial = (
+            np.array(optimizer.initial_logits, dtype=np.float64)
+            if optimizer.initial_logits is not None
             else np.zeros(q_component, dtype=np.float64)
         )
+        _validate_initial_vector(initial, q_component, name="initial_logits")
         scipy_method = "L-BFGS-B"
         constraints = ()
         bounds = None
@@ -102,9 +107,14 @@ def fit_mixture_weights(
 
     else:
         parameterization = "simplex"
-        x0 = (
-            as_weights(x0, expected_length=q_component, name="Initial weights")
-            if x0 is not None
+        if optimizer.min_weight * q_component > 1.0:
+            msg = "min_weight is infeasible for the number of active candidates."
+            raise ValueError(msg)
+        initial = (
+            as_weights(
+                optimizer.initial_weights, expected_length=q_component, name="initial_weights"
+            )
+            if optimizer.initial_weights is not None
             else np.full(q_component, 1.0 / q_component, dtype=np.float64)
         )
         scipy_method = "SLSQP"
@@ -130,7 +140,7 @@ def fit_mixture_weights(
             p_samples=resolved_p_samples,
             q_samples=resolved_q_samples,
         ),
-        x0,
+        initial,
         method=scipy_method,
         jac=True,
         constraints=constraints,
@@ -138,17 +148,55 @@ def fit_mixture_weights(
         tol=optimizer.tol,
         options={"maxiter": optimizer.max_iterations},
     )
-    weights: Weights = weights_from_result(result.x)
-    fitted_mixture = combine_gaussians(weights=weights, sources=q_i, include_mapping=True)
+    active_weights: Weights = weights_from_result(result.x)
+    weights = np.zeros(original_count, dtype=np.float64)
+    active_indices = (
+        tuple(range(original_count)) if selection is None else selection.selected_indices
+    )
+    weights[list(active_indices)] = active_weights
+    weights.setflags(write=False)
+    combined = combine_gaussians(weights=active_weights, sources=q_i, include_mapping=True)
+    remapped_sources = np.take(
+        np.asarray(active_indices, dtype=np.intp), combined.mapping.source_index
+    )
+    remapped_sources.setflags(write=False)
+    fitted_mixture = CombinedGaussianMixture(
+        mixture=combined.mixture,
+        mapping=MixtureMapping(
+            source_index=remapped_sources,
+            local_component_index=combined.mapping.local_component_index,
+        ),
+    )
     return FitResult(
         weights=weights,
         fit_objective=objective,
         fit_method=optimizer,
         objective_value=float(result.fun),
-        scipy_result=result,
         fitted_mixture=fitted_mixture,
         alpha=objective.alpha if isinstance(objective, BidirectionalKL) else None,
         iterations=result.nit,
         converged=bool(result.success),
-        used_candidate_indices=list(selection.selected_indices) if selection is not None else None,
+        active_candidate_indices=active_indices,
+        optimizer_message=str(result.message),
     )
+
+
+def _validate_initial_vector(values: FloatArray, expected_length: int, *, name: str) -> None:
+    if values.ndim != 1 or values.shape[0] != expected_length or not np.all(np.isfinite(values)):
+        msg = f"{name} must be a finite 1D array with length {expected_length}."
+        raise ValueError(msg)
+
+
+def _validate_selection(selection: CandidateSelection, candidate_count: int) -> None:
+    selected = selection.selected_indices
+    rejected = selection.rejected_indices
+    if not selected:
+        msg = "candidate_selector must retain at least one candidate."
+        raise ValueError(msg)
+    combined = selected + rejected
+    if any(type(index) is not int for index in combined):
+        msg = "CandidateSelection indices must be integers."
+        raise ValueError(msg)
+    if len(set(combined)) != candidate_count or set(combined) != set(range(candidate_count)):
+        msg = "CandidateSelection indices must form a complete non-overlapping candidate partition."
+        raise ValueError(msg)

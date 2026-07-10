@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from numbers import Real
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
@@ -12,9 +12,10 @@ from gmm_divergence._core._validation import (
     validate_positive_int,
 )
 from gmm_divergence.covariance._epsilon import (
-    EpsilonMethod,
     EpsilonSpec,
+    RelativeToTrace,
     ResidualVariance,
+    TargetConditionNumber,
     estimate_epsilon,
 )
 from gmm_divergence.covariance._shape import check_covariance_shape
@@ -318,7 +319,12 @@ def _resolve_epsilon(
     if isinstance(eps, Real):
         resolved_eps = float(eps)
     else:
-        eps = cast("EpsilonMethod", eps)
+        if not isinstance(eps, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
+            msg = (
+                "eps must be a nonnegative scalar or epsilon heuristic, "
+                f"got {type(eps).__name__}."
+            )
+            raise TypeError(msg)
         if isinstance(eps, ResidualVariance) and rank is not None:
             if eps.r is None:
                 eps = ResidualVariance(c=eps.c, r=rank)
@@ -328,7 +334,7 @@ def _resolve_epsilon(
                     f"got ResidualVariance.r={eps.r} and rank={rank}."
                 )
                 raise ValueError(msg)
-        resolved_eps = estimate_epsilon(covariance, method=eps, batched=batched)
+        resolved_eps = estimate_epsilon(covariance, heuristic=eps, batched=batched)
     _validate_resolved_epsilon(resolved_eps)
     return resolved_eps
 

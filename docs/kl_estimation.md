@@ -85,7 +85,7 @@ q = gd.GaussianMixture.from_components(
 )
 
 kl_estimate = gd.kl_divergence(
-    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
 )
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```

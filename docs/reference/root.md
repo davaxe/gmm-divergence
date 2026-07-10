@@ -39,7 +39,7 @@ import gmm_divergence as gd
 p = gd.Gaussian.univariate(mean=0.0, variance=1.0)
 q = gd.Gaussian.univariate(mean=1.0, variance=2.0)
 method = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
-result = gd.kl_divergence(p, q, method=method)
+result = gd.kl_divergence(p, q, estimator=method)
 ```
 
 The sections below document the root exports explicitly. Namespace-only

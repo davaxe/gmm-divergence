@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, TypeAlias
+from typing import TYPE_CHECKING, TypeAlias
 
 from gmm_divergence._core._validation import validate_positive_finite, validate_positive_int
 from gmm_divergence._core._validation import validate_unit_interval as _validate_unit_interval
@@ -141,13 +141,8 @@ class LowRank:
         _validate_epsilon_spec(self.eps, name="eps")
 
 
-CovarianceRegularizationMethod: TypeAlias = Literal[
-    "diagonal_loading", "linear_shrinkage", "diagonal_shrinkage", "eigenvalue_clipping", "lowrank"
-]
-
 CovarianceRegularizer: TypeAlias = (
-    CovarianceRegularizationMethod
-    | DiagonalLoading
+    DiagonalLoading
     | LinearShrinkage
     | DiagonalShrinkage
     | EigenvalueClipping

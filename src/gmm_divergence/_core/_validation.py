@@ -64,11 +64,12 @@ def as_covariance(
     writable: bool = False,
 ) -> Covariance:
     """Return a validated symmetric positive-definite covariance matrix."""
-    covariance_arr = np.asarray(covariance, dtype=np.float64)
+    covariance_arr = np.array(covariance, dtype=np.float64, copy=True)
     full_shape = (n_features, n_features)
     if covariance_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariance_arr.shape}."
         raise ValueError(msg)
+    _validate_symmetric(covariance_arr, name=name)
     covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
     _validate_covariance_values(covariance_arr, name=name)
     covariance_arr.setflags(write=writable)
@@ -85,11 +86,12 @@ def as_covariances(
     writable: bool = False,
 ) -> Covariances:
     """Return a validated stack of symmetric positive-definite covariances."""
-    covariances_arr = np.asarray(covariances, dtype=np.float64)
+    covariances_arr = np.array(covariances, dtype=np.float64, copy=True)
     full_shape = (n_components, n_features, n_features)
     if covariances_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariances_arr.shape}."
         raise ValueError(msg)
+    _validate_symmetric(covariances_arr, name=name)
     covariances_arr = 0.5 * (covariances_arr + np.swapaxes(covariances_arr, -1, -2))
     _validate_covariance_values(covariances_arr, name=name)
     covariances_arr.setflags(write=writable)
@@ -156,9 +158,9 @@ def as_positive_sample_count(n_samples: object, /, *, name: str = "n_samples") -
     return n_samples
 
 
-def validate_positive_int(value: int, /, *, name: str) -> None:
+def validate_positive_int(value: object, /, *, name: str) -> None:
     """Validate a positive integer option."""
-    if isinstance(value, bool) or value <= 0:
+    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         msg = f"{name} must be a positive integer, got {value}."
         raise ValueError(msg)
 
@@ -189,12 +191,14 @@ def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None
         msg = f"{name} must contain only finite values."
         raise ValueError(msg)
 
-    if not np.allclose(covariance, np.swapaxes(covariance, -1, -2)):
-        msg = f"{name} must be symmetric."
-        raise ValueError(msg)
-
     try:
         _ = np.linalg.cholesky(covariance)
     except np.linalg.LinAlgError as exc:
         msg = f"{name} must be positive definite."
         raise ValueError(msg) from exc
+
+
+def _validate_symmetric(covariance: FloatArray, /, *, name: str) -> None:
+    if not np.allclose(covariance, np.swapaxes(covariance, -1, -2)):
+        msg = f"{name} must be symmetric."
+        raise ValueError(msg)

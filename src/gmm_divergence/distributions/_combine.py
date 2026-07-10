@@ -21,6 +21,21 @@ class MixtureMapping:
     local_component_index: npt.NDArray[np.intp]
     """Component index within the original input mixture for each flattened output component."""
 
+    def __post_init__(self) -> None:
+        source_index = np.array(self.source_index, dtype=np.intp, copy=True)
+        local_component_index = np.array(self.local_component_index, dtype=np.intp, copy=True)
+        if (
+            source_index.ndim != 1
+            or local_component_index.ndim != 1
+            or source_index.shape != local_component_index.shape
+        ):
+            msg = "MixtureMapping indices must be one-dimensional arrays with matching shapes."
+            raise ValueError(msg)
+        source_index.setflags(write=False)
+        local_component_index.setflags(write=False)
+        object.__setattr__(self, "source_index", source_index)
+        object.__setattr__(self, "local_component_index", local_component_index)
+
     def source_of(self, component_index: int) -> tuple[int, int]:
         """Return source input and local component index for flattened component.
 
@@ -29,7 +44,10 @@ class MixtureMapping:
         tuple[int, int]
             `(input_index, local_component_index)`.
         """
-        return self.source_index[component_index], self.local_component_index[component_index]
+        return (
+            int(self.source_index[component_index]),
+            int(self.local_component_index[component_index]),
+        )
 
     def component_of(self, input_index: int, local_component_index: int) -> int:
         """Return the flattened component of given source input and local component.
@@ -49,7 +67,7 @@ class MixtureMapping:
                 f" local_component_index={local_component_index}"
             )
             raise ValueError(msg)
-        return np.where(mask)[0][0]
+        return int(np.where(mask)[0][0])
 
 
 @dataclass(frozen=True, slots=True)

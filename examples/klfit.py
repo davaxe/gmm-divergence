@@ -52,14 +52,16 @@ def main() -> None:
     res = gd.fit_mixture_weights(
         target,
         components,
-        method="softmax_lbfgsb",
+        method=gd.fitting.SoftmaxLBFGSB(),
         objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=0)),
-        candidate_selector=gd.fitting.TopKSelector(6),
+        candidate_selector=gd.fitting.TopKSelector(
+            k=6, estimator=gd.divergence.MomentMatchedGaussian()
+        ),
     )
     forward_kl = gd.kl_divergence(
         target,
         res.fitted_mixture.mixture,
-        method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(100_000, rng=0)),
+        estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(100_000, rng=0)),
     )
     print(f"Fitted forward KL: {forward_kl.value} (converged: {res.converged})")
     print(f"Fitted weights for target '{args.target}':")

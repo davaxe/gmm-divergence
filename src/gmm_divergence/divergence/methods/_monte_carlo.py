@@ -5,17 +5,18 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence._core._sampling import Draw, SampleSpec, Stratified, stratified_mixture_samples
+from gmm_divergence._core._sampling import Draw, Stratified, stratified_mixture_samples
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
 if TYPE_CHECKING:
     from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.divergence._options import MonteCarlo
 
 
 def kl_monte_carlo(
-    p: GaussianLike, q: GaussianLike, /, *, sampling: SampleSpec | None = None
+    p: GaussianLike, q: GaussianLike, /, *, estimator: MonteCarlo
 ) -> DivergenceResult:
     r"""Estimate KL divergence using Monte Carlo sampling.
 
@@ -38,9 +39,8 @@ def kl_monte_carlo(
         Reference distribution to sample from.
     q : Gaussian or GaussianMixture
         Approximating distribution evaluated at the sampled points.
-    sampling : SampleSpec, optional
-        Sampling specification for the expectation under `p`, such as
-        `sampling.Draw(...)`, `sampling.Samples(...)`, or `sampling.Stratified(...)`.
+    estimator : MonteCarlo
+        Explicit sampling and optional adaptive-sampling configuration.
 
     Returns
     -------
@@ -54,15 +54,46 @@ def kl_monte_carlo(
         Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
         IEEE, 2007.
     """
-    if sampling is None:
-        sampling = Draw()
+    sampling = estimator.sampling
 
     if isinstance(sampling, Stratified):
         return _kl_monte_carlo_stratified(p, q, sampling=sampling)
 
+    if estimator.target_standard_error is not None:
+        return _adaptive_kl_monte_carlo(p, q, estimator)
+
     samples = sampling.sample(p)
     pointwise_kl = _pointwise_kl(p, q, samples)
     return _result_from_pointwise(pointwise_kl)
+
+
+def _adaptive_kl_monte_carlo(
+    p: GaussianLike, q: GaussianLike, estimator: MonteCarlo, /
+) -> DivergenceResult:
+    sampling = estimator.sampling
+    if not isinstance(sampling, Draw):
+        msg = "Adaptive MonteCarlo requires sampling.Draw."
+        raise TypeError(msg)
+    if estimator.max_samples is None or estimator.target_standard_error is None:
+        msg = "Adaptive MonteCarlo configuration is incomplete."
+        raise AssertionError(msg)
+    batch_size = estimator.batch_size or sampling.n_samples
+    rng = np.random.default_rng(sampling.rng)
+    batches: list[npt.NDArray[np.float64]] = []
+    drawn = 0
+    while drawn < estimator.max_samples:
+        count = min(batch_size, estimator.max_samples - drawn)
+        batches.append(_pointwise_kl(p, q, p.sample(count, rng=rng)))
+        drawn += count
+        result = _result_from_pointwise(np.concatenate(batches))
+        stats = result.monte_carlo_stats
+        if (
+            stats is not None
+            and drawn >= sampling.n_samples
+            and stats.standard_error <= estimator.target_standard_error
+        ):
+            return result
+    return _result_from_pointwise(np.concatenate(batches))
 
 
 def _kl_monte_carlo_stratified(

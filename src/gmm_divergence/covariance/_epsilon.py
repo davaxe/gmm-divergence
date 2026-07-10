@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, overload
 
 import numpy as np
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._validation import validate_positive_finite
 from gmm_divergence.covariance._shape import check_covariance_shape
 
@@ -86,28 +85,8 @@ class ResidualVariance:
             raise ValueError(msg)
 
 
-EpsilonMethodName: TypeAlias = Literal[
-    "relative_trace", "target_condition_number", "residual_variance"
-]
-EpsilonMethod: TypeAlias = (
-    EpsilonMethodName | RelativeToTrace | TargetConditionNumber | ResidualVariance
-)
-EpsilonSpec: TypeAlias = float | EpsilonMethod
-
-_EPSILON_REGISTRY = Registry(
-    label="covariance epsilon heuristic",
-    specs=(
-        MethodSpec(name="relative_trace", option_type=RelativeToTrace, default=RelativeToTrace()),
-        MethodSpec(
-            name="target_condition_number",
-            option_type=TargetConditionNumber,
-            default=TargetConditionNumber(),
-        ),
-        MethodSpec(
-            name="residual_variance", option_type=ResidualVariance, default=ResidualVariance()
-        ),
-    ),
-)
+EpsilonHeuristic: TypeAlias = RelativeToTrace | TargetConditionNumber | ResidualVariance
+EpsilonSpec: TypeAlias = float | EpsilonHeuristic
 
 
 @overload
@@ -115,7 +94,7 @@ def estimate_epsilon(
     covariance: npt.ArrayLike,
     /,
     *,
-    method: EpsilonMethod = "relative_trace",
+    heuristic: EpsilonHeuristic,
     batched: Literal[False] = False,
 ) -> float: ...
 
@@ -125,14 +104,14 @@ def estimate_epsilon(
     covariance: npt.ArrayLike,
     /,
     *,
-    method: EpsilonMethod = "relative_trace",
+    heuristic: EpsilonHeuristic,
     batched: Literal[True],
 ) -> FloatArray: ...
 
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, method: EpsilonMethod = "relative_trace", batched: None = None
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: None = None
 ) -> float | FloatArray: ...
 
 
@@ -140,7 +119,7 @@ def estimate_epsilon(
     covariance: npt.ArrayLike,
     /,
     *,
-    method: EpsilonMethod = "relative_trace",
+    heuristic: EpsilonHeuristic,
     batched: bool | None = None,
 ) -> float | FloatArray:
     """Estimate a diagonal-loading epsilon from covariance scale or spectrum.
@@ -150,8 +129,8 @@ def estimate_epsilon(
     covariance : array-like
         Covariance matrix with shape `(d, d)` or batch of matrices with shape
         `(n, d, d)`.
-    method : str or epsilon heuristic configuration, default="relative_trace"
-        Heuristic used to estimate the epsilon value.
+    heuristic : EpsilonHeuristic
+        Explicit heuristic configuration used to estimate epsilon.
     batched : bool or None, default=None
         Whether to interpret the input as batched. If `None`, the shape is
         inferred from the input rank.
@@ -165,23 +144,13 @@ def estimate_epsilon(
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
     shape_kind = check_covariance_shape(covariance_arr, batched=batched)
-    spec, options = _EPSILON_REGISTRY.resolve(method)
-
-    match spec.name:
-        case "relative_trace":
-            options = cast_options(options, RelativeToTrace)
-            return _relative_trace(covariance_arr, c=options.c, batched=shape_kind)
-        case "target_condition_number":
-            options = cast_options(options, TargetConditionNumber)
-            return _target_condition_number(covariance_arr, kappa=options.kappa, batched=shape_kind)
-        case "residual_variance":
-            options = cast_options(options, ResidualVariance)
-            return _residual_variance(
-                covariance_arr, c=options.c, rank=options.r, batched=shape_kind
-            )
-        case _:
-            msg = "Unhandled covariance epsilon heuristic registry entry."
-            raise AssertionError(msg)
+    match heuristic:
+        case RelativeToTrace(c=c):
+            return _relative_trace(covariance_arr, c=c, batched=shape_kind)
+        case TargetConditionNumber(kappa=kappa):
+            return _target_condition_number(covariance_arr, kappa=kappa, batched=shape_kind)
+        case ResidualVariance(c=c, r=rank):
+            return _residual_variance(covariance_arr, c=c, rank=rank, batched=shape_kind)
 
 
 def _relative_trace(

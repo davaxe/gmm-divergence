@@ -5,49 +5,18 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 
 import gmm_divergence.fitting._fit as wfit
-from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._validation import validate_nonnegative_finite
-from gmm_divergence.fitting._options import (
-    BidirectionalKL,
-    FitMethod,
-    FitObjective,
-    ForwardKL,
-    JensenShannon,
-    MomentMatching,
-    ReverseKL,
-    SimplexSLSQP,
-    SoftmaxLBFGSB,
-)
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.fitting._options import FitMethod, FitObjective
     from gmm_divergence.fitting._selector import CandidateSelector
     from gmm_divergence.results import FitResult
-
-_OPTIMIZER_REGISTRY = Registry(
-    label="fit optimizer",
-    specs=(
-        MethodSpec(name="softmax_lbfgsb", option_type=SoftmaxLBFGSB, default=SoftmaxLBFGSB()),
-        MethodSpec(name="simplex_slsqp", option_type=SimplexSLSQP, default=SimplexSLSQP()),
-    ),
-)
-
-_OBJECTIVE_REGISTRY = Registry(
-    label="fit objective",
-    specs=(
-        MethodSpec(name="forward", option_type=ForwardKL, default=ForwardKL()),
-        MethodSpec(name="reverse", option_type=ReverseKL, default=ReverseKL()),
-        MethodSpec(name="bidirectional", option_type=BidirectionalKL, default=BidirectionalKL()),
-        MethodSpec(name="jensen_shannon", option_type=JensenShannon, default=JensenShannon()),
-        MethodSpec(name="moment_matching", option_type=MomentMatching, default=MomentMatching()),
-    ),
-)
 
 
 def fit_mixture_weights(
@@ -55,9 +24,8 @@ def fit_mixture_weights(
     q_i: Sequence[Gaussian | GaussianMixture],
     /,
     *,
-    method: FitMethod = "softmax_lbfgsb",
-    objective: FitObjective = "forward",
-    x0: npt.ArrayLike | None = None,
+    method: FitMethod,
+    objective: FitObjective,
     candidate_selector: CandidateSelector | None = None,
 ) -> FitResult:
     r"""Fit weights for a mixture of fixed candidate distributions.
@@ -86,9 +54,6 @@ def fit_mixture_weights(
         defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
         `JensenShannon(...)`, or `MomentMatching(...)` for objective-specific
         options.
-    x0 : array-like, optional
-        Initial weights for the optimized variables. If `None`, the optimizer's
-        default initialization is used.
 
     Returns
     -------
@@ -97,35 +62,9 @@ def fit_mixture_weights(
         objective value, forward/reverse KL diagnostics, and optimizer metadata.
 
     """
-    method_spec, optimizer = _OPTIMIZER_REGISTRY.resolve(method)
-    _objective_spec, objective_config = _OBJECTIVE_REGISTRY.resolve(objective)
-
-    match method_spec.name:
-        case "softmax_lbfgsb":
-            optimizer = cast_options(optimizer, SoftmaxLBFGSB)
-            objective_config = _cast_fit_objective(objective_config)
-            return wfit.fit_mixture_weights(
-                p=p,
-                q_i=q_i,
-                objective=objective_config,
-                optimizer=optimizer,
-                x0=x0,
-                candidate_selection=candidate_selector,
-            )
-        case "simplex_slsqp":
-            optimizer = cast_options(optimizer, SimplexSLSQP)
-            objective_config = _cast_fit_objective(objective_config)
-            return wfit.fit_mixture_weights(
-                p=p,
-                q_i=q_i,
-                objective=objective_config,
-                optimizer=optimizer,
-                x0=x0,
-                candidate_selection=candidate_selector,
-            )
-        case _:
-            msg = "Unhandled fit optimizer registry entry."
-            raise AssertionError(msg)
+    return wfit.fit_mixture_weights(
+        p=p, q_i=q_i, objective=objective, optimizer=method, candidate_selection=candidate_selector
+    )
 
 
 def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
@@ -162,12 +101,3 @@ def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> Gaus
         raise ValueError(msg)
 
     return mixture.select_components(np.nonzero(keep_mask)[0])
-
-
-def _cast_fit_objective(options: object) -> wfit.FitObjective:
-    if not isinstance(
-        options, (ForwardKL, ReverseKL, BidirectionalKL, JensenShannon, MomentMatching)
-    ):
-        msg = "Dispatcher returned an objective object with the wrong type."
-        raise TypeError(msg)
-    return options
