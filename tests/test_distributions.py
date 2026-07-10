@@ -93,6 +93,25 @@ def test_distribution_constructors_reject_invalid_parameters() -> None:
     with pytest.raises(ValueError, match="Means must be a 2D array"):
         _ = GaussianMixture.from_arrays(weights=[1.0], means=[0.0], covariances=[[[1.0]]])
 
+    with pytest.raises(ValueError, match="Covariance must be symmetric"):
+        _ = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=[[1.0, 0.2], [0.0, 1.0]])
+
+
+def test_distribution_construction_does_not_alias_input_or_expose_mutable_caches() -> None:
+    means = np.array([[0.0], [1.0]], dtype=np.float64)
+    mixture = GaussianMixture.from_arrays(
+        weights=[0.5, 0.5], means=means, covariances=[[[1.0]], [[1.0]]]
+    )
+    means[0, 0] = 42.0
+
+    assert means.flags.writeable
+    assert mixture.means[0, 0] == pytest.approx(0.0)
+    assert not mixture.chol().flags.writeable
+    assert not mixture.log_dets().flags.writeable
+
+    gaussian = Gaussian.univariate()
+    assert not gaussian.chol().flags.writeable
+
 
 def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() -> None:
     covariance = np.array([[1.0, 0.0], [0.0, 0.0]], dtype=np.float64)
@@ -103,7 +122,7 @@ def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() ->
     gaussian = Gaussian.from_regularized_arrays(
         mean=[0.0, 1.0],
         covariance=covariance,
-        regularization=gd.covariance.DiagonalLoading(eps=1e-3),
+        regularizer=gd.covariance.DiagonalLoading(eps=1e-3),
     )
 
     assert gaussian.covariance == pytest.approx(np.array([[1.001, 0.0], [0.0, 0.001]]))
@@ -118,7 +137,7 @@ def test_gaussian_mixture_from_regularized_arrays_regularizes_covariance_batch()
         weights=[2.0, 1.0],
         means=[[0.0, 0.0], [2.0, -1.0]],
         covariances=covariances,
-        regularization=gd.covariance.EigenvalueClipping(min_eigenvalue=0.1),
+        regularizer=gd.covariance.EigenvalueClipping(min_eigenvalue=0.1),
     )
 
     assert mixture.weights == pytest.approx([2.0 / 3.0, 1.0 / 3.0])

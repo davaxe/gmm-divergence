@@ -1,259 +1,114 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, cast
+from dataclasses import dataclass
+from typing import TYPE_CHECKING, Literal, cast
 
 import numpy as np
 import pytest
-
-import gmm_divergence as gd
-from gmm_divergence import Gaussian, GaussianMixture, fit_mixture_weights, prune_mixture
-from gmm_divergence.fitting import (
-    BidirectionalKL,
-    JensenShannon,
-    MomentMatching,
-    SimplexSLSQP,
-    SoftmaxLBFGSB,
-)
-from gmm_divergence.fitting._objectives import (
-    forward_kl,
-    jensen_shannon,
-    moment_matching,
-    reverse_kl,
-)
+from typing_extensions import override
 
 if TYPE_CHECKING:
-    from collections.abc import Callable
+    from collections.abc import Sequence
 
-    from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.fitting import FitMethod
-
-
-def _finite_difference_gradient(
-    objective: Callable[[FloatArray], tuple[float, FloatArray]], weights: FloatArray
-) -> FloatArray:
-    eps = 1e-6
-    grad = np.empty_like(weights)
-    for k in range(weights.shape[0]):
-        step = np.zeros_like(weights)
-        step[k] = eps
-        value_plus, _ = objective(weights + step)
-        value_minus, _ = objective(weights - step)
-        grad[k] = (value_plus - value_minus) / (2 * eps)
-    return grad
+import gmm_divergence as gd
+from gmm_divergence.fitting import CandidateSelection, CandidateSelector
 
 
-@pytest.mark.parametrize(
-    "method",
-    [SoftmaxLBFGSB(tol=1e-10, max_iterations=200), SimplexSLSQP(tol=1e-10, max_iterations=200)],
-)
-def test_fit_mixture_weights_recovers_known_component_weights(
-    method: SoftmaxLBFGSB | SimplexSLSQP,
-) -> None:
-    p = GaussianMixture.from_arrays(
-        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
+def _fixture() -> tuple[gd.GaussianMixture, list[gd.Gaussian]]:
+    candidates = [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)]
+    return gd.GaussianMixture.from_components(candidates, weights=[0.3, 0.7]), candidates
+
+
+def test_explicit_fitting_configs_and_immutable_result() -> None:
+    p, candidates = _fixture()
+    result = gd.fit_mixture_weights(
+        p,
+        candidates,
+        method=gd.fitting.SimplexSLSQP(initial_weights=[0.5, 0.5]),
+        objective=gd.fitting.MomentMatching(fit_second_moments=True),
     )
-    candidates = [
-        Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
-        Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
-    ]
-    objective = MomentMatching(fit_second_moments=True)
-    result = fit_mixture_weights(p, candidates, method=method, objective=objective)
-
-    assert result.fit_objective == objective
-    assert result.converged is True
-    assert result.weights == pytest.approx([0.25, 0.75], abs=1e-7)
-    assert float(np.sum(result.weights)) == pytest.approx(1.0)
-    assert result.objective_value < 1e-8
+    assert result.weights == pytest.approx([0.3, 0.7], abs=1e-6)
+    assert result.active_candidate_indices == (0, 1)
+    assert not result.weights.flags.writeable
+    assert not hasattr(result, "scipy_result")
 
 
-def test_fit_mixture_weights_rejects_empty_or_incompatible_candidates() -> None:
-    p = Gaussian.from_arrays(mean=[0.0], covariance=[[1.0]])
-    q_wrong_dim = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=np.eye(2))
-
-    with pytest.raises(ValueError, match="q_i must contain at least one distribution"):
-        _ = fit_mixture_weights(p, [], objective=MomentMatching())
-
-    with pytest.raises(ValueError, match="must have the same dimensionality"):
-        _ = fit_mixture_weights(p, [q_wrong_dim], objective=MomentMatching())
-
-    with pytest.raises(ValueError, match="Unknown fit optimizer method"):
-        _ = fit_mixture_weights(
-            p, [p], method=cast("FitMethod", cast("object", "unknown")), objective=MomentMatching()
-        )
-
-
-def test_score_and_rank_candidates_expose_selector_scoring_logic() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-    candidates = [
-        Gaussian.univariate(mean=0.0, variance=1.0),
-        Gaussian.univariate(mean=2.0, variance=1.0),
-        Gaussian.univariate(mean=-1.0, variance=2.0),
-    ]
-
-    scores = gd.fitting.score_candidates(p, candidates, method="closed_form")
-    ranked = gd.fitting.rank_candidates(p, candidates, method="closed_form", limit=2)
-
-    assert scores.shape == (3,)
-    assert scores[0] == pytest.approx(0.0)
-    assert ranked[0] == (0, pytest.approx(0.0))
-    assert [index for index, _score in ranked] == [0, 2]
-
-    bidirectional = gd.fitting.score_candidates(
-        p, candidates, direction="bidirectional", alpha=0.25, method="closed_form"
-    )
-    expected = 0.25 * gd.kl_divergence(p, candidates[2], method="closed_form").value + 0.75 * (
-        gd.kl_divergence(candidates[2], p, method="closed_form").value
-    )
-    assert bidirectional[2] == pytest.approx(expected)
-
-
-def test_score_and_rank_candidates_validate_inputs() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-
-    with pytest.raises(ValueError, match="at least one candidate"):
-        _ = gd.fitting.score_candidates(p, [], method="closed_form")
-
-    with pytest.raises(ValueError, match="limit must be a positive integer"):
-        _ = gd.fitting.rank_candidates(p, [p], method="closed_form", limit=0)
-
-    with pytest.raises(ValueError, match="direction must be"):
-        _ = gd.fitting.score_candidates(
+def test_fitting_validates_bounds_and_initial_values() -> None:
+    p, candidates = _fixture()
+    with pytest.raises(ValueError, match="min_weight"):
+        _ = gd.fitting.SimplexSLSQP(min_weight=-1.0)
+    with pytest.raises(ValueError, match="infeasible"):
+        _ = gd.fit_mixture_weights(
             p,
-            [p],
-            direction="sideways",  # pyright: ignore[reportArgumentType]
-            method="closed_form",
+            candidates,
+            method=gd.fitting.SimplexSLSQP(min_weight=0.6),
+            objective=gd.fitting.MomentMatching(),
+        )
+    with pytest.raises(ValueError, match="length 2"):
+        _ = gd.fit_mixture_weights(
+            p,
+            candidates,
+            method=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
+            objective=gd.fitting.MomentMatching(),
         )
 
 
-def test_prune_mixture_removes_small_weights_and_keeps_valid_mixture() -> None:
-    mixture = GaussianMixture.from_arrays(
-        weights=[0.8, 0.00001, 0.19999],
-        means=[[0.0], [10.0], [2.0]],
-        covariances=[[[1.0]], [[1.0]], [[1.0]]],
+def test_selectors_are_explicit_and_top_k_is_exact() -> None:
+    p = gd.Gaussian.univariate()
+    candidates = [gd.Gaussian.univariate(), gd.Gaussian.univariate()]
+    estimator = gd.divergence.ClosedForm()
+    selection = gd.fitting.TopKSelector(k=1, estimator=estimator).select(p, candidates)
+    assert len(selection.selected_indices) == 1
+    assert selection.selected_indices == (0,)
+    with pytest.raises(ValueError, match="mode must be"):
+        _ = gd.fitting.ToleranceSelector(
+            delta=1.0,
+            mode=cast("Literal['absolute', 'relative']", cast("object", "bad")),
+            estimator=estimator,
+        )
+
+
+@dataclass(frozen=True, slots=True)
+class _FirstOnly(CandidateSelector):
+    @override
+    def select(
+        self, p: gd.distributions.GaussianLike, q_i: Sequence[gd.distributions.GaussianLike]
+    ) -> CandidateSelection:
+        assert p.dim == q_i[0].dim
+        return CandidateSelection(selected_indices=(1,), rejected_indices=(0,))
+
+
+def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
+    p, candidates = _fixture()
+    result = gd.fit_mixture_weights(
+        p,
+        candidates,
+        method=gd.fitting.SoftmaxLBFGSB(),
+        objective=gd.fitting.MomentMatching(),
+        candidate_selector=_FirstOnly(),
     )
-
-    pruned = prune_mixture(mixture, min_weight=1e-4)
-
-    assert pruned.n_components == 2
-    assert pruned.weights == pytest.approx([0.8 / 0.99999, 0.19999 / 0.99999])
-    assert pruned.means[:, 0] == pytest.approx([0.0, 2.0])
-
-    with pytest.raises(ValueError, match="All components were pruned"):
-        _ = prune_mixture(mixture, min_weight=0.9)
-
-    with pytest.raises(ValueError, match="min_weight must be a nonnegative finite value"):
-        _ = prune_mixture(mixture, min_weight=-1.0)
+    assert result.weights == pytest.approx([0.0, 1.0])
+    assert result.active_candidate_indices == (1,)
+    assert np.all(result.fitted_mixture.mapping.source_index == 1)
 
 
-def test_fit_options_reject_invalid_parameters() -> None:
-    with pytest.raises(ValueError, match="tol must be a positive finite value"):
-        _ = SoftmaxLBFGSB(tol=0.0)
+def test_candidate_selection_requires_a_complete_partition() -> None:
+    p, candidates = _fixture()
 
-    with pytest.raises(ValueError, match="max_iterations must be a positive integer"):
-        _ = SimplexSLSQP(max_iterations=0)
+    @dataclass(frozen=True, slots=True)
+    class InvalidSelector(CandidateSelector):
+        @override
+        def select(
+            self, p: gd.distributions.GaussianLike, q_i: Sequence[gd.distributions.GaussianLike]
+        ) -> CandidateSelection:
+            assert p.dim == q_i[0].dim
+            return CandidateSelection(selected_indices=(0, 0), rejected_indices=())
 
-    with pytest.raises(ValueError, match=r"alpha must be in \[0, 1\]"):
-        _ = BidirectionalKL(alpha=1.5)
-
-
-def test_fit_mixture_weights_accepts_jensen_shannon_objective() -> None:
-    p = GaussianMixture.from_arrays(
-        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
-    )
-    candidates = [
-        Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]]),
-        Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]]),
-    ]
-
-    objective = JensenShannon(
-        p_sampling=gd.sampling.Draw(2_000, rng=123), q_sampling=gd.sampling.Draw(2_000, rng=123)
-    )
-    result = fit_mixture_weights(p, candidates, objective=objective)
-
-    assert result.fit_objective == objective
-    assert result.converged is True
-    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
-    assert float(np.sum(result.weights)) == pytest.approx(1.0)
-
-    default_result = fit_mixture_weights(p, candidates, objective="jensen_shannon")
-    assert default_result.fit_objective == JensenShannon()
-
-
-def test_fit_mixture_weights_accepts_stratified_candidate_sampling() -> None:
-    p = GaussianMixture.from_arrays(
-        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
-    )
-    candidates = [
-        GaussianMixture.from_components([Gaussian.from_arrays(mean=[-2.0], covariance=[[0.5]])]),
-        GaussianMixture.from_components([Gaussian.from_arrays(mean=[1.5], covariance=[[1.2]])]),
-    ]
-    objective = gd.fitting.JensenShannon(
-        p_sampling=gd.sampling.Stratified(2_000, rng=123),
-        q_sampling=gd.sampling.Stratified(2_000, rng=123),
-    )
-    result = fit_mixture_weights(p, candidates, objective=objective)
-
-    assert result.fit_objective == objective
-    assert result.converged is True
-    assert result.weights == pytest.approx([0.25, 0.75], abs=0.08)
-
-
-def test_fit_mixture_weights_accepts_precomputed_candidate_sample_batches() -> None:
-    p = GaussianMixture.from_arrays(
-        weights=[0.25, 0.75], means=[[-2.0], [1.5]], covariances=[[[0.5]], [[1.2]]]
-    )
-    candidates = [
-        Gaussian.univariate(mean=-2.0, variance=0.5),
-        Gaussian.univariate(mean=1.5, variance=1.2),
-    ]
-    q_samples = np.asarray([candidate.sample(500, rng=123) for candidate in candidates])
-    objective = gd.fitting.ReverseKL(
-        p_sampling=gd.sampling.Draw(500, rng=123), q_sampling=gd.sampling.SampleBatches(q_samples)
-    )
-
-    result = fit_mixture_weights(p, candidates, objective=objective)
-
-    assert result.fit_objective == objective
-    assert result.converged is True
-    assert result.weights == pytest.approx([0.25, 0.75], abs=0.15)
-
-
-def test_precomputed_candidate_sample_batches_validate_shape_early() -> None:
-    p = Gaussian.univariate(mean=0.0, variance=1.0)
-    candidates = [
-        Gaussian.univariate(mean=-1.0, variance=1.0),
-        Gaussian.univariate(mean=1.0, variance=1.0),
-    ]
-    objective = gd.fitting.ReverseKL(
-        q_sampling=gd.sampling.SampleBatches(np.zeros((2, 5, 2), dtype=np.float64))
-    )
-
-    with pytest.raises(ValueError, match="samples must have feature dimension 1"):
-        _ = fit_mixture_weights(p, candidates, objective=objective)
-
-
-def test_fit_objective_gradients_match_finite_differences() -> None:
-    p = GaussianMixture.from_arrays(
-        weights=[0.45, 0.55], means=[[-1.0], [1.3]], covariances=[[[0.6]], [[1.2]]]
-    )
-    candidates = [
-        Gaussian.univariate(mean=-0.8, variance=0.7),
-        Gaussian.univariate(mean=1.6, variance=1.1),
-    ]
-    p_samples = np.array([[-1.5], [-0.2], [0.4], [1.0], [2.2]], dtype=np.float64)
-    q_samples = np.array(
-        [[[-1.4], [-0.8], [0.0], [0.6]], [[0.8], [1.2], [1.8], [2.5]]], dtype=np.float64
-    )
-    weights = np.array([0.37, 0.63], dtype=np.float64)
-
-    objectives = [
-        forward_kl(p, candidates, p_samples),
-        reverse_kl(p, candidates, q_samples),
-        jensen_shannon(p, candidates, p_samples, q_samples),
-        moment_matching(p, candidates, second_moments=True),
-    ]
-
-    for objective in objectives:
-        _value, analytical = objective(weights)
-        numerical = _finite_difference_gradient(objective, weights)
-        assert analytical == pytest.approx(numerical, rel=1e-5, abs=1e-5)
+    with pytest.raises(ValueError, match="complete non-overlapping"):
+        _ = gd.fit_mixture_weights(
+            p,
+            candidates,
+            method=gd.fitting.SoftmaxLBFGSB(),
+            objective=gd.fitting.MomentMatching(),
+            candidate_selector=InvalidSelector(),
+        )

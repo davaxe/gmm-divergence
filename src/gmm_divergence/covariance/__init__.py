@@ -2,8 +2,7 @@
 
 from gmm_divergence.covariance._api import regularize_covariance
 from gmm_divergence.covariance._epsilon import (
-    EpsilonMethod,
-    EpsilonMethodName,
+    EpsilonHeuristic,
     EpsilonSpec,
     RelativeToTrace,
     ResidualVariance,
@@ -11,7 +10,6 @@ from gmm_divergence.covariance._epsilon import (
     estimate_epsilon,
 )
 from gmm_divergence.covariance._options import (
-    CovarianceRegularizationMethod,
     CovarianceRegularizer,
     DiagonalLoading,
     DiagonalShrinkage,
@@ -28,13 +26,11 @@ from gmm_divergence.covariance._regularize import (
 )
 
 __all__ = [
-    "CovarianceRegularizationMethod",
     "CovarianceRegularizer",
     "DiagonalLoading",
     "DiagonalShrinkage",
     "EigenvalueClipping",
-    "EpsilonMethod",
-    "EpsilonMethodName",
+    "EpsilonHeuristic",
     "EpsilonSpec",
     "LinearShrinkage",
     "LowRank",

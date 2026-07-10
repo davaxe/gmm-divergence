@@ -5,8 +5,6 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from scipy.optimize import OptimizeResult
-
     from gmm_divergence._core._types import Weights
     from gmm_divergence.distributions._combine import CombinedGaussianMixture
     from gmm_divergence.fitting._options import FitMethod, FitObjective
@@ -52,8 +50,6 @@ class FitResult:
     """The fitted mixture weights as a 1D array."""
     objective_value: float
     """The final scalar objective value minimized by the optimizer."""
-    scipy_result: OptimizeResult | None
-    """The full result object returned by the optimization routine, if used."""
     fitted_mixture: CombinedGaussianMixture
     """The full combined Gaussian mixture corresponding to the fitted weights."""
     fit_objective: FitObjective
@@ -66,7 +62,10 @@ class FitResult:
     """The number of iterations taken by the optimization routine, if applicable."""
     converged: bool | None = None
     """Whether the optimization routine reported convergence, if applicable."""
-    used_candidate_indices: list[int] | None = None
+    active_candidate_indices: tuple[int, ...] = ()
+    """Original indices retained by candidate selection, in optimizer order."""
+    optimizer_message: str = ""
+    """Immutable optimizer termination message."""
 
     def candidate_weights(self) -> list[tuple[int, float]]:
         """Return fitted weights paired with original candidate indices.
@@ -75,16 +74,8 @@ class FitResult:
         sequence passed to `fit_mixture_weights`. Otherwise they are simply
         `0, 1, ..., n_candidates - 1`.
         """
-        indices = (
-            range(self.weights.shape[0])
-            if self.used_candidate_indices is None
-            else self.used_candidate_indices
-        )
         return sorted(
-            [
-                (int(index), float(weight))
-                for index, weight in zip(indices, self.weights, strict=True)
-            ],
+            [(int(index), float(weight)) for index, weight in enumerate(self.weights)],
             key=operator.itemgetter(1),
             reverse=True,
         )

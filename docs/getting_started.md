@@ -67,7 +67,7 @@ q = gd.GaussianMixture.from_components(
     ]
 )
 
-result = gd.kl_divergence(p, q)
+result = gd.kl_divergence(p, q, estimator=gd.divergence.MonteCarlo())
 print(result.value)
 ```
 
@@ -108,7 +108,9 @@ p = gd.GaussianMixture.from_components(
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
-fit = gd.fit_mixture_weights(p, [q1, q2])
+fit = gd.fit_mixture_weights(
+    p, [q1, q2], method=gd.fitting.SoftmaxLBFGSB(), objective=gd.fitting.MomentMatching()
+)
 print(fit.weights)  # [~0.6, ~0.4]
 ```
 

@@ -200,6 +200,7 @@ fit = gd.fit_mixture_weights(
     objective=gd.fitting.JensenShannon(
         p_sampling=gd.sampling.Draw(10_000, rng=102), q_sampling=gd.sampling.Draw(10_000, rng=102)
     ),
+    method=gd.fitting.SoftmaxLBFGSB(),
 )
 ```
 
@@ -232,7 +233,7 @@ q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 result = gd.fit_mixture_weights(
     p,
     [q1, q2],
-    method="simplex_slsqp",
+    method=gd.fitting.SimplexSLSQP(),
     objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102)),
 )
 

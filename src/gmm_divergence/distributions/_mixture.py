@@ -73,14 +73,14 @@ class GaussianMixture:
         means: npt.ArrayLike,
         covariances: npt.ArrayLike,
         *,
-        regularization: CovarianceRegularizer = "diagonal_loading",
+        regularizer: CovarianceRegularizer,
     ) -> GaussianMixture:
         """Create a Gaussian mixture after explicitly regularizing covariances.
 
         This constructor keeps `from_arrays` strict while providing a convenient
         path for estimated or nearly singular component covariances.
         """
-        regularized = regularize_covariance(covariances, method=regularization, batched=True)
+        regularized = regularize_covariance(covariances, regularizer=regularizer, batched=True)
         return cls(
             weights=cast("Weights", weights),
             means=cast("FloatArray", means),
@@ -102,7 +102,7 @@ class GaussianMixture:
 
     def __post_init__(self) -> None:
         """Validate the shapes of weights, means, and covariances."""
-        object.__setattr__(self, "means", np.asarray(self.means, dtype=np.float64))
+        object.__setattr__(self, "means", np.array(self.means, dtype=np.float64, copy=True))
 
         if self.means.ndim != 2:
             msg = "Means must be a 2D array."
@@ -146,6 +146,7 @@ class GaussianMixture:
             return self._chol
 
         chol = np.linalg.cholesky(self.covariances).astype(np.float64)
+        chol.setflags(write=False)
         object.__setattr__(self, "_chol", chol)
         return chol
 
@@ -156,6 +157,7 @@ class GaussianMixture:
 
         chol = self.chol()
         log_dets = 2.0 * np.sum(np.log(np.diagonal(chol, axis1=1, axis2=2)), axis=1)
+        log_dets.setflags(write=False)
         object.__setattr__(self, "_log_dets", log_dets)
         return log_dets
 

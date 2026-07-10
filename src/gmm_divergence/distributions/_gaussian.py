@@ -36,14 +36,14 @@ class Gaussian:
         mean: npt.ArrayLike,
         covariance: npt.ArrayLike,
         *,
-        regularization: CovarianceRegularizer = "diagonal_loading",
+        regularizer: CovarianceRegularizer,
     ) -> Gaussian:
         """Create a Gaussian after explicitly regularizing its covariance.
 
         This constructor keeps `from_arrays` strict while providing a convenient
         path for estimated or nearly singular covariances.
         """
-        regularized = regularize_covariance(covariance, method=regularization, batched=False)
+        regularized = regularize_covariance(covariance, regularizer=regularizer, batched=False)
         return cls(mean=cast("FloatArray", mean), covariance=regularized)
 
     @classmethod
@@ -95,6 +95,7 @@ class Gaussian:
             return self._chol
 
         chol = np.linalg.cholesky(self.covariance).astype(np.float64)
+        chol.setflags(write=False)
         object.__setattr__(self, "_chol", chol)
         return chol
 

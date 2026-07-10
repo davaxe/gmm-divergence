@@ -3,33 +3,37 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
 import numpy as np
 import numpy.typing as npt
 from typing_extensions import override
 
-from gmm_divergence._core._sampling import Draw
 from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence.divergence._api import kl_divergence
-from gmm_divergence.divergence._options import MonteCarlo
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._typing import GaussianLike
-    from gmm_divergence.divergence._options import KLMethod
-
-_DEFAULT_SCORING_METHOD = MonteCarlo(sampling=Draw(rng=0))
+    from gmm_divergence.divergence._options import KLEstimator
 
 
 @dataclass(frozen=True, slots=True)
 class CandidateSelection:
-    selected_indices: npt.NDArray[np.int_]
-    rejected_indices: npt.NDArray[np.int_]
+    selected_indices: tuple[int, ...]
+    rejected_indices: tuple[int, ...]
     scores: FloatArray | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "selected_indices", _freeze_indices(self.selected_indices))
+        object.__setattr__(self, "rejected_indices", _freeze_indices(self.rejected_indices))
+        if self.scores is not None:
+            scores = np.array(self.scores, dtype=np.float64, copy=True)
+            scores.setflags(write=False)
+            object.__setattr__(self, "scores", scores)
 
 
 class CandidateSelector(Protocol):
@@ -40,6 +44,10 @@ class CandidateSelector(Protocol):
         ...
 
 
+def _freeze_indices(indices: tuple[int, ...]) -> tuple[int, ...]:
+    return tuple(int(index) if isinstance(index, np.integer) else index for index in indices)
+
+
 def score_candidates(
     p: GaussianLike,
     q_i: Sequence[GaussianLike],
@@ -47,8 +55,7 @@ def score_candidates(
     *,
     direction: Literal["forward", "reverse", "bidirectional"] = "forward",
     alpha: float = 0.5,
-    method: KLMethod | None = None,
-    prefer_closed_form: bool = True,
+    estimator: KLEstimator,
 ) -> FloatArray:
     """Return KL-based scores for candidate distributions.
 
@@ -56,14 +63,7 @@ def score_candidates(
     """
     _validate_candidate_sequence(q_i)
     _validate_kl_selector_base(direction=direction, alpha=alpha)
-    return _compute_kl_values(
-        p,
-        q_i,
-        direction=direction,
-        alpha=alpha,
-        kl_method=_DEFAULT_SCORING_METHOD if method is None else method,
-        prefer_closed_form=prefer_closed_form,
-    )
+    return _compute_kl_values(p, q_i, direction=direction, alpha=alpha, estimator=estimator)
 
 
 def rank_candidates(
@@ -73,19 +73,11 @@ def rank_candidates(
     *,
     direction: Literal["forward", "reverse", "bidirectional"] = "forward",
     alpha: float = 0.5,
-    method: KLMethod | None = None,
-    prefer_closed_form: bool = True,
+    estimator: KLEstimator,
     limit: int | None = None,
 ) -> list[tuple[int, float]]:
     """Return candidate indices and scores sorted from best to worst."""
-    scores = score_candidates(
-        p,
-        q_i,
-        direction=direction,
-        alpha=alpha,
-        method=_DEFAULT_SCORING_METHOD if method is None else method,
-        prefer_closed_form=prefer_closed_form,
-    )
+    scores = score_candidates(p, q_i, direction=direction, alpha=alpha, estimator=estimator)
     if limit is not None and (isinstance(limit, bool) or limit <= 0):
         msg = f"limit must be a positive integer when provided, got {limit}."
         raise ValueError(msg)
@@ -99,7 +91,7 @@ def rank_candidates(
 class _KLSelectorBase(CandidateSelector, ABC):
     direction: Literal["forward", "reverse", "bidirectional"] = "forward"
     alpha: float = 0.5
-    kl_method: KLMethod = field(default=MonteCarlo(sampling=Draw(rng=0)))
+    estimator: KLEstimator
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
@@ -107,12 +99,7 @@ class _KLSelectorBase(CandidateSelector, ABC):
     def _compute_kl_values(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> FloatArray:
         """Compute pairwise KL divergence values between p and each q_i."""
         return _compute_kl_values(
-            p,
-            q_i,
-            direction=self.direction,
-            alpha=self.alpha,
-            kl_method=self.kl_method,
-            prefer_closed_form=True,
+            p, q_i, direction=self.direction, alpha=self.alpha, estimator=self.estimator
         )
 
     @override
@@ -120,8 +107,8 @@ class _KLSelectorBase(CandidateSelector, ABC):
         kl_values = self._compute_kl_values(p, q_i)
         mask = self._select_mask(kl_values)
         return CandidateSelection(
-            selected_indices=np.where(mask)[0],
-            rejected_indices=np.where(~mask)[0],
+            selected_indices=tuple(int(index) for index in np.flatnonzero(mask)),
+            rejected_indices=tuple(int(index) for index in np.flatnonzero(~mask)),
             scores=kl_values,
         )
 
@@ -161,6 +148,9 @@ class ToleranceSelector(_KLSelectorBase):
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
         validate_nonnegative_finite(self.delta, name="delta")
+        if self.mode not in {"absolute", "relative"}:
+            msg = "mode must be 'absolute' or 'relative'."
+            raise ValueError(msg)
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -179,7 +169,7 @@ class TopKSelector(_KLSelectorBase):
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        if isinstance(self.k, bool) or self.k <= 0:
+        if type(self.k) is not int or self.k <= 0:
             msg = f"k must be positive, got {self.k}."
             raise ValueError(msg)
 
@@ -188,8 +178,10 @@ class TopKSelector(_KLSelectorBase):
         """Predicate to filter candidates based on top-k KL divergence."""
         if self.k >= len(kl_values):
             return np.ones_like(kl_values, dtype=bool)
-        threshold = np.partition(kl_values, self.k - 1)[self.k - 1]
-        return kl_values <= threshold
+        selected = np.argsort(kl_values, kind="stable")[: self.k]
+        mask = np.zeros_like(kl_values, dtype=bool)
+        mask[selected] = True
+        return mask
 
 
 @dataclass(frozen=True, slots=True)
@@ -226,10 +218,8 @@ def _validate_candidate_sequence(q_i: Sequence[GaussianLike]) -> None:
         raise ValueError(msg)
 
 
-def _kl_divergence_value(
-    p: GaussianLike, q: GaussianLike, /, *, kl_method: KLMethod, prefer_closed_form: bool
-) -> float:
-    return kl_divergence(p, q, method=kl_method, prefer_closed_form=prefer_closed_form).value
+def _kl_divergence_value(p: GaussianLike, q: GaussianLike, /, *, estimator: KLEstimator) -> float:
+    return kl_divergence(p, q, estimator=estimator).value
 
 
 def _compute_kl_values(
@@ -239,13 +229,10 @@ def _compute_kl_values(
     *,
     direction: Literal["forward", "reverse", "bidirectional"],
     alpha: float,
-    kl_method: KLMethod,
-    prefer_closed_form: bool,
+    estimator: KLEstimator,
 ) -> FloatArray:
     def kl(p: GaussianLike, q: GaussianLike) -> float:
-        return _kl_divergence_value(
-            p, q, kl_method=kl_method, prefer_closed_form=prefer_closed_form
-        )
+        return _kl_divergence_value(p, q, estimator=estimator)
 
     match direction:
         case "forward":

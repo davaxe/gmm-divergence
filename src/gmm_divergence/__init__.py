@@ -6,25 +6,24 @@ from gmm_divergence import covariance, distributions, divergence, fitting, sampl
 from gmm_divergence.distributions import Gaussian, GaussianMixture, combine_gaussians
 from gmm_divergence.divergence import (
     component_kl_matrix,
-    estimate_divergence,
     jensen_shannon_divergence,
     kl_divergence,
     symmetric_kl_divergence,
 )
 from gmm_divergence.fitting import fit_mixture_weights, prune_mixture
-from gmm_divergence.results import DivergenceResult, FitResult
+from gmm_divergence.results import DivergenceResult, FitResult, MonteCarloStatistics
 
 __all__ = [
     "DivergenceResult",
     "FitResult",
     "Gaussian",
     "GaussianMixture",
+    "MonteCarloStatistics",
     "combine_gaussians",
     "component_kl_matrix",
     "covariance",
     "distributions",
     "divergence",
-    "estimate_divergence",
     "fit_mixture_weights",
     "fitting",
     "jensen_shannon_divergence",
