@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pytest
@@ -63,7 +63,7 @@ def test_selectors_are_explicit_and_top_k_is_exact() -> None:
     with pytest.raises(ValueError, match="mode must be"):
         _ = gd.fitting.ToleranceSelector(
             delta=1.0,
-            mode=cast("Literal['absolute', 'relative']", cast("object", "bad")),
+            mode="bad",  # pyright: ignore[reportArgumentType]
             estimator=estimator,
         )
 

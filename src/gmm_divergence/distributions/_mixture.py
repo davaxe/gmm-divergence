@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 import numpy.typing as npt
@@ -61,9 +61,7 @@ class GaussianMixture:
     ) -> GaussianMixture:
         """Create a Gaussian mixture from array-like parameters."""
         return cls(
-            weights=cast("Weights", weights),
-            means=cast("FloatArray", means),
-            covariances=cast("Covariances", covariances),
+            weights=np.array(weights), means=np.array(means), covariances=np.array(covariances)
         )
 
     @classmethod
@@ -80,11 +78,10 @@ class GaussianMixture:
         This constructor keeps `from_arrays` strict while providing a convenient
         path for estimated or nearly singular component covariances.
         """
-        regularized = regularize_covariance(covariances, regularizer=regularizer, batched=True)
-        return cls(
-            weights=cast("Weights", weights),
-            means=cast("FloatArray", means),
-            covariances=regularized,
+        return cls.from_arrays(
+            weights=weights,
+            means=means,
+            covariances=regularize_covariance(covariances, regularizer=regularizer, batched=True),
         )
 
     @classmethod

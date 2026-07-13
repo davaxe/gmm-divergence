@@ -321,8 +321,7 @@ def _resolve_epsilon(
     else:
         if not isinstance(eps, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
             msg = (
-                "eps must be a nonnegative scalar or epsilon heuristic, "
-                f"got {type(eps).__name__}."
+                f"eps must be a nonnegative scalar or epsilon heuristic, got {type(eps).__name__}."
             )
             raise TypeError(msg)
         if isinstance(eps, ResidualVariance) and rank is not None:

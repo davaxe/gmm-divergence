@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 from typing_extensions import override
@@ -28,15 +28,11 @@ class Gaussian:
     @classmethod
     def from_arrays(cls, mean: npt.ArrayLike, covariance: npt.ArrayLike) -> Gaussian:
         """Create a Gaussian instance from array-like inputs."""
-        return cls(mean=cast("FloatArray", mean), covariance=cast("Covariance", covariance))
+        return cls(mean=np.array(mean), covariance=np.array(covariance))
 
     @classmethod
     def from_regularized_arrays(
-        cls,
-        mean: npt.ArrayLike,
-        covariance: npt.ArrayLike,
-        *,
-        regularizer: CovarianceRegularizer,
+        cls, mean: npt.ArrayLike, covariance: npt.ArrayLike, *, regularizer: CovarianceRegularizer
     ) -> Gaussian:
         """Create a Gaussian after explicitly regularizing its covariance.
 
@@ -44,7 +40,7 @@ class Gaussian:
         path for estimated or nearly singular covariances.
         """
         regularized = regularize_covariance(covariance, regularizer=regularizer, batched=False)
-        return cls(mean=cast("FloatArray", mean), covariance=regularized)
+        return cls.from_arrays(mean=mean, covariance=regularized)
 
     @classmethod
     def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:
@@ -86,7 +82,6 @@ class Gaussian:
         object.__setattr__(
             self, "covariance", as_covariance(self.covariance, n_features=n_features)
         )
-
         self.mean.setflags(write=False)
 
     def chol(self) -> FloatArray:

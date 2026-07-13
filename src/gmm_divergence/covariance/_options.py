@@ -142,11 +142,7 @@ class LowRank:
 
 
 CovarianceRegularizer: TypeAlias = (
-    DiagonalLoading
-    | LinearShrinkage
-    | DiagonalShrinkage
-    | EigenvalueClipping
-    | LowRank
+    DiagonalLoading | LinearShrinkage | DiagonalShrinkage | EigenvalueClipping | LowRank
 )
 
 
