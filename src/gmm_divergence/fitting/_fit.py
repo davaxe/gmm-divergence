@@ -1,8 +1,9 @@
-"""Fit mixture weights to minimize KL divergence."""
+"""Prepare, solve, and report mixture-weight fits."""
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, TypeAlias
+from dataclasses import dataclass, field
+from typing import TYPE_CHECKING
 
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, minimize
@@ -13,15 +14,20 @@ from gmm_divergence.distributions._combine import (
     MixtureMapping,
     combine_gaussians,
 )
-from gmm_divergence.fitting._objectives import build_objective, softmax
+from gmm_divergence.fitting._objectives import (
+    ObjectiveFn,
+    build_simplex_objective,
+    softmax,
+    with_softmax,
+)
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
-    FitParameterization,
+    FitMethod,
+    FitObjective,
     ForwardKL,
     JensenShannon,
     MomentMatching,
     ReverseKL,
-    SimplexSLSQP,
     SoftmaxLBFGSB,
 )
 from gmm_divergence.results import FitResult
@@ -29,14 +35,98 @@ from gmm_divergence.results import FitResult
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import numpy.typing as npt
+
     from gmm_divergence._core._types import FloatArray, Weights
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.fitting._selector import CandidateSelection, CandidateSelector
 
 
-FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
-FitOptimizer: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
+@dataclass(frozen=True, slots=True)
+class FitSolution:
+    """Optimizer output for a prepared mixture-weight fit.
+
+    ``parameters`` contains the optimizer coordinates: logits for
+    :class:`SoftmaxLBFGSB` and simplex weights for :class:`SimplexSLSQP`.
+    ``active_weights`` always contains the corresponding candidate weights.
+    Both arrays are independent and read-only, making them safe to reuse as
+    warm-start inputs.
+    """
+
+    method: FitMethod
+    """Optimizer configuration used to obtain the solution."""
+    parameters: FloatArray
+    """Final optimizer coordinates for the active candidates."""
+    active_weights: Weights
+    """Final simplex weights for the active candidates."""
+    objective_value: float
+    """Final scalar objective value."""
+    iterations: int
+    """Number of optimizer iterations."""
+    converged: bool
+    """Whether the optimizer reported convergence."""
+    optimizer_message: str
+    """Optimizer termination message."""
+
+    def __post_init__(self) -> None:
+        parameters = _freeze_vector(self.parameters, name="parameters")
+        active_weights = as_weights(
+            self.active_weights,
+            expected_length=parameters.shape[0],
+            name="active_weights",
+            normalize=False,
+        )
+        object.__setattr__(self, "parameters", parameters)
+        object.__setattr__(self, "active_weights", active_weights)
+
+
+@dataclass(frozen=True, slots=True, repr=False)
+class PreparedFit:
+    """Reusable data and objective for fitting mixture weights.
+
+    Preparation performs candidate selection, sampling, and all log-density or
+    moment calculations required by the objective. Call :meth:`solve` any
+    number of times without repeating that work, then pass a solution to
+    :meth:`report` to construct the full :class:`~gmm_divergence.FitResult`.
+    """
+
+    objective: FitObjective
+    """Fitting-objective configuration used during preparation."""
+    active_candidates: tuple[Gaussian | GaussianMixture, ...]
+    """Candidate distributions retained for optimization."""
+    active_candidate_indices: tuple[int, ...]
+    """Indices of active candidates in the original candidate sequence."""
+    candidate_count: int
+    """Number of candidates in the original sequence."""
+    simplex_objective: ObjectiveFn = field(repr=False)
+    """Cached objective callable over active candidate weights."""
+
+    @property
+    def n_active_candidates(self) -> int:
+        """Number of candidates represented by the prepared objective."""
+        return len(self.active_candidates)
+
+    def evaluate(self, weights: npt.ArrayLike) -> tuple[float, FloatArray]:
+        """Evaluate the cached objective and gradient at active weights.
+
+        The weights must be nonnegative and have a positive sum. They are not
+        normalized, which permits finite-difference gradient checks around a
+        simplex point.
+        """
+        weights_arr = as_weights(
+            weights, expected_length=self.n_active_candidates, name="weights", normalize=False
+        )
+        value, gradient = self.simplex_objective(weights_arr)
+        return float(value), np.asarray(gradient, dtype=np.float64)
+
+    def solve(self, *, method: FitMethod) -> FitSolution:
+        """Optimize the prepared objective without rebuilding cached data."""
+        return solve_prepared_fit(self, method=method)
+
+    def report(self, solution: FitSolution, /) -> FitResult:
+        """Construct a full fit result from an optimizer solution."""
+        return build_fit_result(self, solution)
 
 
 def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
@@ -74,90 +164,117 @@ def _resolve_objective_samples(
             return None, None
 
 
-def fit_mixture_weights(
+def prepare_mixture_weight_fit(
     *,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     objective: FitObjective,
-    optimizer: FitOptimizer,
     candidate_selection: CandidateSelector | None = None,
-) -> FitResult:
-    original_count = len(q_i)
+) -> PreparedFit:
+    """Prepare and cache all objective data required for fitting."""
+    candidates = tuple(q_i)
+    original_count = len(candidates)
     selection: CandidateSelection | None = None
     if candidate_selection is not None:
-        selection = candidate_selection.select(p, q_i)
+        selection = candidate_selection.select(p, candidates)
         _validate_selection(selection, original_count)
-        q_i = [q_i[index] for index in selection.selected_indices]
-    q_component = _validate_q_i(q_i, p.dim)
-    resolved_p_samples, resolved_q_samples = _resolve_objective_samples(p, q_i, objective)
-    if isinstance(optimizer, SoftmaxLBFGSB):
-        parameterization: FitParameterization = "softmax"
+        active_candidates = tuple(candidates[index] for index in selection.selected_indices)
+        active_indices = selection.selected_indices
+    else:
+        active_candidates = candidates
+        active_indices = tuple(range(original_count))
+
+    _ = _validate_q_i(active_candidates, p.dim)
+    p_samples, q_samples = _resolve_objective_samples(p, active_candidates, objective)
+    simplex_objective = build_simplex_objective(
+        objective=objective, p=p, q_i=active_candidates, p_samples=p_samples, q_samples=q_samples
+    )
+    return PreparedFit(
+        objective=objective,
+        active_candidates=active_candidates,
+        active_candidate_indices=active_indices,
+        candidate_count=original_count,
+        simplex_objective=simplex_objective,
+    )
+
+
+def solve_prepared_fit(prepared: PreparedFit, /, *, method: FitMethod) -> FitSolution:
+    """Optimize a prepared fitting objective."""
+    n_candidates = prepared.n_active_candidates
+    if isinstance(method, SoftmaxLBFGSB):
         initial = (
-            np.array(optimizer.initial_logits, dtype=np.float64)
-            if optimizer.initial_logits is not None
-            else np.zeros(q_component, dtype=np.float64)
+            np.array(method.initial_logits, dtype=np.float64)
+            if method.initial_logits is not None
+            else np.zeros(n_candidates, dtype=np.float64)
         )
-        _validate_initial_vector(initial, q_component, name="initial_logits")
+        _validate_initial_vector(initial, n_candidates, name="initial_logits")
+        scipy_objective = with_softmax(prepared.simplex_objective)
         scipy_method = "L-BFGS-B"
         constraints = ()
         bounds = None
 
-        def weights_from_result(values: FloatArray) -> Weights:
+        def weights_from_parameters(values: FloatArray) -> Weights:
             return softmax(values)
 
     else:
-        parameterization = "simplex"
-        if optimizer.min_weight * q_component > 1.0:
+        if method.min_weight * n_candidates > 1.0:
             msg = "min_weight is infeasible for the number of active candidates."
             raise ValueError(msg)
         initial = (
-            as_weights(
-                optimizer.initial_weights, expected_length=q_component, name="initial_weights"
-            )
-            if optimizer.initial_weights is not None
-            else np.full(q_component, 1.0 / q_component, dtype=np.float64)
+            as_weights(method.initial_weights, expected_length=n_candidates, name="initial_weights")
+            if method.initial_weights is not None
+            else np.full(n_candidates, 1.0 / n_candidates, dtype=np.float64)
         )
+        scipy_objective = prepared.simplex_objective
         scipy_method = "SLSQP"
         constraints = LinearConstraint(
-            A=np.ones((1, q_component), dtype=np.float64),
+            A=np.ones((1, n_candidates), dtype=np.float64),
             lb=np.array([1.0], dtype=np.float64),
             ub=np.array([1.0], dtype=np.float64),
         )
         bounds = Bounds(
-            lb=np.full(q_component, optimizer.min_weight, dtype=np.float64),
-            ub=np.ones(q_component, dtype=np.float64),
+            lb=np.full(n_candidates, method.min_weight, dtype=np.float64),
+            ub=np.ones(n_candidates, dtype=np.float64),
         )
 
-        def weights_from_result(values: FloatArray) -> Weights:
+        def weights_from_parameters(values: FloatArray) -> Weights:
             return values.astype(np.float64)
 
     result = minimize(
-        build_objective(
-            parameterization=parameterization,
-            objective=objective,
-            p=p,
-            q_i=q_i,
-            p_samples=resolved_p_samples,
-            q_samples=resolved_q_samples,
-        ),
+        scipy_objective,
         initial,
         method=scipy_method,
         jac=True,
         constraints=constraints,
         bounds=bounds,
-        tol=optimizer.tol,
-        options={"maxiter": optimizer.max_iterations},
+        tol=method.tol,
+        options={"maxiter": method.max_iterations},
     )
-    active_weights: Weights = weights_from_result(result.x)
-    weights = np.zeros(original_count, dtype=np.float64)
-    active_indices = (
-        tuple(range(original_count)) if selection is None else selection.selected_indices
+    parameters = np.asarray(result.x, dtype=np.float64)
+    return FitSolution(
+        method=method,
+        parameters=parameters,
+        active_weights=weights_from_parameters(parameters),
+        objective_value=float(result.fun),
+        iterations=result.nit,
+        converged=bool(result.success),
+        optimizer_message=str(result.message),
     )
-    weights[list(active_indices)] = active_weights
+
+
+def build_fit_result(prepared: PreparedFit, solution: FitSolution, /) -> FitResult:
+    """Map a prepared-fit solution back to the original candidates."""
+    _validate_initial_vector(
+        solution.active_weights, prepared.n_active_candidates, name="solution.active_weights"
+    )
+    weights = np.zeros(prepared.candidate_count, dtype=np.float64)
+    weights[list(prepared.active_candidate_indices)] = solution.active_weights
     weights.setflags(write=False)
-    combined = combine_gaussians(weights=active_weights, sources=q_i, include_mapping=True)
+    combined = combine_gaussians(
+        weights=solution.active_weights, sources=prepared.active_candidates, include_mapping=True
+    )
     remapped_sources = np.take(
-        np.asarray(active_indices, dtype=np.intp), combined.mapping.source_index
+        np.asarray(prepared.active_candidate_indices, dtype=np.intp), combined.mapping.source_index
     )
     remapped_sources.setflags(write=False)
     fitted_mixture = CombinedGaussianMixture(
@@ -169,15 +286,15 @@ def fit_mixture_weights(
     )
     return FitResult(
         weights=weights,
-        fit_objective=objective,
-        fit_method=optimizer,
-        objective_value=float(result.fun),
+        fit_objective=prepared.objective,
+        fit_method=solution.method,
+        objective_value=solution.objective_value,
         fitted_mixture=fitted_mixture,
-        alpha=objective.alpha if isinstance(objective, BidirectionalKL) else None,
-        iterations=result.nit,
-        converged=bool(result.success),
-        active_candidate_indices=active_indices,
-        optimizer_message=str(result.message),
+        alpha=prepared.objective.alpha if isinstance(prepared.objective, BidirectionalKL) else None,
+        iterations=solution.iterations,
+        converged=solution.converged,
+        active_candidate_indices=prepared.active_candidate_indices,
+        optimizer_message=solution.optimizer_message,
     )
 
 
@@ -185,6 +302,15 @@ def _validate_initial_vector(values: FloatArray, expected_length: int, *, name: 
     if values.ndim != 1 or values.shape[0] != expected_length or not np.all(np.isfinite(values)):
         msg = f"{name} must be a finite 1D array with length {expected_length}."
         raise ValueError(msg)
+
+
+def _freeze_vector(values: npt.ArrayLike, *, name: str) -> FloatArray:
+    vector = np.array(values, dtype=np.float64, copy=True)
+    if vector.ndim != 1 or vector.shape[0] == 0 or not np.all(np.isfinite(vector)):
+        msg = f"{name} must be a nonempty finite 1D array."
+        raise ValueError(msg)
+    vector.setflags(write=False)
+    return vector
 
 
 def _validate_selection(selection: CandidateSelection, candidate_count: int) -> None:

@@ -5,8 +5,8 @@ icon: lucide/chart-no-axes-combined
 # Fitting API
 
 Top-level fitting helpers are documented under [Top-level API](root.md). This
-page documents objective, optimizer, and candidate-selection configuration
-classes from `gmm_divergence.fitting`.
+page documents prepared fits, optimizer and objective configurations, and
+candidate-selection helpers from `gmm_divergence.fitting`.
 
 
 ::: gmm_divergence.fitting
@@ -31,6 +31,14 @@ classes from `gmm_divergence.fitting`.
 ::: gmm_divergence.fitting.SoftmaxLBFGSB
 
 ::: gmm_divergence.fitting.SimplexSLSQP
+
+## Prepared Fits
+
+::: gmm_divergence.fitting.prepare_mixture_weight_fit
+
+::: gmm_divergence.fitting.PreparedFit
+
+::: gmm_divergence.fitting.FitSolution
 
 ## Candidate Selectors
 

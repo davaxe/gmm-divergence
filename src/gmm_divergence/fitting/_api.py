@@ -14,9 +14,45 @@ if TYPE_CHECKING:
 
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
+    from gmm_divergence.fitting._fit import PreparedFit
     from gmm_divergence.fitting._options import FitMethod, FitObjective
     from gmm_divergence.fitting._selector import CandidateSelector
     from gmm_divergence.results import FitResult
+
+
+def prepare_mixture_weight_fit(
+    p: Gaussian | GaussianMixture,
+    q_i: Sequence[Gaussian | GaussianMixture],
+    /,
+    *,
+    objective: FitObjective,
+    candidate_selector: CandidateSelector | None = None,
+) -> PreparedFit:
+    """Prepare a reusable mixture-weight fitting objective.
+
+    Candidate selection, sampling, and density or moment calculations happen
+    once during preparation. The returned object can evaluate gradients and run
+    repeated optimizations without recomputing those inputs.
+
+    Parameters
+    ----------
+    p : Gaussian or GaussianMixture
+        Reference distribution.
+    q_i : sequence of Gaussian or GaussianMixture
+        Candidate distributions whose weights will be fitted.
+    objective : FitObjective
+        Explicit fitting-objective configuration.
+    candidate_selector : CandidateSelector or None, default=None
+        Optional candidate-selection strategy applied before preparation.
+
+    Returns
+    -------
+    PreparedFit
+        Cached objective data with separate ``solve`` and ``report`` stages.
+    """
+    return wfit.prepare_mixture_weight_fit(
+        p=p, q_i=q_i, objective=objective, candidate_selection=candidate_selector
+    )
 
 
 def fit_mixture_weights(
@@ -57,9 +93,11 @@ def fit_mixture_weights(
         value, objective and optimizer configurations, and termination metadata.
 
     """
-    return wfit.fit_mixture_weights(
-        p=p, q_i=q_i, objective=objective, optimizer=method, candidate_selection=candidate_selector
+    prepared = prepare_mixture_weight_fit(
+        p, q_i, objective=objective, candidate_selector=candidate_selector
     )
+    solution = prepared.solve(method=method)
+    return prepared.report(solution)
 
 
 def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
