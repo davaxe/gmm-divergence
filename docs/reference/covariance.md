@@ -15,6 +15,9 @@ matrices, which can arise when the data is not sufficiently diverse or when
 there are too few data points relative to the number of parameters being
 estimated.
 
+Regularization never modifies the input array. Every regularizer returns an
+independent, read-only `float64` array.
+
 ::: gmm_divergence.covariance
     options:
         members: false

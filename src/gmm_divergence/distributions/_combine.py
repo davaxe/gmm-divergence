@@ -123,10 +123,10 @@ def combine_gaussians(
 
     Returns
     -------
-    GaussianMixture or CombinedMixture
-        The combined GaussianMixture. If `return_mapping` is True, a
-        CombinedMixture containing the combined mixture and mapping information
-        is returned.
+    GaussianMixture or CombinedGaussianMixture
+        The combined GaussianMixture. If `include_mapping` is ``True``, a
+        CombinedGaussianMixture containing the mixture and component mapping is
+        returned.
 
     """
     if len(sources) == 0:

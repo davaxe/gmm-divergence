@@ -74,7 +74,8 @@ $$
 
 ### Practical objective
 
-Using the defenition of KL (see [Kl estimation](kl_estimation.md#definition)) divergence, the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
+Using the definition of KL divergence (see [KL estimation](kl_estimation.md#definition)),
+the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
 
 $$
 \min_{\mathbf{w} \in \Delta_N}
@@ -90,7 +91,7 @@ $$
 \left\lbrack \log q_{\mathbf{w}}(X) \right\rbrack}_{= J(\mathbf{w}), \;\text{objective function}}.
 $$
 
-The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and can generally not be expressed in closed form. However, it
+The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and generally cannot be expressed in closed form. However, it
 can be estimated using Monte Carlo sampling. Specifically, given $M$ independent and identically distributed (iid) samples $x^{(1)},\dots,x^{(M)}$ drawn from $p$, we can construct the following estimator for $J(\mathbf{w})$:
 
 $$
@@ -121,8 +122,7 @@ In this case, the optimization problem would be
 \label{eq:mixture-weight-optimization-reverse-kl}
 \begin{aligned}
     \min_{\mathbf{w} \in \Delta_N}
-    \quad & D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \
-|\, p\right) = \mathbb{E}_{X\sim q_{\mathbf{w}}}
+    \quad & D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, p\right) = \mathbb{E}_{X\sim q_{\mathbf{w}}}
 \left\lbrack \log q_{\mathbf{w}}(X) - \log p(X) \right\rbrack.
 \end{aligned}
 \end{equation}
@@ -130,7 +130,7 @@ In this case, the optimization problem would be
 This optimization problem can also be estimated using Monte Carlo sampling, but
 it requires sampling from the mixture $q_{\mathbf{w}}$, which itself depends on
 the optimization variable $\mathbf{w}$. This can make the optimization more
-challenging, as the sampling distribution change as $\mathbf{w}$ is updated.
+challenging, as the sampling distribution changes as $\mathbf{w}$ is updated.
 
 However, the underlying components are fixed and it is possible to reuse samples from the candidate mixtures $q_i$ to construct an estimator for the reverse KL divergence. For example, given $M$ iid samples $x_i^{(1)},\dots,x_i^{(M)}$ drawn from each candidate mixture $q_i$, the following estimator for the reverse KL divergence can be constructed:
 
@@ -204,8 +204,8 @@ fit = gd.fit_mixture_weights(
 )
 ```
 
-For fitting objectives, `p_sampling` controls samples from the reference
-distribution and `q_sampling` controls one fixed batch per candidate
+For objectives that expose both options, `p_sampling` controls samples from the
+reference distribution and `q_sampling` controls one fixed batch per candidate
 distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples and
 `gd.sampling.SampleBatches(...)` for precomputed candidate batches.
 `gd.sampling.Stratified(...)` can be used for either side; a single Gaussian is
@@ -243,13 +243,12 @@ assert abs(result.weights[1] - 0.4) < 1e-2
 ```
 
 Here, the optimizer recovers the mixture weights of the reference distribution by
-combining the two candidate mixtures `q1` and `q2`. The result keeps the scalar
-optimizer objective separate from the forward and reverse KL diagnostics, since
-the optimized objective depends on the selected fit direction.
+combining the two candidate mixtures `q1` and `q2`. The result contains the final
+scalar objective value, the fitted mixture, and optimizer termination metadata.
 
-!!! info "Alternative metrics when using `fit_mixture_weights`"
-    The `fit_mixture_weights` function also supports fitting mixture weights
-    using the reverse KL divergence and the bidirectional KL divergence by
-    setting the `objective` parameter. See the [API
+!!! info "Alternative objectives for `fit_mixture_weights`"
+    The `fit_mixture_weights` function also supports reverse KL, bidirectional
+    KL, Jensen-Shannon, and moment-matching objectives through the `objective`
+    parameter. See the [API
     reference](../reference/root.md#gmm_divergence.fit_mixture_weights) for
     details.

@@ -33,39 +33,23 @@ def regularize_covariance(
     *,
     regularizer: CovarianceRegularizer,
     batched: Literal[False] = False,
-    copy: bool = True,
 ) -> Covariance: ...
 
 
 @overload
 def regularize_covariance(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    regularizer: CovarianceRegularizer,
-    batched: Literal[True],
-    copy: bool = True,
+    covariance: npt.ArrayLike, /, *, regularizer: CovarianceRegularizer, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def regularize_covariance(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    regularizer: CovarianceRegularizer,
-    batched: None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, /, *, regularizer: CovarianceRegularizer, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def regularize_covariance(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    regularizer: CovarianceRegularizer,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, /, *, regularizer: CovarianceRegularizer, batched: bool | None = None
 ) -> Covariance | Covariances:
     """Regularize one covariance matrix or a batch with an explicit configuration.
 
@@ -78,19 +62,20 @@ def regularize_covariance(
         or ``LowRank(rank=2)``.
     batched : bool or None, default=None
         Whether the input is batched. If omitted, infer this from its rank.
-    copy : bool, default=True
-        Whether to regularize a copy of the input.
+
+    Notes
+    -----
+    The input is never modified. The returned covariance is an independent,
+    read-only ``float64`` array.
     """
     match regularizer:
         case DiagonalLoading(eps=eps):
-            return diagonal_loading(covariance, eps=eps, batched=batched, copy=copy)
+            return diagonal_loading(covariance, eps=eps, batched=batched)
         case LinearShrinkage(alpha=alpha):
-            return linear_shrinkage(covariance, alpha=alpha, batched=batched, copy=copy)
+            return linear_shrinkage(covariance, alpha=alpha, batched=batched)
         case DiagonalShrinkage(alpha=alpha):
-            return diagonal_shrinkage(covariance, alpha=alpha, batched=batched, copy=copy)
+            return diagonal_shrinkage(covariance, alpha=alpha, batched=batched)
         case EigenvalueClipping(min_eigenvalue=min_eigenvalue):
-            return eigenvalue_clipping(
-                covariance, min_eigenvalue=min_eigenvalue, batched=batched, copy=copy
-            )
+            return eigenvalue_clipping(covariance, min_eigenvalue=min_eigenvalue, batched=batched)
         case LowRank(rank=rank, eps=eps):
-            return lowrank(covariance, rank=rank, eps=eps, batched=batched, copy=copy)
+            return lowrank(covariance, rank=rank, eps=eps, batched=batched)

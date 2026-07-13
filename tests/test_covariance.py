@@ -50,7 +50,12 @@ def test_regularizers_accept_explicit_objects(
     regularizer: gd.covariance.CovarianceRegularizer,
 ) -> None:
     covariance = np.array([[3.0, 1.0], [1.0, 2.0]])
+    original = covariance.copy()
     regularized = regularize_covariance(covariance, regularizer=regularizer)
+
+    assert covariance == pytest.approx(original)
+    assert not np.shares_memory(regularized, covariance)
+    assert not regularized.flags.writeable
     assert regularized.shape == covariance.shape
     assert np.all(np.linalg.eigvalsh(regularized) > 0.0)
 
