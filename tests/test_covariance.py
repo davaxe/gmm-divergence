@@ -30,9 +30,10 @@ def test_epsilon_heuristics_are_explicit() -> None:
     assert epsilon == pytest.approx(0.5)
 
     batched = np.array([[[1.0, 0.0], [0.0, 100.0]], [[2.0, 0.0], [0.0, 18.0]]])
-    assert estimate_epsilon(batched, heuristic=TargetConditionNumber(kappa=10.0)) == pytest.approx(
-        [10.0, 0.0]
-    )
+    assert estimate_epsilon(batched, heuristic=TargetConditionNumber(kappa=10.0)) == pytest.approx([
+        10.0,
+        0.0,
+    ])
 
 
 @pytest.mark.parametrize(

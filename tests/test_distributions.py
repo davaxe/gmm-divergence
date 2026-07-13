@@ -120,9 +120,7 @@ def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() ->
         _ = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=covariance)
 
     gaussian = Gaussian.from_regularized_arrays(
-        mean=[0.0, 1.0],
-        covariance=covariance,
-        regularizer=gd.covariance.DiagonalLoading(eps=1e-3),
+        mean=[0.0, 1.0], covariance=covariance, regularizer=gd.covariance.DiagonalLoading(eps=1e-3)
     )
 
     assert gaussian.covariance == pytest.approx(np.array([[1.001, 0.0], [0.0, 0.001]]))

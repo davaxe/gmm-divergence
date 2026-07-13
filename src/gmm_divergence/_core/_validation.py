@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from math import isfinite
-from typing import TYPE_CHECKING, cast
+from typing import TYPE_CHECKING
 
 import numpy as np
 
@@ -50,7 +50,7 @@ def as_weights(
         msg = f"{name} must sum to a positive finite value."
         raise ValueError(msg)
 
-    weights_arr = cast("Weights", weights_arr / weight_sum if normalize else weights_arr.copy())
+    weights_arr = weights_arr / weight_sum if normalize else weights_arr.copy()
     weights_arr.setflags(write=writable)
     return weights_arr
 

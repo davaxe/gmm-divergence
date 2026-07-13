@@ -91,21 +91,13 @@ EpsilonSpec: TypeAlias = float | EpsilonHeuristic
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    heuristic: EpsilonHeuristic,
-    batched: Literal[False] = False,
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[False] = False
 ) -> float: ...
 
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    heuristic: EpsilonHeuristic,
-    batched: Literal[True],
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[True]
 ) -> FloatArray: ...
 
 
@@ -116,11 +108,7 @@ def estimate_epsilon(
 
 
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    heuristic: EpsilonHeuristic,
-    batched: bool | None = None,
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: bool | None = None
 ) -> float | FloatArray:
     """Estimate a diagonal-loading epsilon from covariance scale or spectrum.
 
