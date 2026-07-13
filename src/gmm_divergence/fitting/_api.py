@@ -45,21 +45,16 @@ def fit_mixture_weights(
         Reference distribution.
     q_i : sequence of Gaussian or GaussianMixture
         Candidate distributions whose weights are fitted.
-    method : str or optimizer configuration, optional
-        Optimizer used for the weights. Passing a string runs that optimizer
-        with defaults. Use `SoftmaxLBFGSB(...)` or `SimplexSLSQP(...)` for
-        optimizer-specific options.
-    objective : str or WeightFitObjective configuration, optional
-        Objective used for fitting. Passing a string runs that objective with
-        defaults. Use `ForwardKL(...)`, `ReverseKL(...)`, `BidirectionalKL(...)`,
-        `JensenShannon(...)`, or `MomentMatching(...)` for objective-specific
-        options.
+    method : FitMethod
+        Explicit optimizer configuration.
+    objective : FitObjective
+        Explicit fitting-objective configuration.
 
     Returns
     -------
     FitResult
-        Result containing the fitted weights, fitted mixture, fit objective,
-        objective value, forward/reverse KL diagnostics, and optimizer metadata.
+        Result containing the fitted weights, combined mixture, final objective
+        value, objective and optimizer configurations, and termination metadata.
 
     """
     return wfit.fit_mixture_weights(
