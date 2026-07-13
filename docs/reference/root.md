@@ -26,7 +26,7 @@ Configuration and specialized helpers are grouped by namespace:
 | Namespace | Contains |
 | --- | --- |
 | `gmm_divergence.divergence` | Estimator configuration such as `MonteCarlo` |
-| `gmm_divergence.fitting` | Objectives, optimizers, and candidate selectors |
+| `gmm_divergence.fitting` | Prepared fits, objectives, optimizers, and candidate selectors |
 | `gmm_divergence.sampling` | Sampling specifications such as `Draw` and `Samples` |
 | `gmm_divergence.covariance` | Covariance regularizers and epsilon heuristics |
 | `gmm_divergence.distributions` | Gaussian-family details and combination metadata |

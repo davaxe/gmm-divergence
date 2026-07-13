@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 import numpy as np
 import numpy.typing as npt
@@ -235,7 +235,6 @@ class MomentMatching:
     """Whether to include covariance information in the objective."""
 
 
-FitParameterization: TypeAlias = Literal["simplex", "softmax"]
 FitMethod: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
 FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
 

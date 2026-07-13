@@ -12,7 +12,6 @@ from gmm_divergence._core._numeric import logsumexp
 from gmm_divergence._core._types import FloatArray
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
-    FitParameterization,
     ForwardKL,
     JensenShannon,
     MomentMatching,
@@ -342,7 +341,7 @@ def moment_matching(
     return _MomentMatching(p_moments=p_moments, q_moments=q_moments)
 
 
-def _build_simplex_objective(
+def build_simplex_objective(
     *,
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
@@ -370,25 +369,6 @@ def _build_simplex_objective(
             return jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
         case MomentMatching(fit_second_moments=fit_second_moments):
             return moment_matching(p, q_i, second_moments=fit_second_moments)
-
-
-def build_objective(
-    *,
-    parameterization: FitParameterization,
-    objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
-    p_samples: FloatArray | None,
-    q_samples: FloatArray | None,
-) -> ObjectiveFn:
-    simplex_objective = _build_simplex_objective(
-        objective=objective, p=p, q_i=q_i, p_samples=p_samples, q_samples=q_samples
-    )
-    match parameterization:
-        case "softmax":
-            return with_softmax(simplex_objective)
-        case "simplex":
-            return simplex_objective
 
 
 def gaussian_family_raw_moment_vector(

@@ -246,6 +246,40 @@ Here, the optimizer recovers the mixture weights of the reference distribution b
 combining the two candidate mixtures `q1` and `q2`. The result contains the final
 scalar objective value, the fitted mixture, and optimizer termination metadata.
 
+## Reusing a prepared fit
+
+Use [`prepare_mixture_weight_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_mixture_weight_fit)
+when fitting the same objective more than once. Preparation performs candidate
+selection, sampling, and density or moment calculations once. Solving only runs
+the optimizer, and reporting maps its active weights back to the original
+candidate sequence.
+
+```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components(
+    [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)], weights=[0.3, 0.7]
+)
+candidates = [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)]
+prepared = gd.fitting.prepare_mixture_weight_fit(
+    p, candidates, objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102))
+)
+
+solution = prepared.solve(method=gd.fitting.SimplexSLSQP())
+result = prepared.report(solution)
+
+# Reuse the cached samples and density matrices with a warm start.
+warm_solution = prepared.solve(
+    method=gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
+)
+
+# Inspect the cached objective and its gradient without invoking an optimizer.
+value, gradient = prepared.evaluate([0.5, 0.5])
+assert result.converged
+assert warm_solution.converged
+assert gradient.shape == (2,)
+```
+
 !!! info "Alternative objectives for `fit_mixture_weights`"
     The `fit_mixture_weights` function also supports reverse KL, bidirectional
     KL, Jensen-Shannon, and moment-matching objectives through the `objective`
