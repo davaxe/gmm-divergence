@@ -65,7 +65,7 @@ variational approximations, and unscented sigma point methods
 ## Example
 
 To estimate the KL divergence between two Gaussian mixtures using the
-[`kl_divergence`](../reference/root.md#gmm_divergence.kl_divergence) function. For example:
+[`kl_divergence`](reference/root.md#gmm_divergence.kl_divergence) function. For example:
 
 ``` python hl_lines="3-9"
 import gmm_divergence as gd
@@ -107,7 +107,7 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
     
 !!! note "Other methods"
     The `kl_divergence` function also supports other estimation methods. See
-    the [divergence API reference](../reference/divergence.md) for details.
+    the [divergence API reference](reference/divergence.md) for details.
 
 ## Sampling configuration
 
@@ -131,6 +131,11 @@ stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(10_000, rn
 reference samples. `gd.sampling.Stratified` allocates fixed sample counts to
 positive-weight components instead of relying on random component counts; a
 single Gaussian is treated as a one-component mixture.
+
+Stratified standard errors require at least two observations from every
+positive-weight component. When a component has only one observation, the KL
+estimate is still returned but its sample variance and standard error are
+reported as `nan` rather than as a misleading zero.
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

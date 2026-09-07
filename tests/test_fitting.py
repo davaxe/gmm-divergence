@@ -133,6 +133,65 @@ def test_selectors_are_explicit_and_top_k_is_exact() -> None:
         )
 
 
+def test_relative_tolerance_selector_handles_negative_estimates() -> None:
+    p = gd.Gaussian.univariate(0.0, 1.0)
+    candidates = [gd.Gaussian.univariate(0.0, 0.25), gd.Gaussian.univariate(0.0, 0.5)]
+    estimator = gd.divergence.MonteCarlo(gd.sampling.Samples([[0.0]]))
+
+    selection = gd.fitting.ToleranceSelector(
+        delta=0.5, mode="relative", estimator=estimator
+    ).select(p, candidates)
+
+    assert selection.selected_indices == (0,)
+    assert selection.rejected_indices == (1,)
+
+
+def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPatch) -> None:
+    p, candidates = _fixture()
+    q_samples = np.array([[[-1.0], [0.0]], [[0.0], [1.0]]], dtype=np.float64)
+
+    def fail_if_sampled(*args: object, **kwargs: object) -> npt.NDArray[np.float64]:
+        pytest.fail(f"ReverseKL unexpectedly sampled p with {args!r} and {kwargs!r}")
+
+    monkeypatch.setattr(gd.GaussianMixture, "sample", fail_if_sampled)
+    prepared = gd.fitting.prepare_mixture_weight_fit(
+        p,
+        candidates,
+        objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(q_samples)),
+    )
+
+    value, gradient = prepared.evaluate([0.5, 0.5])
+    assert np.isfinite(value)
+    assert np.all(np.isfinite(gradient))
+
+
+def test_fit_solution_requires_simplex_weights() -> None:
+    method = gd.fitting.SimplexSLSQP()
+
+    with pytest.raises(ValueError, match="sum to one"):
+        _ = gd.fitting.FitSolution(
+            method=method,
+            parameters=np.array([2.0, 3.0]),
+            active_weights=np.array([2.0, 3.0]),
+            objective_value=0.0,
+            iterations=0,
+            converged=True,
+            optimizer_message="manual",
+        )
+
+
+def test_fitting_rejects_empty_sample_batches() -> None:
+    p, candidates = _fixture()
+    empty_batches = np.empty((len(candidates), 0, p.dim), dtype=np.float64)
+
+    with pytest.raises(ValueError, match="at least one sample"):
+        _ = gd.fitting.prepare_mixture_weight_fit(
+            p,
+            candidates,
+            objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(empty_batches)),
+        )
+
+
 @dataclass(frozen=True, slots=True)
 class _FirstOnly(CandidateSelector):
     @override

@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, overload
 import numpy as np
 
 from gmm_divergence._core._validation import validate_positive_finite
-from gmm_divergence.covariance._shape import check_covariance_shape
+from gmm_divergence.covariance._shape import validate_covariance_input
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -80,9 +80,8 @@ class ResidualVariance:
 
     def __post_init__(self) -> None:
         validate_positive_finite(self.c, name="c")
-        if self.r is not None and (isinstance(self.r, bool) or self.r <= 0):
-            msg = f"r must be a positive integer when provided, got {self.r}."
-            raise ValueError(msg)
+        if self.r is not None:
+            _ = _as_positive_rank(self.r, name="r")
 
 
 EpsilonHeuristic: TypeAlias = RelativeToTrace | TargetConditionNumber | ResidualVariance
@@ -131,7 +130,9 @@ def estimate_epsilon(
         `(n,)` is returned with one epsilon per covariance.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    shape_kind = check_covariance_shape(covariance_arr, batched=batched)
+    shape_kind = validate_covariance_input(covariance_arr, batched=batched)
+    covariance_arr = _symmetrize(covariance_arr)
+    heuristic = _as_epsilon_heuristic(heuristic)
     match heuristic:
         case RelativeToTrace(c=c):
             return _relative_trace(covariance_arr, c=c, batched=shape_kind)
@@ -184,9 +185,7 @@ def _residual_variance(
     if rank is None:
         msg = "ResidualVariance.r must be provided when using the residual_variance heuristic."
         raise ValueError(msg)
-    if rank <= 0:
-        msg = f"rank must be a positive integer, got {rank}."
-        raise ValueError(msg)
+    rank = _as_positive_rank(rank, name="rank")
 
     symmetrized = _symmetrize(covariance)
     eigvals = np.linalg.eigvalsh(symmetrized)
@@ -210,3 +209,17 @@ def _n_discarded(dim: int, *, rank: int) -> int:
 
 def _symmetrize(covariance: FloatArray) -> FloatArray:
     return 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
+
+
+def _as_positive_rank(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)
+    return value
+
+
+def _as_epsilon_heuristic(value: object) -> EpsilonHeuristic:
+    if not isinstance(value, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
+        msg = f"Unknown epsilon heuristic: {type(value).__name__}."
+        raise TypeError(msg)
+    return value

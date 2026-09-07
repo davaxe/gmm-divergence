@@ -77,3 +77,30 @@ def test_regularized_distribution_constructors_require_a_regularizer() -> None:
     )
     assert gaussian.covariance == pytest.approx(np.array([[1e-3]]))
     assert mixture.covariances == pytest.approx(np.array([[[1e-3]]]))
+
+
+@pytest.mark.parametrize(
+    "regularizer", [EigenvalueClipping(min_eigenvalue=0.1), LowRank(rank=1, eps=0.1)]
+)
+def test_spectral_regularizers_reject_asymmetric_input(
+    regularizer: gd.covariance.CovarianceRegularizer,
+) -> None:
+    covariance = np.array([[1.0, 10.0], [0.0, 1.0]])
+    with pytest.raises(ValueError, match="symmetric"):
+        _ = regularize_covariance(covariance, regularizer=regularizer)
+
+
+def test_covariance_options_validate_epsilon_specs_and_integer_ranks() -> None:
+    with pytest.raises(TypeError, match="epsilon heuristic"):
+        _ = DiagonalLoading(eps="bad")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="positive integer"):
+        _ = ResidualVariance(r=1.5)  # pyright: ignore[reportArgumentType]
+    with pytest.raises(ValueError, match="must not exceed"):
+        _ = regularize_covariance(np.eye(2), regularizer=LowRank(rank=3))
+
+
+def test_estimate_epsilon_rejects_nonfinite_or_asymmetric_covariances() -> None:
+    with pytest.raises(ValueError, match="finite"):
+        _ = estimate_epsilon([[np.nan]], heuristic=RelativeToTrace())
+    with pytest.raises(ValueError, match="symmetric"):
+        _ = estimate_epsilon([[1.0, 10.0], [0.0, 1.0]], heuristic=TargetConditionNumber())

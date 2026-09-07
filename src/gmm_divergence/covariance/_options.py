@@ -2,13 +2,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import TYPE_CHECKING, TypeAlias
+from numbers import Real
+from typing import TypeAlias
 
 from gmm_divergence._core._validation import validate_positive_finite, validate_positive_int
 from gmm_divergence._core._validation import validate_unit_interval as _validate_unit_interval
-
-if TYPE_CHECKING:
-    from gmm_divergence.covariance._epsilon import EpsilonSpec
+from gmm_divergence.covariance._epsilon import (
+    EpsilonSpec,
+    RelativeToTrace,
+    ResidualVariance,
+    TargetConditionNumber,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -150,8 +154,13 @@ def _validate_epsilon_spec(value: EpsilonSpec, /, *, name: str) -> None:
     if isinstance(value, bool):
         msg = f"{name} must be a nonnegative finite value, got {value}."
         raise TypeError(msg)
-    if isinstance(value, (int, float)):
+    if isinstance(value, Real):
         value_float = float(value)
         if not isfinite(value_float) or value_float < 0.0:
             msg = f"{name} must be a nonnegative finite value, got {value}."
             raise ValueError(msg)
+        return
+    if isinstance(value, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
+        return
+    msg = f"{name} must be a nonnegative scalar or epsilon heuristic, got {type(value).__name__}."
+    raise TypeError(msg)

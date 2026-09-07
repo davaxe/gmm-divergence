@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 CODE_BLOCK_RE = re.compile(r"``[ \t]*(python|py)[^\n]*\n(.*?)``", re.IGNORECASE | re.DOTALL)
+MARKDOWN_LINK_RE = re.compile(r"\[[^]]*\]\(([^)]+)\)")
 DOCS_DIR = Path(__file__).parent.parent / "docs"
 
 
@@ -25,3 +26,18 @@ def test_python_code_blocks_in_docs(md_file: Path) -> None:
             failures.append(f"{md_file}:{line_no}\n{type(exc).__name__}: {exc}\nCode:\n{code}")
 
     assert not failures, f"{len(failures)} Python code block(s) failed:\n\n" + "\n\n".join(failures)
+
+
+@pytest.mark.parametrize("md_file", sorted(DOCS_DIR.rglob("*.md")))
+def test_local_markdown_links_resolve(md_file: Path) -> None:
+    """Ensure local Markdown links resolve from their source document."""
+    text = md_file.read_text(encoding="utf-8")
+    missing: list[str] = []
+    for target in MARKDOWN_LINK_RE.findall(text):
+        path = target.split("#", maxsplit=1)[0]
+        if not path or "://" in path:
+            continue
+        if not (md_file.parent / path).resolve().is_file():
+            missing.append(target)
+
+    assert not missing, f"Broken local links in {md_file}: {missing}"

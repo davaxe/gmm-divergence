@@ -211,10 +211,14 @@ distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples a
 `gd.sampling.Stratified(...)` can be used for either side; a single Gaussian is
 treated as a one-component mixture.
 
+`ReverseKL` exposes only `q_sampling`: its expectation is under the fitted
+candidate mixture, and `p` is evaluated at the candidate samples. It therefore
+does not require or consume samples drawn from `p`.
+
 
 ## Example
 
-The [`fit_mixture_weights`](../reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_mixture_weights`](reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -284,5 +288,5 @@ assert gradient.shape == (2,)
     The `fit_mixture_weights` function also supports reverse KL, bidirectional
     KL, Jensen-Shannon, and moment-matching objectives through the `objective`
     parameter. See the [API
-    reference](../reference/root.md#gmm_divergence.fit_mixture_weights) for
+    reference](reference/root.md#gmm_divergence.fit_mixture_weights) for
     details.

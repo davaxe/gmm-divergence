@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import math
+
+import numpy as np
 import pytest
 
 import gmm_divergence as gd
@@ -47,3 +50,28 @@ def test_component_matrix_and_estimator_validation() -> None:
     assert gd.component_kl_matrix(p, q).shape == (1, 2)
     with pytest.raises(ValueError, match="dimensions must match"):
         _ = gd.kl_divergence(p, gd.Gaussian.standard(2), estimator=gd.divergence.Unscented())
+
+
+def test_monte_carlo_rejects_empty_precomputed_samples() -> None:
+    p = gd.Gaussian.univariate()
+    estimator = gd.divergence.MonteCarlo(
+        sampling=gd.sampling.Samples(np.empty((0, 1), dtype=np.float64))
+    )
+
+    with pytest.raises(ValueError, match="at least one sample"):
+        _ = gd.kl_divergence(p, p, estimator=estimator)
+
+
+def test_stratified_monte_carlo_does_not_claim_zero_uncertainty_for_singletons() -> None:
+    p = gd.GaussianMixture.from_components([
+        gd.Gaussian.univariate(-1.0),
+        gd.Gaussian.univariate(1.0),
+    ])
+    q = gd.Gaussian.univariate()
+    result = gd.kl_divergence(
+        p, q, estimator=gd.divergence.MonteCarlo(gd.sampling.Stratified(2, rng=0))
+    )
+
+    assert result.monte_carlo_stats is not None
+    assert math.isnan(result.monte_carlo_stats.sample_variance)
+    assert math.isnan(result.monte_carlo_stats.standard_error)

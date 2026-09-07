@@ -129,12 +129,10 @@ class ReverseKL:
     $$
 
     The implementation evaluates a fixed-sample estimator using samples from
-    the reference distribution $p$ for diagnostics and samples from each
-    candidate mixture $q_i$ for the reverse objective.
+    each candidate mixture $q_i$. The reference density $p$ is evaluated at
+    those samples, so no samples from $p$ are required.
     """
 
-    p_sampling: SampleSpec = field(default_factory=Draw)
-    """Sampling specification for diagnostics under p."""
     q_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
