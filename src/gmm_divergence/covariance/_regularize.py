@@ -18,7 +18,7 @@ from gmm_divergence.covariance._epsilon import (
     TargetConditionNumber,
     estimate_epsilon,
 )
-from gmm_divergence.covariance._shape import check_covariance_shape
+from gmm_divergence.covariance._shape import validate_covariance_input
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -49,8 +49,9 @@ def diagonal_loading(
 ) -> Covariance | Covariances:
     """Apply diagonal loading without modifying the input."""
     covariance_arr = _mutable_covariance_copy(covariance)
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False)
             _apply_diagonal_loading_single(covariance_arr, resolved_eps)
@@ -92,7 +93,8 @@ def linear_shrinkage(
         msg = f"alpha must be in the range [0, 1], got {alpha}."
         raise ValueError(msg)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    match shape_kind:
         case "single":
             d = covariance_arr.shape[0]
             shrinkage_target = np.eye(d) * np.trace(covariance_arr) / d
@@ -135,7 +137,8 @@ def diagonal_shrinkage(
         msg = f"alpha must be in the range [0, 1], got {alpha}."
         raise ValueError(msg)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    match shape_kind:
         case "single":
             diag = np.diag(covariance_arr)
             covariance_arr += alpha * (np.diag(diag) - covariance_arr)
@@ -176,8 +179,9 @@ def eigenvalue_clipping(
     """Clip covariance eigenvalues from below without modifying the input."""
     covariance_arr = _mutable_covariance_copy(covariance)
     validate_positive_finite(min_eigenvalue, name="min_eigenvalue")
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             eigvals, eigvecs = np.linalg.eigh(covariance_arr)
             clipped_eigvals = np.clip(eigvals, a_min=min_eigenvalue, a_max=None)
@@ -224,11 +228,15 @@ def lowrank(
     """Return a low-rank approximation without modifying the input."""
     covariance_arr = _mutable_covariance_copy(covariance)
     validate_positive_int(rank, name="rank")
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    dim = covariance_arr.shape[-1]
+    if rank > dim:
+        msg = f"rank must not exceed covariance dimension {dim}, got {rank}."
+        raise ValueError(msg)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False, rank=rank)
-            covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
             eigvals, eigvecs = np.linalg.eigh(covariance_arr)
             idx = np.argsort(eigvals)[::-1][:rank]
             lowrank_cov = eigvecs[:, idx] @ np.diag(eigvals[idx]) @ eigvecs[:, idx].T
@@ -274,6 +282,14 @@ def _resolve_epsilon(
 
 def _mutable_covariance_copy(covariance: npt.ArrayLike) -> FloatArray:
     return np.array(covariance, dtype=np.float64, copy=True)
+
+
+def _validate_and_symmetrize(
+    covariance: FloatArray, *, batched: bool | None
+) -> Literal["single", "batched"]:
+    shape_kind = validate_covariance_input(covariance, batched=batched)
+    covariance[:] = 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
+    return shape_kind
 
 
 def _validate_resolved_epsilon(eps: float | FloatArray) -> None:

@@ -116,7 +116,9 @@ class Samples(SampleSpec):
     @override
     def sample(self, distribution: GaussianLike) -> FloatArray:
         """Return the batch of samples corresponding to the given distribution."""
-        return as_points(self.samples, n_features=distribution.dim, name="samples")
+        return as_points(
+            self.samples, n_features=distribution.dim, name="samples", require_nonempty=True
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -149,7 +151,9 @@ def _sample_each_distribution(
     n_samples: int | None = None
     for index, distribution in enumerate(distributions):
         batch = sampler(distribution)
-        batch_arr = as_points(batch, n_features=distribution.dim, name=f"samples[{index}]")
+        batch_arr = as_points(
+            batch, n_features=distribution.dim, name=f"samples[{index}]", require_nonempty=True
+        )
         if n_samples is None:
             n_samples = batch_arr.shape[0]
         elif batch_arr.shape[0] != n_samples:

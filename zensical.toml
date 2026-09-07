@@ -1,6 +1,6 @@
 [project]
 site_name = "gmm-divergence"
-site_description = "A new project generated from the default template project."
+site_description = "Utilities for estimating divergences between Gaussian mixture models."
 site_author = "David Axelsson"
 repo_url = "https://github.com/davaxe/gmm-divergence"
 extra_javascript = [

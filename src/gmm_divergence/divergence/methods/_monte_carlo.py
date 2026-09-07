@@ -6,6 +6,7 @@ import numpy as np
 import numpy.typing as npt
 
 from gmm_divergence._core._sampling import Draw, Stratified, stratified_mixture_samples
+from gmm_divergence._core._validation import as_points
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
@@ -62,7 +63,7 @@ def kl_monte_carlo(
     if estimator.target_standard_error is not None:
         return _adaptive_kl_monte_carlo(p, q, estimator)
 
-    samples = sampling.sample(p)
+    samples = as_points(sampling.sample(p), n_features=p.dim, name="samples", require_nonempty=True)
     pointwise_kl = _pointwise_kl(p, q, samples)
     return _result_from_pointwise(pointwise_kl)
 
@@ -115,15 +116,20 @@ def _kl_monte_carlo_stratified(
             component_variances[component_index] = float(np.var(values, ddof=1))
 
     value = float(np.dot(weights, component_means))
-    variance_of_estimator = float(
-        np.sum([
-            weights[index] ** 2 * component_variances[index] / count
-            for index, count in enumerate(result.counts)
-            if count > 0
-        ])
-    )
-    standard_error = float(np.sqrt(variance_of_estimator))
-    sample_variance = float(variance_of_estimator * sampling.n_samples)
+    positive_counts = result.counts[weights > 0.0]
+    if np.any(positive_counts < 2):
+        sample_variance = float("nan")
+        standard_error = float("nan")
+    else:
+        variance_of_estimator = float(
+            np.sum([
+                weights[index] ** 2 * component_variances[index] / count
+                for index, count in enumerate(result.counts)
+                if count > 0
+            ])
+        )
+        standard_error = float(np.sqrt(variance_of_estimator))
+        sample_variance = float(variance_of_estimator * sampling.n_samples)
     return _monte_carlo_result(
         value=value,
         num_samples=sampling.n_samples,

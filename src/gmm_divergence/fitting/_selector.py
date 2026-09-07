@@ -159,7 +159,7 @@ class ToleranceSelector(_KLSelectorBase):
         return (
             kl_values <= (min_kl + self.delta)
             if self.mode == "absolute"
-            else kl_values <= (1 + self.delta) * min_kl
+            else kl_values <= min_kl + self.delta * abs(min_kl)
         )
 
 

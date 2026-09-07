@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a6"
+version = "0.0.1a7"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
@@ -54,7 +54,6 @@ typecheck = [
     "basedpyright>=1.0.0",
 ]
 example = [
-    "matplotlib>=3.10.9",
 ]
 dev = [
     { include-group = "build" },

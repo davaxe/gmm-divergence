@@ -99,7 +99,13 @@ def as_covariances(
 
 
 def as_points(
-    points: npt.ArrayLike, /, *, n_features: int, name: str = "Points", writable: bool = False
+    points: npt.ArrayLike,
+    /,
+    *,
+    n_features: int,
+    name: str = "Points",
+    writable: bool = False,
+    require_nonempty: bool = False,
 ) -> FloatArray:
     """Return validated points with shape ``(n_points, n_features)``."""
     points_arr = np.asarray(points, dtype=np.float64)
@@ -108,6 +114,10 @@ def as_points(
 
     if points_arr.ndim != 2 or points_arr.shape[1] != n_features:
         msg = f"{name} must have shape (n_points, {n_features}), got {points_arr.shape}."
+        raise ValueError(msg)
+
+    if require_nonempty and points_arr.shape[0] == 0:
+        msg = f"{name} must contain at least one sample."
         raise ValueError(msg)
 
     if not np.all(np.isfinite(points_arr)):
@@ -139,6 +149,10 @@ def as_sample_batches(
 
     if samples_arr.shape[2] != n_features:
         msg = f"{name} must have feature dimension {n_features}, got {samples_arr.shape[2]}."
+        raise ValueError(msg)
+
+    if samples_arr.shape[1] == 0:
+        msg = f"{name} must contain at least one sample per distribution."
         raise ValueError(msg)
 
     if not np.all(np.isfinite(samples_arr)):

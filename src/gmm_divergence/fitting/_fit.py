@@ -8,7 +8,7 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
-from gmm_divergence._core._validation import as_weights
+from gmm_divergence._core._validation import as_points, as_sample_batches, as_weights
 from gmm_divergence.distributions._combine import (
     CombinedGaussianMixture,
     MixtureMapping,
@@ -76,9 +76,22 @@ class FitSolution:
             expected_length=parameters.shape[0],
             name="active_weights",
             normalize=False,
+            writable=True,
         )
+        weight_sum = float(np.sum(active_weights))
+        if not np.isclose(weight_sum, 1.0, rtol=1e-9, atol=1e-12):
+            msg = f"active_weights must sum to one, got {weight_sum}."
+            raise ValueError(msg)
+        normalized_weights: Weights = np.asarray(active_weights / weight_sum, dtype=np.float64)
+        normalized_weights.setflags(write=False)
+        if not np.isfinite(self.objective_value):
+            msg = f"objective_value must be finite, got {self.objective_value}."
+            raise ValueError(msg)
+        if type(self.iterations) is not int or self.iterations < 0:
+            msg = f"iterations must be a nonnegative integer, got {self.iterations}."
+            raise ValueError(msg)
         object.__setattr__(self, "parameters", parameters)
-        object.__setattr__(self, "active_weights", active_weights)
+        object.__setattr__(self, "active_weights", normalized_weights)
 
 
 @dataclass(frozen=True, slots=True, repr=False)
@@ -153,15 +166,37 @@ def _resolve_objective_samples(
 ) -> tuple[FloatArray | None, FloatArray | None]:
     match objective:
         case ForwardKL(sampling=sampling):
-            return sampling.sample(p), None
-        case ReverseKL(p_sampling=p_sampling, q_sampling=q_sampling):
-            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
-        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling):
-            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
+            return _validated_samples(sampling.sample(p), p), None
+        case ReverseKL(q_sampling=q_sampling):
+            return None, _validated_sample_batches(q_sampling.sample_batches(q_i), q_i)
+        case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, alpha=alpha):
+            p_samples = _validated_samples(p_sampling.sample(p), p) if alpha > 0.0 else None
+            q_samples = (
+                _validated_sample_batches(q_sampling.sample_batches(q_i), q_i)
+                if alpha < 1.0
+                else None
+            )
+            return p_samples, q_samples
         case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
-            return p_sampling.sample(p), q_sampling.sample_batches(q_i)
+            return _validated_samples(p_sampling.sample(p), p), _validated_sample_batches(
+                q_sampling.sample_batches(q_i), q_i
+            )
         case MomentMatching():
             return None, None
+
+
+def _validated_samples(
+    samples: npt.ArrayLike, distribution: Gaussian | GaussianMixture
+) -> FloatArray:
+    return as_points(samples, n_features=distribution.dim, name="samples", require_nonempty=True)
+
+
+def _validated_sample_batches(
+    samples: npt.ArrayLike, distributions: Sequence[Gaussian | GaussianMixture]
+) -> FloatArray:
+    return as_sample_batches(
+        samples, n_distributions=len(distributions), n_features=distributions[0].dim, name="samples"
+    )
 
 
 def prepare_mixture_weight_fit(
@@ -256,7 +291,7 @@ def solve_prepared_fit(prepared: PreparedFit, /, *, method: FitMethod) -> FitSol
         parameters=parameters,
         active_weights=weights_from_parameters(parameters),
         objective_value=float(result.fun),
-        iterations=result.nit,
+        iterations=int(result.nit),
         converged=bool(result.success),
         optimizer_message=str(result.message),
     )
