@@ -5,17 +5,19 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence._core._sampling import Draw, SampleSpec, Stratified, stratified_mixture_samples
+from gmm_divergence._core._sampling import Draw, Stratified, stratified_mixture_samples
+from gmm_divergence._core._validation import as_points
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
 if TYPE_CHECKING:
     from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.divergence._options import MonteCarlo
 
 
 def kl_monte_carlo(
-    p: GaussianLike, q: GaussianLike, /, *, sampling: SampleSpec | None = None
+    p: GaussianLike, q: GaussianLike, /, *, estimator: MonteCarlo
 ) -> DivergenceResult:
     r"""Estimate KL divergence using Monte Carlo sampling.
 
@@ -38,9 +40,8 @@ def kl_monte_carlo(
         Reference distribution to sample from.
     q : Gaussian or GaussianMixture
         Approximating distribution evaluated at the sampled points.
-    sampling : SampleSpec, optional
-        Sampling specification for the expectation under `p`, such as
-        `sampling.Draw(...)`, `sampling.Samples(...)`, or `sampling.Stratified(...)`.
+    estimator : MonteCarlo
+        Explicit sampling and optional adaptive-sampling configuration.
 
     Returns
     -------
@@ -54,15 +55,46 @@ def kl_monte_carlo(
         Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
         IEEE, 2007.
     """
-    if sampling is None:
-        sampling = Draw()
+    sampling = estimator.sampling
 
     if isinstance(sampling, Stratified):
         return _kl_monte_carlo_stratified(p, q, sampling=sampling)
 
-    samples = sampling.sample(p)
+    if estimator.target_standard_error is not None:
+        return _adaptive_kl_monte_carlo(p, q, estimator)
+
+    samples = as_points(sampling.sample(p), n_features=p.dim, name="samples", require_nonempty=True)
     pointwise_kl = _pointwise_kl(p, q, samples)
     return _result_from_pointwise(pointwise_kl)
+
+
+def _adaptive_kl_monte_carlo(
+    p: GaussianLike, q: GaussianLike, estimator: MonteCarlo, /
+) -> DivergenceResult:
+    sampling = estimator.sampling
+    if not isinstance(sampling, Draw):
+        msg = "Adaptive MonteCarlo requires sampling.Draw."
+        raise TypeError(msg)
+    if estimator.max_samples is None or estimator.target_standard_error is None:
+        msg = "Adaptive MonteCarlo configuration is incomplete."
+        raise AssertionError(msg)
+    batch_size = estimator.batch_size or sampling.n_samples
+    rng = np.random.default_rng(sampling.rng)
+    batches: list[npt.NDArray[np.float64]] = []
+    drawn = 0
+    while drawn < estimator.max_samples:
+        count = min(batch_size, estimator.max_samples - drawn)
+        batches.append(_pointwise_kl(p, q, p.sample(count, rng=rng)))
+        drawn += count
+        result = _result_from_pointwise(np.concatenate(batches))
+        stats = result.monte_carlo_stats
+        if (
+            stats is not None
+            and drawn >= sampling.n_samples
+            and stats.standard_error <= estimator.target_standard_error
+        ):
+            return result
+    return _result_from_pointwise(np.concatenate(batches))
 
 
 def _kl_monte_carlo_stratified(
@@ -84,15 +116,20 @@ def _kl_monte_carlo_stratified(
             component_variances[component_index] = float(np.var(values, ddof=1))
 
     value = float(np.dot(weights, component_means))
-    variance_of_estimator = float(
-        np.sum([
-            weights[index] ** 2 * component_variances[index] / count
-            for index, count in enumerate(result.counts)
-            if count > 0
-        ])
-    )
-    standard_error = float(np.sqrt(variance_of_estimator))
-    sample_variance = float(variance_of_estimator * sampling.n_samples)
+    positive_counts = result.counts[weights > 0.0]
+    if np.any(positive_counts < 2):
+        sample_variance = float("nan")
+        standard_error = float("nan")
+    else:
+        variance_of_estimator = float(
+            np.sum([
+                weights[index] ** 2 * component_variances[index] / count
+                for index, count in enumerate(result.counts)
+                if count > 0
+            ])
+        )
+        standard_error = float(np.sqrt(variance_of_estimator))
+        sample_variance = float(variance_of_estimator * sampling.n_samples)
     return _monte_carlo_result(
         value=value,
         num_samples=sampling.n_samples,

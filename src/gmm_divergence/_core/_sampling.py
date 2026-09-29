@@ -99,9 +99,10 @@ class Stratified(SampleSpec, BatchSampleSpec):
     @override
     def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
         """Return one stratified sample batch per distribution."""
+        rng = np.random.default_rng(self.rng)
         return _sample_each_distribution(
             distributions,
-            lambda distribution: stratified_mixture_samples(distribution, self).samples,
+            lambda distribution: stratified_mixture_samples(distribution, self, rng=rng).samples,
         )
 
 
@@ -115,7 +116,9 @@ class Samples(SampleSpec):
     @override
     def sample(self, distribution: GaussianLike) -> FloatArray:
         """Return the batch of samples corresponding to the given distribution."""
-        return as_points(self.samples, n_features=distribution.dim, name="samples")
+        return as_points(
+            self.samples, n_features=distribution.dim, name="samples", require_nonempty=True
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -148,7 +151,9 @@ def _sample_each_distribution(
     n_samples: int | None = None
     for index, distribution in enumerate(distributions):
         batch = sampler(distribution)
-        batch_arr = as_points(batch, n_features=distribution.dim, name=f"samples[{index}]")
+        batch_arr = as_points(
+            batch, n_features=distribution.dim, name=f"samples[{index}]", require_nonempty=True
+        )
         if n_samples is None:
             n_samples = batch_arr.shape[0]
         elif batch_arr.shape[0] != n_samples:
@@ -175,14 +180,14 @@ class StratifiedSampleResult:
 
 
 def stratified_mixture_samples(
-    distribution: GaussianLike, spec: Stratified
+    distribution: GaussianLike, spec: Stratified, *, rng: np.random.Generator | None = None
 ) -> StratifiedSampleResult:
     """Draw stratified samples from a Gaussian mixture."""
     if isinstance(distribution, Gaussian):
         distribution = GaussianMixture.from_components([distribution], weights=[1.0])
 
     counts = stratified_component_counts(distribution.weights, spec.n_samples)
-    rng = np.random.default_rng(spec.rng)
+    rng = np.random.default_rng(spec.rng) if rng is None else rng
     samples: list[FloatArray] = []
     component_ids: list[npt.NDArray[np.intp]] = []
 

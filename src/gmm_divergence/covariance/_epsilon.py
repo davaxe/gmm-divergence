@@ -6,9 +6,8 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, overload
 
 import numpy as np
 
-from gmm_divergence._core._dispatch import MethodSpec, Registry, cast_options
 from gmm_divergence._core._validation import validate_positive_finite
-from gmm_divergence.covariance._shape import check_covariance_shape
+from gmm_divergence.covariance._shape import validate_covariance_input
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -81,67 +80,34 @@ class ResidualVariance:
 
     def __post_init__(self) -> None:
         validate_positive_finite(self.c, name="c")
-        if self.r is not None and (isinstance(self.r, bool) or self.r <= 0):
-            msg = f"r must be a positive integer when provided, got {self.r}."
-            raise ValueError(msg)
+        if self.r is not None:
+            _ = _as_positive_rank(self.r, name="r")
 
 
-EpsilonMethodName: TypeAlias = Literal[
-    "relative_trace", "target_condition_number", "residual_variance"
-]
-EpsilonMethod: TypeAlias = (
-    EpsilonMethodName | RelativeToTrace | TargetConditionNumber | ResidualVariance
-)
-EpsilonSpec: TypeAlias = float | EpsilonMethod
-
-_EPSILON_REGISTRY = Registry(
-    label="covariance epsilon heuristic",
-    specs=(
-        MethodSpec(name="relative_trace", option_type=RelativeToTrace, default=RelativeToTrace()),
-        MethodSpec(
-            name="target_condition_number",
-            option_type=TargetConditionNumber,
-            default=TargetConditionNumber(),
-        ),
-        MethodSpec(
-            name="residual_variance", option_type=ResidualVariance, default=ResidualVariance()
-        ),
-    ),
-)
+EpsilonHeuristic: TypeAlias = RelativeToTrace | TargetConditionNumber | ResidualVariance
+EpsilonSpec: TypeAlias = float | EpsilonHeuristic
 
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    method: EpsilonMethod = "relative_trace",
-    batched: Literal[False] = False,
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[False] = False
 ) -> float: ...
 
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    method: EpsilonMethod = "relative_trace",
-    batched: Literal[True],
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[True]
 ) -> FloatArray: ...
 
 
 @overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, method: EpsilonMethod = "relative_trace", batched: None = None
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: None = None
 ) -> float | FloatArray: ...
 
 
 def estimate_epsilon(
-    covariance: npt.ArrayLike,
-    /,
-    *,
-    method: EpsilonMethod = "relative_trace",
-    batched: bool | None = None,
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: bool | None = None
 ) -> float | FloatArray:
     """Estimate a diagonal-loading epsilon from covariance scale or spectrum.
 
@@ -150,8 +116,8 @@ def estimate_epsilon(
     covariance : array-like
         Covariance matrix with shape `(d, d)` or batch of matrices with shape
         `(n, d, d)`.
-    method : str or epsilon heuristic configuration, default="relative_trace"
-        Heuristic used to estimate the epsilon value.
+    heuristic : EpsilonHeuristic
+        Explicit heuristic configuration used to estimate epsilon.
     batched : bool or None, default=None
         Whether to interpret the input as batched. If `None`, the shape is
         inferred from the input rank.
@@ -164,24 +130,16 @@ def estimate_epsilon(
         `(n,)` is returned with one epsilon per covariance.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    shape_kind = check_covariance_shape(covariance_arr, batched=batched)
-    spec, options = _EPSILON_REGISTRY.resolve(method)
-
-    match spec.name:
-        case "relative_trace":
-            options = cast_options(options, RelativeToTrace)
-            return _relative_trace(covariance_arr, c=options.c, batched=shape_kind)
-        case "target_condition_number":
-            options = cast_options(options, TargetConditionNumber)
-            return _target_condition_number(covariance_arr, kappa=options.kappa, batched=shape_kind)
-        case "residual_variance":
-            options = cast_options(options, ResidualVariance)
-            return _residual_variance(
-                covariance_arr, c=options.c, rank=options.r, batched=shape_kind
-            )
-        case _:
-            msg = "Unhandled covariance epsilon heuristic registry entry."
-            raise AssertionError(msg)
+    shape_kind = validate_covariance_input(covariance_arr, batched=batched)
+    covariance_arr = _symmetrize(covariance_arr)
+    heuristic = _as_epsilon_heuristic(heuristic)
+    match heuristic:
+        case RelativeToTrace(c=c):
+            return _relative_trace(covariance_arr, c=c, batched=shape_kind)
+        case TargetConditionNumber(kappa=kappa):
+            return _target_condition_number(covariance_arr, kappa=kappa, batched=shape_kind)
+        case ResidualVariance(c=c, r=rank):
+            return _residual_variance(covariance_arr, c=c, rank=rank, batched=shape_kind)
 
 
 def _relative_trace(
@@ -227,9 +185,7 @@ def _residual_variance(
     if rank is None:
         msg = "ResidualVariance.r must be provided when using the residual_variance heuristic."
         raise ValueError(msg)
-    if rank <= 0:
-        msg = f"rank must be a positive integer, got {rank}."
-        raise ValueError(msg)
+    rank = _as_positive_rank(rank, name="rank")
 
     symmetrized = _symmetrize(covariance)
     eigvals = np.linalg.eigvalsh(symmetrized)
@@ -253,3 +209,17 @@ def _n_discarded(dim: int, *, rank: int) -> int:
 
 def _symmetrize(covariance: FloatArray) -> FloatArray:
     return 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
+
+
+def _as_positive_rank(value: object, *, name: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        msg = f"{name} must be a positive integer, got {value}."
+        raise ValueError(msg)
+    return value
+
+
+def _as_epsilon_heuristic(value: object) -> EpsilonHeuristic:
+    if not isinstance(value, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
+        msg = f"Unknown epsilon heuristic: {type(value).__name__}."
+        raise TypeError(msg)
+    return value

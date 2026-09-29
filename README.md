@@ -45,7 +45,7 @@ q = gd.GaussianMixture.from_components([
 ])
 
 result = gd.kl_divergence(
-    p, q, method=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
+    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
 )
 print(result.value, result.monte_carlo_stats.standard_error)
 ```
@@ -64,7 +64,10 @@ candidates = [
 ]
 
 fit = gd.fit_mixture_weights(
-    p, candidates, objective=gd.fitting.MomentMatching(fit_second_moments=True)
+    p,
+    candidates,
+    method=gd.fitting.SoftmaxLBFGSB(),
+    objective=gd.fitting.MomentMatching(fit_second_moments=True),
 )
 print(fit.weights)
 ```

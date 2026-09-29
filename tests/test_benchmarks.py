@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, cast
 
 import numpy as np
 
+import gmm_divergence as gd
 from gmm_divergence import (
     DivergenceResult,
     FitResult,
@@ -51,7 +52,7 @@ def test_benchmark_monte_carlo_kl(benchmark: BenchmarkFixture) -> None:
 
     result = cast(
         "DivergenceResult",
-        benchmark(kl_divergence, p, q, method=MonteCarlo(sampling=Samples(samples))),
+        benchmark(kl_divergence, p, q, estimator=MonteCarlo(sampling=Samples(samples))),
     )
 
     assert result.num_samples == 750
@@ -66,7 +67,14 @@ def test_benchmark_moment_matching_fit(benchmark: BenchmarkFixture) -> None:
     ]
 
     result = cast(
-        "FitResult", benchmark(fit_mixture_weights, p, candidates, objective="moment_matching")
+        "FitResult",
+        benchmark(
+            fit_mixture_weights,
+            p,
+            candidates,
+            method=gd.fitting.SoftmaxLBFGSB(),
+            objective=gd.fitting.MomentMatching(),
+        ),
     )
 
     assert result.converged is True

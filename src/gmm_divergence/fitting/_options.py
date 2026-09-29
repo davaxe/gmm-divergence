@@ -4,9 +4,13 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from math import isfinite
-from typing import Literal, TypeAlias
+from typing import TypeAlias
+
+import numpy as np
+import numpy.typing as npt
 
 from gmm_divergence._core._sampling import BatchSampleSpec, Draw, SampleSpec
+from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
 from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
@@ -30,10 +34,13 @@ class SoftmaxLBFGSB:
     """Optimizer convergence tolerance."""
     max_iterations: int = 1000
     """Maximum number of optimizer iterations."""
+    initial_logits: npt.ArrayLike | None = None
+    """Optional initial unconstrained logits for the active candidates."""
 
     def __post_init__(self) -> None:
         _validate_positive_float(self.tol, name="tol")
         _validate_positive_int(self.max_iterations, name="max_iterations")
+        _freeze_optional_vector(self, "initial_logits")
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,10 +73,14 @@ class SimplexSLSQP:
     zero. Setting it to small positive values avoids numerical issues while
     still allowing the optimizer to effectively prune components with negligible
     weights."""
+    initial_weights: npt.ArrayLike | None = None
+    """Optional initial simplex weights for the active candidates."""
 
     def __post_init__(self) -> None:
         _validate_positive_float(self.tol, name="tol")
         _validate_positive_int(self.max_iterations, name="max_iterations")
+        validate_nonnegative_finite(self.min_weight, name="min_weight")
+        _freeze_optional_vector(self, "initial_weights")
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,12 +129,10 @@ class ReverseKL:
     $$
 
     The implementation evaluates a fixed-sample estimator using samples from
-    the reference distribution $p$ for diagnostics and samples from each
-    candidate mixture $q_i$ for the reverse objective.
+    each candidate mixture $q_i$. The reference density $p$ is evaluated at
+    those samples, so no samples from $p$ are required.
     """
 
-    p_sampling: SampleSpec = field(default_factory=Draw)
-    """Sampling specification for diagnostics under p."""
     q_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
@@ -224,13 +233,17 @@ class MomentMatching:
     """Whether to include covariance information in the objective."""
 
 
-FitParameterization: TypeAlias = Literal["simplex", "softmax"]
-FitMethod: TypeAlias = Literal["softmax_lbfgsb", "simplex_slsqp"] | SoftmaxLBFGSB | SimplexSLSQP
-FitObjective: TypeAlias = (
-    Literal["forward", "reverse", "bidirectional", "jensen_shannon", "moment_matching"]
-    | ForwardKL
-    | ReverseKL
-    | BidirectionalKL
-    | JensenShannon
-    | MomentMatching
-)
+FitMethod: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
+FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
+
+
+def _freeze_optional_vector(instance: object, name: str) -> None:
+    value = getattr(instance, name)
+    if value is None:
+        return
+    vector = np.array(value, dtype=np.float64, copy=True)
+    if vector.ndim != 1 or not np.all(np.isfinite(vector)):
+        msg = f"{name} must be a finite 1D array."
+        raise ValueError(msg)
+    vector.setflags(write=False)
+    object.__setattr__(instance, name, vector)

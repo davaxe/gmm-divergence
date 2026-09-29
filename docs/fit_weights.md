@@ -74,7 +74,8 @@ $$
 
 ### Practical objective
 
-Using the defenition of KL (see [Kl estimation](kl_estimation.md#definition)) divergence, the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
+Using the definition of KL divergence (see [KL estimation](kl_estimation.md#definition)),
+the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
 
 $$
 \min_{\mathbf{w} \in \Delta_N}
@@ -90,7 +91,7 @@ $$
 \left\lbrack \log q_{\mathbf{w}}(X) \right\rbrack}_{= J(\mathbf{w}), \;\text{objective function}}.
 $$
 
-The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and can generally not be expressed in closed form. However, it
+The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and generally cannot be expressed in closed form. However, it
 can be estimated using Monte Carlo sampling. Specifically, given $M$ independent and identically distributed (iid) samples $x^{(1)},\dots,x^{(M)}$ drawn from $p$, we can construct the following estimator for $J(\mathbf{w})$:
 
 $$
@@ -121,8 +122,7 @@ In this case, the optimization problem would be
 \label{eq:mixture-weight-optimization-reverse-kl}
 \begin{aligned}
     \min_{\mathbf{w} \in \Delta_N}
-    \quad & D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \
-|\, p\right) = \mathbb{E}_{X\sim q_{\mathbf{w}}}
+    \quad & D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, p\right) = \mathbb{E}_{X\sim q_{\mathbf{w}}}
 \left\lbrack \log q_{\mathbf{w}}(X) - \log p(X) \right\rbrack.
 \end{aligned}
 \end{equation}
@@ -130,7 +130,7 @@ In this case, the optimization problem would be
 This optimization problem can also be estimated using Monte Carlo sampling, but
 it requires sampling from the mixture $q_{\mathbf{w}}$, which itself depends on
 the optimization variable $\mathbf{w}$. This can make the optimization more
-challenging, as the sampling distribution change as $\mathbf{w}$ is updated.
+challenging, as the sampling distribution changes as $\mathbf{w}$ is updated.
 
 However, the underlying components are fixed and it is possible to reuse samples from the candidate mixtures $q_i$ to construct an estimator for the reverse KL divergence. For example, given $M$ iid samples $x_i^{(1)},\dots,x_i^{(M)}$ drawn from each candidate mixture $q_i$, the following estimator for the reverse KL divergence can be constructed:
 
@@ -200,20 +200,25 @@ fit = gd.fit_mixture_weights(
     objective=gd.fitting.JensenShannon(
         p_sampling=gd.sampling.Draw(10_000, rng=102), q_sampling=gd.sampling.Draw(10_000, rng=102)
     ),
+    method=gd.fitting.SoftmaxLBFGSB(),
 )
 ```
 
-For fitting objectives, `p_sampling` controls samples from the reference
-distribution and `q_sampling` controls one fixed batch per candidate
+For objectives that expose both options, `p_sampling` controls samples from the
+reference distribution and `q_sampling` controls one fixed batch per candidate
 distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples and
 `gd.sampling.SampleBatches(...)` for precomputed candidate batches.
 `gd.sampling.Stratified(...)` can be used for either side; a single Gaussian is
 treated as a one-component mixture.
 
+`ReverseKL` exposes only `q_sampling`: its expectation is under the fitted
+candidate mixture, and `p` is evaluated at the candidate samples. It therefore
+does not require or consume samples drawn from `p`.
+
 
 ## Example
 
-The [`fit_mixture_weights`](../reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_mixture_weights`](reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -232,7 +237,7 @@ q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 result = gd.fit_mixture_weights(
     p,
     [q1, q2],
-    method="simplex_slsqp",
+    method=gd.fitting.SimplexSLSQP(),
     objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102)),
 )
 
@@ -242,13 +247,46 @@ assert abs(result.weights[1] - 0.4) < 1e-2
 ```
 
 Here, the optimizer recovers the mixture weights of the reference distribution by
-combining the two candidate mixtures `q1` and `q2`. The result keeps the scalar
-optimizer objective separate from the forward and reverse KL diagnostics, since
-the optimized objective depends on the selected fit direction.
+combining the two candidate mixtures `q1` and `q2`. The result contains the final
+scalar objective value, the fitted mixture, and optimizer termination metadata.
 
-!!! info "Alternative metrics when using `fit_mixture_weights`"
-    The `fit_mixture_weights` function also supports fitting mixture weights
-    using the reverse KL divergence and the bidirectional KL divergence by
-    setting the `objective` parameter. See the [API
-    reference](../reference/root.md#gmm_divergence.fit_mixture_weights) for
+## Reusing a prepared fit
+
+Use [`prepare_mixture_weight_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_mixture_weight_fit)
+when fitting the same objective more than once. Preparation performs candidate
+selection, sampling, and density or moment calculations once. Solving only runs
+the optimizer, and reporting maps its active weights back to the original
+candidate sequence.
+
+```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components(
+    [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)], weights=[0.3, 0.7]
+)
+candidates = [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)]
+prepared = gd.fitting.prepare_mixture_weight_fit(
+    p, candidates, objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102))
+)
+
+solution = prepared.solve(method=gd.fitting.SimplexSLSQP())
+result = prepared.report(solution)
+
+# Reuse the cached samples and density matrices with a warm start.
+warm_solution = prepared.solve(
+    method=gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
+)
+
+# Inspect the cached objective and its gradient without invoking an optimizer.
+value, gradient = prepared.evaluate([0.5, 0.5])
+assert result.converged
+assert warm_solution.converged
+assert gradient.shape == (2,)
+```
+
+!!! info "Alternative objectives for `fit_mixture_weights`"
+    The `fit_mixture_weights` function also supports reverse KL, bidirectional
+    KL, Jensen-Shannon, and moment-matching objectives through the `objective`
+    parameter. See the [API
+    reference](reference/root.md#gmm_divergence.fit_mixture_weights) for
     details.

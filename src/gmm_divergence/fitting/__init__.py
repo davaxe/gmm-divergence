@@ -1,11 +1,15 @@
 """Public fitting API."""
 
-from gmm_divergence.fitting._api import fit_mixture_weights, prune_mixture
+from gmm_divergence.fitting._api import (
+    fit_mixture_weights,
+    prepare_mixture_weight_fit,
+    prune_mixture,
+)
+from gmm_divergence.fitting._fit import FitSolution, PreparedFit
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitMethod,
     FitObjective,
-    FitParameterization,
     ForwardKL,
     JensenShannon,
     MomentMatching,
@@ -30,10 +34,11 @@ __all__ = [
     "CandidateSelector",
     "FitMethod",
     "FitObjective",
-    "FitParameterization",
+    "FitSolution",
     "ForwardKL",
     "JensenShannon",
     "MomentMatching",
+    "PreparedFit",
     "QuantileSelector",
     "ReverseKL",
     "SimplexSLSQP",
@@ -42,6 +47,7 @@ __all__ = [
     "ToleranceSelector",
     "TopKSelector",
     "fit_mixture_weights",
+    "prepare_mixture_weight_fit",
     "prune_mixture",
     "rank_candidates",
     "score_candidates",

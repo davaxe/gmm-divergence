@@ -26,7 +26,7 @@ Configuration and specialized helpers are grouped by namespace:
 | Namespace | Contains |
 | --- | --- |
 | `gmm_divergence.divergence` | Estimator configuration such as `MonteCarlo` |
-| `gmm_divergence.fitting` | Objectives, optimizers, and candidate selectors |
+| `gmm_divergence.fitting` | Prepared fits, objectives, optimizers, and candidate selectors |
 | `gmm_divergence.sampling` | Sampling specifications such as `Draw` and `Samples` |
 | `gmm_divergence.covariance` | Covariance regularizers and epsilon heuristics |
 | `gmm_divergence.distributions` | Gaussian-family details and combination metadata |
@@ -39,7 +39,7 @@ import gmm_divergence as gd
 p = gd.Gaussian.univariate(mean=0.0, variance=1.0)
 q = gd.Gaussian.univariate(mean=1.0, variance=2.0)
 method = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
-result = gd.kl_divergence(p, q, method=method)
+result = gd.kl_divergence(p, q, estimator=method)
 ```
 
 The sections below document the root exports explicitly. Namespace-only

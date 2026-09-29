@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from numbers import Real
-from typing import TYPE_CHECKING, Literal, cast, overload
+from typing import TYPE_CHECKING, Literal, overload
 
 import numpy as np
 
@@ -12,12 +12,13 @@ from gmm_divergence._core._validation import (
     validate_positive_int,
 )
 from gmm_divergence.covariance._epsilon import (
-    EpsilonMethod,
     EpsilonSpec,
+    RelativeToTrace,
     ResidualVariance,
+    TargetConditionNumber,
     estimate_epsilon,
 )
-from gmm_divergence.covariance._shape import check_covariance_shape
+from gmm_divergence.covariance._shape import validate_covariance_input
 
 if TYPE_CHECKING:
     import numpy.typing as npt
@@ -27,39 +28,30 @@ if TYPE_CHECKING:
 
 @overload
 def diagonal_loading(
-    covariance: npt.ArrayLike,
-    *,
-    eps: EpsilonSpec = 1e-6,
-    batched: Literal[False] = False,
-    copy: bool = True,
+    covariance: npt.ArrayLike, *, eps: EpsilonSpec = 1e-6, batched: Literal[False] = False
 ) -> Covariance: ...
 
 
 @overload
 def diagonal_loading(
-    covariance: npt.ArrayLike, eps: EpsilonSpec = 1e-6, *, batched: Literal[True], copy: bool = True
+    covariance: npt.ArrayLike, eps: EpsilonSpec = 1e-6, *, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def diagonal_loading(
-    covariance: npt.ArrayLike, *, eps: EpsilonSpec = 1e-6, batched: None = None, copy: bool = True
+    covariance: npt.ArrayLike, *, eps: EpsilonSpec = 1e-6, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def diagonal_loading(
-    covariance: npt.ArrayLike,
-    eps: EpsilonSpec = 1e-6,
-    *,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, eps: EpsilonSpec = 1e-6, *, batched: bool | None = None
 ) -> Covariance | Covariances:
-    """Apply diagonal loading to a covariance matrix or batch of matrices."""
-    covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    if copy:
-        covariance_arr = covariance_arr.copy()
+    """Apply diagonal loading without modifying the input."""
+    covariance_arr = _mutable_covariance_copy(covariance)
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False)
             _apply_diagonal_loading_single(covariance_arr, resolved_eps)
@@ -76,42 +68,33 @@ def diagonal_loading(
 
 @overload
 def linear_shrinkage(
-    covariance: npt.ArrayLike,
-    alpha: float = 1e-6,
-    *,
-    batched: Literal[False] = False,
-    copy: bool = True,
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[False] = False
 ) -> Covariance: ...
 
 
 @overload
 def linear_shrinkage(
-    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[True], copy: bool = True
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def linear_shrinkage(
-    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: None = None, copy: bool = True
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def linear_shrinkage(
-    covariance: npt.ArrayLike,
-    alpha: float = 1e-6,
-    *,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: bool | None = None
 ) -> Covariance | Covariances:
-    """Shrink a covariance toward an isotropic target."""
-    covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
+    """Shrink a covariance toward an isotropic target without modifying the input."""
+    covariance_arr = _mutable_covariance_copy(covariance)
     if not (0 <= alpha <= 1.0):
         msg = f"alpha must be in the range [0, 1], got {alpha}."
         raise ValueError(msg)
-    if copy:
-        covariance_arr = covariance_arr.copy()
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    match shape_kind:
         case "single":
             d = covariance_arr.shape[0]
             shrinkage_target = np.eye(d) * np.trace(covariance_arr) / d
@@ -129,42 +112,33 @@ def linear_shrinkage(
 
 @overload
 def diagonal_shrinkage(
-    covariance: npt.ArrayLike,
-    alpha: float = 1e-6,
-    *,
-    batched: Literal[False] = False,
-    copy: bool = True,
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[False] = False
 ) -> Covariance: ...
 
 
 @overload
 def diagonal_shrinkage(
-    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[True], copy: bool = True
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def diagonal_shrinkage(
-    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: None = None, copy: bool = True
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def diagonal_shrinkage(
-    covariance: npt.ArrayLike,
-    alpha: float = 1e-6,
-    *,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, alpha: float = 1e-6, *, batched: bool | None = None
 ) -> Covariance | Covariances:
-    """Shrink a covariance toward its diagonal."""
-    covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
+    """Shrink a covariance toward its diagonal without modifying the input."""
+    covariance_arr = _mutable_covariance_copy(covariance)
     if not (0 <= alpha <= 1.0):
         msg = f"alpha must be in the range [0, 1], got {alpha}."
         raise ValueError(msg)
-    if copy:
-        covariance_arr = covariance_arr.copy()
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    match shape_kind:
         case "single":
             diag = np.diag(covariance_arr)
             covariance_arr += alpha * (np.diag(diag) - covariance_arr)
@@ -183,48 +157,31 @@ def diagonal_shrinkage(
 
 @overload
 def eigenvalue_clipping(
-    covariance: npt.ArrayLike,
-    min_eigenvalue: float = 1e-6,
-    *,
-    batched: Literal[False] = False,
-    copy: bool = True,
+    covariance: npt.ArrayLike, min_eigenvalue: float = 1e-6, *, batched: Literal[False] = False
 ) -> Covariance: ...
 
 
 @overload
 def eigenvalue_clipping(
-    covariance: npt.ArrayLike,
-    min_eigenvalue: float = 1e-6,
-    *,
-    batched: Literal[True],
-    copy: bool = True,
+    covariance: npt.ArrayLike, min_eigenvalue: float = 1e-6, *, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def eigenvalue_clipping(
-    covariance: npt.ArrayLike,
-    min_eigenvalue: float = 1e-6,
-    *,
-    batched: None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, min_eigenvalue: float = 1e-6, *, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def eigenvalue_clipping(
-    covariance: npt.ArrayLike,
-    min_eigenvalue: float = 1e-6,
-    *,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, min_eigenvalue: float = 1e-6, *, batched: bool | None = None
 ) -> Covariance | Covariances:
-    """Clip covariance eigenvalues from below."""
-    covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
+    """Clip covariance eigenvalues from below without modifying the input."""
+    covariance_arr = _mutable_covariance_copy(covariance)
     validate_positive_finite(min_eigenvalue, name="min_eigenvalue")
-    if copy:
-        covariance_arr = covariance_arr.copy()
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             eigvals, eigvecs = np.linalg.eigh(covariance_arr)
             clipped_eigvals = np.clip(eigvals, a_min=min_eigenvalue, a_max=None)
@@ -250,50 +207,36 @@ def lowrank(
     eps: EpsilonSpec = 1e-6,
     *,
     batched: Literal[False] = False,
-    copy: bool = True,
 ) -> Covariance: ...
 
 
 @overload
 def lowrank(
-    covariance: npt.ArrayLike,
-    rank: int,
-    eps: EpsilonSpec = 1e-6,
-    *,
-    batched: Literal[True],
-    copy: bool = True,
+    covariance: npt.ArrayLike, rank: int, eps: EpsilonSpec = 1e-6, *, batched: Literal[True]
 ) -> Covariances: ...
 
 
 @overload
 def lowrank(
-    covariance: npt.ArrayLike,
-    rank: int,
-    eps: EpsilonSpec = 1e-6,
-    *,
-    batched: None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, rank: int, eps: EpsilonSpec = 1e-6, *, batched: None = None
 ) -> Covariance | Covariances: ...
 
 
 def lowrank(
-    covariance: npt.ArrayLike,
-    rank: int,
-    eps: EpsilonSpec = 1e-6,
-    *,
-    batched: bool | None = None,
-    copy: bool = True,
+    covariance: npt.ArrayLike, rank: int, eps: EpsilonSpec = 1e-6, *, batched: bool | None = None
 ) -> Covariance | Covariances:
-    """Approximate a covariance with a low-rank structure plus diagonal loading."""
-    covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
+    """Return a low-rank approximation without modifying the input."""
+    covariance_arr = _mutable_covariance_copy(covariance)
     validate_positive_int(rank, name="rank")
-    if copy:
-        covariance_arr = covariance_arr.copy()
+    shape_kind = _validate_and_symmetrize(covariance_arr, batched=batched)
+    dim = covariance_arr.shape[-1]
+    if rank > dim:
+        msg = f"rank must not exceed covariance dimension {dim}, got {rank}."
+        raise ValueError(msg)
 
-    match check_covariance_shape(covariance_arr, batched=batched):
+    match shape_kind:
         case "single":
             resolved_eps = _resolve_epsilon(covariance_arr, eps, batched=False, rank=rank)
-            covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
             eigvals, eigvecs = np.linalg.eigh(covariance_arr)
             idx = np.argsort(eigvals)[::-1][:rank]
             lowrank_cov = eigvecs[:, idx] @ np.diag(eigvals[idx]) @ eigvecs[:, idx].T
@@ -318,7 +261,11 @@ def _resolve_epsilon(
     if isinstance(eps, Real):
         resolved_eps = float(eps)
     else:
-        eps = cast("EpsilonMethod", eps)
+        if not isinstance(eps, (RelativeToTrace, TargetConditionNumber, ResidualVariance)):
+            msg = (
+                f"eps must be a nonnegative scalar or epsilon heuristic, got {type(eps).__name__}."
+            )
+            raise TypeError(msg)
         if isinstance(eps, ResidualVariance) and rank is not None:
             if eps.r is None:
                 eps = ResidualVariance(c=eps.c, r=rank)
@@ -328,9 +275,21 @@ def _resolve_epsilon(
                     f"got ResidualVariance.r={eps.r} and rank={rank}."
                 )
                 raise ValueError(msg)
-        resolved_eps = estimate_epsilon(covariance, method=eps, batched=batched)
+        resolved_eps = estimate_epsilon(covariance, heuristic=eps, batched=batched)
     _validate_resolved_epsilon(resolved_eps)
     return resolved_eps
+
+
+def _mutable_covariance_copy(covariance: npt.ArrayLike) -> FloatArray:
+    return np.array(covariance, dtype=np.float64, copy=True)
+
+
+def _validate_and_symmetrize(
+    covariance: FloatArray, *, batched: bool | None
+) -> Literal["single", "batched"]:
+    shape_kind = validate_covariance_input(covariance, batched=batched)
+    covariance[:] = 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
+    return shape_kind
 
 
 def _validate_resolved_epsilon(eps: float | FloatArray) -> None:
