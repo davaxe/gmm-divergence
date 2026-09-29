@@ -21,8 +21,8 @@ def test_python_code_blocks_in_docs(md_file: Path) -> None:
         try:
             # Intentionally execute trusted Python snippets from repository documentation
             # to ensure examples stay valid.
-            exec(compile(code, f"{md_file}:{line_no}", "exec"), namespace)  # noqa: S102
-        except Exception as exc:  # noqa: BLE001
+            exec(compile(code, f"{md_file}:{line_no}", "exec"), namespace)  # ruff: ignore[exec-builtin]
+        except Exception as exc:  # ruff: ignore[blind-except]
             failures.append(f"{md_file}:{line_no}\n{type(exc).__name__}: {exc}\nCode:\n{code}")
 
     assert not failures, f"{len(failures)} Python code block(s) failed:\n\n" + "\n\n".join(failures)

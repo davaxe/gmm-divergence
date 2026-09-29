@@ -33,7 +33,7 @@ __all__ = [
     "symmetric_kl_divergence",
 ]
 
-try:  # noqa: RUF067
+try:  # ruff: ignore[non-empty-init-module]
     __version__: str = version("gmm-divergence")
 except PackageNotFoundError:
     __version__ = "0.0.0+unknown"
