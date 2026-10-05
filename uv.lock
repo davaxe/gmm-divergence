@@ -385,7 +385,7 @@ wheels = [
 
 [[package]]
 name = "gmm-divergence"
-version = "0.0.1a7"
+version = "0.0.1a8"
 source = { editable = "." }
 dependencies = [
     { name = "numpy", version = "2.2.6", source = { registry = "https://pypi.org/simple" }, marker = "python_full_version < '3.11'" },
@@ -435,7 +435,7 @@ typecheck = [
 
 [package.metadata]
 requires-dist = [
-    { name = "numpy", specifier = ">=2.2.6" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "scipy", specifier = ">=1.15.3" },
     { name = "typing-extensions", specifier = ">=4.13.2" },
 ]
