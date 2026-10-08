@@ -172,14 +172,17 @@ def test_distribution_construction_does_not_alias_input_or_expose_mutable_caches
     assert not gaussian.chol().flags.writeable
 
 
-def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() -> None:
+def test_gaussian_construction_keeps_covariance_regularization_explicit() -> None:
     covariance = np.array([[1.0, 0.0], [0.0, 0.0]], dtype=np.float64)
 
     with pytest.raises(ValueError, match="Covariance must be positive definite"):
         _ = Gaussian.from_arrays(mean=[0.0, 1.0], covariance=covariance)
 
-    gaussian = Gaussian.from_regularized_arrays(
-        mean=[0.0, 1.0], covariance=covariance, regularizer=gd.covariance.DiagonalLoading(eps=1e-3)
+    gaussian = Gaussian.from_arrays(
+        mean=[0.0, 1.0],
+        covariance=gd.covariance.regularize_covariance(
+            covariance, regularizer=gd.covariance.DiagonalLoading(eps=1e-3)
+        ),
     )
 
     assert gaussian.covariance == pytest.approx(np.array([[1.001, 0.0], [0.0, 0.001]]))
@@ -187,14 +190,17 @@ def test_gaussian_from_regularized_arrays_keeps_strict_constructor_explicit() ->
     assert np.all(np.linalg.eigvalsh(gaussian.covariance) > 0.0)
 
 
-def test_gaussian_mixture_from_regularized_arrays_regularizes_covariance_batch() -> None:
+def test_gaussian_mixture_construction_with_regularized_covariance_batch() -> None:
     covariances = np.array([[[1.0, 0.0], [0.0, 0.0]], [[2.0, 0.25], [0.25, 0.5]]], dtype=np.float64)
 
-    mixture = GaussianMixture.from_regularized_arrays(
+    mixture = GaussianMixture.from_arrays(
         weights=[2.0, 1.0],
         means=[[0.0, 0.0], [2.0, -1.0]],
-        covariances=covariances,
-        regularizer=gd.covariance.EigenvalueClipping(min_eigenvalue=0.1),
+        covariances=gd.covariance.regularize_covariance(
+            covariances,
+            regularizer=gd.covariance.EigenvalueClipping(min_eigenvalue=0.1),
+            batched=True,
+        ),
     )
 
     assert mixture.weights == pytest.approx([2.0 / 3.0, 1.0 / 3.0])

@@ -38,11 +38,11 @@ class DivergenceResult:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class FitResult:
+class GaussianMixtureFitResult:
     """Result of fitting a Gaussian mixture.
 
     Primary result when using
-    [`fit_mixture_weights`][gmm_divergence.fitting.fit_mixture_weights]
+    [`fit_gaussian_mixture_weights`][gmm_divergence.fitting.fit_gaussian_mixture_weights]
     and related functions.
     """
 
@@ -71,7 +71,7 @@ class FitResult:
         """Return fitted weights paired with original candidate indices.
 
         If candidate selection was used, indices refer to the original `q_i`
-        sequence passed to `fit_mixture_weights`. Otherwise they are simply
+        sequence passed to `fit_gaussian_mixture_weights`. Otherwise they are simply
         `0, 1, ..., n_candidates - 1`.
         """
         return sorted(
@@ -86,8 +86,21 @@ class FitResult:
 
 
 @dataclass(frozen=True, slots=True)
+class CategoricalMixtureFitResult:
+    """Result of fitting a mixture of categorical distributions."""
+
+    weights: FloatArray
+    fitted_probabilities: FloatArray
+    objective_value: float
+    fit_method: FitMethod
+    iterations: int
+    converged: bool
+    optimizer_message: str
+
+
+@dataclass(frozen=True, slots=True)
 class AlignedKLResult:
-    """Decomposition of KL divergence between aligned Gaussian mixtures."""
+    """Joint KL decomposition for aligned component labels and observations, in nats."""
 
     value: float
     """Total aligned-component KL divergence."""
@@ -99,4 +112,4 @@ class AlignedKLResult:
     """Per-component Gaussian KL divergences, shape (n_components,)."""
 
     weighted_component_kl: float
-    """Target-weighted sum of the component KL divergences."""
+    """Reference-weighted sum of the component KL divergences."""

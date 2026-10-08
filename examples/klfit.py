@@ -49,7 +49,7 @@ def main() -> None:
         if i != target_index
     ]
     component_labels = [str(label) for i, label in enumerate(labels) if i != target_index]
-    res = gd.fit_mixture_weights(
+    res = gd.fit_gaussian_mixture_weights(
         target,
         components,
         method=gd.fitting.SoftmaxLBFGSB(),

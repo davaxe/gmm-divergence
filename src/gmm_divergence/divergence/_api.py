@@ -15,6 +15,7 @@ from gmm_divergence.divergence._options import (
     Unscented,
     Variational,
 )
+from gmm_divergence.divergence.methods._aligned_component import aligned_component_kl
 from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
@@ -28,6 +29,15 @@ if TYPE_CHECKING:
 
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._typing import GaussianLike
+
+__all__ = [
+    "aligned_component_kl",
+    "categorical_kl_divergence",
+    "component_kl_matrix",
+    "jensen_shannon_divergence",
+    "kl_divergence",
+    "symmetric_kl_divergence",
+]
 
 
 def categorical_kl_divergence(

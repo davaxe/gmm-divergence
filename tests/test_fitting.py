@@ -33,7 +33,7 @@ class _CountingSamples:
 
 def test_explicit_fitting_configs_and_immutable_result() -> None:
     p, candidates = _fixture()
-    result = gd.fit_mixture_weights(
+    result = gd.fit_gaussian_mixture_weights(
         p,
         candidates,
         method=gd.fitting.SimplexSLSQP(initial_weights=[0.5, 0.5]),
@@ -61,7 +61,7 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
         return original_logpdf(self, x)
 
     monkeypatch.setattr(gd.Gaussian, "logpdf", counting_logpdf)
-    prepared = gd.fitting.prepare_mixture_weight_fit(
+    prepared = gd.fitting.prepare_gaussian_mixture_fit(
         p, candidates, objective=gd.fitting.ForwardKL(sampling=sampling)
     )
 
@@ -103,14 +103,14 @@ def test_fitting_validates_bounds_and_initial_values() -> None:
     with pytest.raises(ValueError, match="min_weight"):
         _ = gd.fitting.SimplexSLSQP(min_weight=-1.0)
     with pytest.raises(ValueError, match="infeasible"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SimplexSLSQP(min_weight=0.6),
             objective=gd.fitting.MomentMatching(),
         )
     with pytest.raises(ValueError, match="length 2"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
@@ -154,7 +154,7 @@ def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPa
         pytest.fail(f"ReverseKL unexpectedly sampled p with {args!r} and {kwargs!r}")
 
     monkeypatch.setattr(gd.GaussianMixture, "sample", fail_if_sampled)
-    prepared = gd.fitting.prepare_mixture_weight_fit(
+    prepared = gd.fitting.prepare_gaussian_mixture_fit(
         p,
         candidates,
         objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(q_samples)),
@@ -165,11 +165,11 @@ def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPa
     assert np.all(np.isfinite(gradient))
 
 
-def test_fit_solution_requires_simplex_weights() -> None:
+def test_simplex_optimization_result_requires_simplex_weights() -> None:
     method = gd.fitting.SimplexSLSQP()
 
     with pytest.raises(ValueError, match="sum to one"):
-        _ = gd.fitting.FitSolution(
+        _ = gd.fitting.SimplexOptimizationResult(
             method=method,
             parameters=np.array([2.0, 3.0]),
             active_weights=np.array([2.0, 3.0]),
@@ -185,7 +185,7 @@ def test_fitting_rejects_empty_sample_batches() -> None:
     empty_batches = np.empty((len(candidates), 0, p.dim), dtype=np.float64)
 
     with pytest.raises(ValueError, match="at least one sample"):
-        _ = gd.fitting.prepare_mixture_weight_fit(
+        _ = gd.fitting.prepare_gaussian_mixture_fit(
             p,
             candidates,
             objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(empty_batches)),
@@ -204,7 +204,7 @@ class _FirstOnly(CandidateSelector):
 
 def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
     p, candidates = _fixture()
-    result = gd.fit_mixture_weights(
+    result = gd.fit_gaussian_mixture_weights(
         p,
         candidates,
         method=gd.fitting.SoftmaxLBFGSB(),
@@ -229,7 +229,7 @@ def test_candidate_selection_requires_a_complete_partition() -> None:
             return CandidateSelection(selected_indices=(0, 0), rejected_indices=())
 
     with pytest.raises(ValueError, match="complete non-overlapping"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SoftmaxLBFGSB(),

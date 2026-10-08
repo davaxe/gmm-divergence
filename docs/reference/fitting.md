@@ -5,7 +5,8 @@ icon: lucide/chart-no-axes-combined
 # Fitting API
 
 Top-level fitting helpers are documented under [Top-level API](root.md). This
-page documents prepared fits, optimizer and objective configurations, and
+page documents prepared Gaussian-mixture fits, shared simplex optimization,
+optimizer and objective configurations, and
 candidate-selection helpers from `gmm_divergence.fitting`.
 
 
@@ -78,13 +79,26 @@ assert population.n_components == 2
 
 ::: gmm_divergence.fitting.SimplexSLSQP
 
-## Prepared Fits
+## Prepared Gaussian-Mixture Fits
 
-::: gmm_divergence.fitting.prepare_mixture_weight_fit
+::: gmm_divergence.fitting.prepare_gaussian_mixture_fit
 
-::: gmm_divergence.fitting.PreparedFit
+::: gmm_divergence.fitting.PreparedGaussianMixtureFit
 
-::: gmm_divergence.fitting.FitSolution
+## Shared Simplex Optimization
+
+`PreparedGaussianMixtureFit.solve` returns a `SimplexOptimizationResult` with
+optimizer coordinates, active weights, and termination metadata. The shared
+optimizer works with an objective and gradient over simplex weights; Gaussian
+preparation and reporting remain separate.
+
+::: gmm_divergence.fitting.SimplexOptimizationResult
+
+## Fitting Results
+
+::: gmm_divergence.results.GaussianMixtureFitResult
+
+::: gmm_divergence.results.CategoricalMixtureFitResult
 
 ## Candidate Selectors
 

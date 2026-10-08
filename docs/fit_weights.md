@@ -194,7 +194,7 @@ p = gd.GaussianMixture.from_components(
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
-fit = gd.fit_mixture_weights(
+fit = gd.fit_gaussian_mixture_weights(
     p,
     [q1, q2],
     objective=gd.fitting.JensenShannon(
@@ -218,7 +218,7 @@ does not require or consume samples drawn from `p`.
 
 ## Example
 
-The [`fit_mixture_weights`](reference/root.md#gmm_divergence.fit_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_gaussian_mixture_weights`](reference/root.md#gmm_divergence.fit_gaussian_mixture_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -234,7 +234,7 @@ p = gd.GaussianMixture.from_components(
 
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
-result = gd.fit_mixture_weights(
+result = gd.fit_gaussian_mixture_weights(
     p,
     [q1, q2],
     method=gd.fitting.SimplexSLSQP(),
@@ -252,7 +252,7 @@ scalar objective value, the fitted mixture, and optimizer termination metadata.
 
 ## Reusing a prepared fit
 
-Use [`prepare_mixture_weight_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_mixture_weight_fit)
+Use [`prepare_gaussian_mixture_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_gaussian_mixture_fit)
 when fitting the same objective more than once. Preparation performs candidate
 selection, sampling, and density or moment calculations once. Solving only runs
 the optimizer, and reporting maps its active weights back to the original
@@ -265,7 +265,7 @@ p = gd.GaussianMixture.from_components(
     [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)], weights=[0.3, 0.7]
 )
 candidates = [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)]
-prepared = gd.fitting.prepare_mixture_weight_fit(
+prepared = gd.fitting.prepare_gaussian_mixture_fit(
     p, candidates, objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102))
 )
 
@@ -284,9 +284,9 @@ assert warm_solution.converged
 assert gradient.shape == (2,)
 ```
 
-!!! info "Alternative objectives for `fit_mixture_weights`"
-    The `fit_mixture_weights` function also supports reverse KL, bidirectional
+!!! info "Alternative objectives for `fit_gaussian_mixture_weights`"
+    The `fit_gaussian_mixture_weights` function also supports reverse KL, bidirectional
     KL, Jensen-Shannon, and moment-matching objectives through the `objective`
     parameter. See the [API
-    reference](reference/root.md#gmm_divergence.fit_mixture_weights) for
+    reference](reference/root.md#gmm_divergence.fit_gaussian_mixture_weights) for
     details.

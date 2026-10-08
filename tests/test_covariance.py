@@ -68,12 +68,14 @@ def test_residual_variance_uses_the_enclosing_low_rank_configuration() -> None:
     assert regularized == pytest.approx(np.diag([6.25, 1.25, 1.25]))
 
 
-def test_regularized_distribution_constructors_require_a_regularizer() -> None:
-    gaussian = gd.Gaussian.from_regularized_arrays(
-        [0.0], [[0.0]], regularizer=DiagonalLoading(eps=1e-3)
+def test_distribution_construction_with_explicit_covariance_regularization() -> None:
+    gaussian = gd.Gaussian.from_arrays(
+        [0.0], regularize_covariance([[0.0]], regularizer=DiagonalLoading(eps=1e-3))
     )
-    mixture = gd.GaussianMixture.from_regularized_arrays(
-        [1.0], [[0.0]], [[[0.0]]], regularizer=DiagonalLoading(eps=1e-3)
+    mixture = gd.GaussianMixture.from_arrays(
+        [1.0],
+        [[0.0]],
+        regularize_covariance([[[0.0]]], regularizer=DiagonalLoading(eps=1e-3), batched=True),
     )
     assert gaussian.covariance == pytest.approx(np.array([[1e-3]]))
     assert mixture.covariances == pytest.approx(np.array([[[1e-3]]]))

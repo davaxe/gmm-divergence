@@ -7,10 +7,10 @@ import numpy as np
 import gmm_divergence as gd
 from gmm_divergence import (
     DivergenceResult,
-    FitResult,
     Gaussian,
     GaussianMixture,
-    fit_mixture_weights,
+    GaussianMixtureFitResult,
+    fit_gaussian_mixture_weights,
     kl_divergence,
 )
 from gmm_divergence.divergence import MonteCarlo
@@ -67,9 +67,9 @@ def test_benchmark_moment_matching_fit(benchmark: BenchmarkFixture) -> None:
     ]
 
     result = cast(
-        "FitResult",
+        "GaussianMixtureFitResult",
         benchmark(
-            fit_mixture_weights,
+            fit_gaussian_mixture_weights,
             p,
             candidates,
             method=gd.fitting.SoftmaxLBFGSB(),

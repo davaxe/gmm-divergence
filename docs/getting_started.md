@@ -93,7 +93,7 @@ log_density = p.logpdf(samples)
 
 ## Fit mixture weights
 
-Use `fit_mixture_weights` to combine candidate mixtures against a reference distribution:
+Use `fit_gaussian_mixture_weights` to combine candidate mixtures against a reference distribution:
 
 ```python
 import gmm_divergence as gd
@@ -108,7 +108,7 @@ p = gd.GaussianMixture.from_components(
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
-fit = gd.fit_mixture_weights(
+fit = gd.fit_gaussian_mixture_weights(
     p, [q1, q2], method=gd.fitting.SoftmaxLBFGSB(), objective=gd.fitting.MomentMatching()
 )
 print(fit.weights)  # [~0.6, ~0.4]

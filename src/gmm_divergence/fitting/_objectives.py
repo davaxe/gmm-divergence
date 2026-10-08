@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from gmm_divergence._core._numeric import logsumexp
-from gmm_divergence._core._types import FloatArray
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     ForwardKL,
@@ -19,21 +17,13 @@ from gmm_divergence.fitting._options import (
 )
 
 if TYPE_CHECKING:
-    from gmm_divergence._core._types import Weights
+    from collections.abc import Sequence
+
+    from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.distributions._typing import GaussianLike
-
-
-ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
-
-
-def softmax(theta: FloatArray) -> Weights:
-    """Numerically stable softmax."""
-    theta = np.asarray(theta, dtype=np.float64)
-    z = theta - np.max(theta)
-    exp_z = np.exp(z)
-    return (exp_z / np.sum(exp_z)).astype(np.float64)
+    from gmm_divergence.fitting._simplex import ObjectiveFn
 
 
 def logpdf_matrix(components: Sequence[GaussianLike], samples: FloatArray) -> FloatArray:
@@ -54,19 +44,6 @@ def mixture_stats(
     log_qw = logsumexp(log_terms, axis=1)
     responsibilities = np.exp(log_terms - log_qw[:, None])
     return log_qw.astype(np.float64), responsibilities.astype(np.float64)
-
-
-def with_softmax(simplex_objective: ObjectiveFn) -> ObjectiveFn:
-    """Wrap a simplex objective as an objective over softmax logits."""
-
-    def objective(theta: FloatArray) -> tuple[float, FloatArray]:
-        weights = softmax(theta)
-        value, grad_w = simplex_objective(weights)
-        grad_w = np.asarray(grad_w, dtype=np.float64)
-        grad_theta = weights * (grad_w - np.dot(weights, grad_w))
-        return float(value), grad_theta.astype(np.float64)
-
-    return objective
 
 
 @dataclass(frozen=True, slots=True)
@@ -344,7 +321,7 @@ def moment_matching(
     return _MomentMatching(p_moments=p_moments, q_moments=q_moments)
 
 
-def build_simplex_objective(
+def build_gaussian_mixture_objective(
     *,
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,

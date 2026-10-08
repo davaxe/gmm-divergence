@@ -63,7 +63,7 @@ candidates = [
     gd.Gaussian.univariate(mean=1.5, variance=1.0),
 ]
 
-fit = gd.fit_mixture_weights(
+fit = gd.fit_gaussian_mixture_weights(
     p,
     candidates,
     method=gd.fitting.SoftmaxLBFGSB(),

@@ -4,7 +4,8 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence.divergence._api import categorical_kl_divergence, component_kl_matrix
+from gmm_divergence._core._numeric import pairwise_gaussian_kl
+from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.results import AlignedKLResult
 
 if TYPE_CHECKING:
@@ -36,8 +37,9 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
     D_{\mathrm{KL}}(p_k\|q_k).
     $$
 
-    Unlike ordinary GMM KL, this divergence assumes that component indices
-    correspond between the two distributions.
+    This compares the joint distributions of component label and observation,
+    assuming component indices correspond. No component matching is performed.
+    It is not the marginal KL between mixture densities. Values are in nats.
 
     Parameters
     ----------
@@ -66,10 +68,12 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
         msg = f"Aligned-component KL requires equal feature dimensions, got {p.dim} and {q.dim}."
         raise ValueError(msg)
 
-    weight_kl = categorical_kl_divergence(p.weights, q.weights).value
+    weight_kl = kl_categorical(p.weights, q.weights).value
 
-    # Consider only calculating the diagonal of the component KL matrix.
-    component_kls = np.diag(component_kl_matrix(p, q)).copy()
+    component_kls = np.diag(
+        pairwise_gaussian_kl(p.means, p.covariances, q.means, q.covariances)
+    ).copy()
+    component_kls.setflags(write=False)
     weighted_component_kl = float(np.dot(p.weights, component_kls))
 
     return AlignedKLResult(
