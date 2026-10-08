@@ -1,6 +1,7 @@
 """Public fitting API."""
 
 from gmm_divergence.fitting._api import (
+    fit_categorical_mixture_weights,
     fit_gaussian_mixture_weights,
     prepare_gaussian_mixture_fit,
     prune_mixture,
@@ -50,6 +51,7 @@ __all__ = [
     "ToleranceSelector",
     "TopKSelector",
     "component_statistics",
+    "fit_categorical_mixture_weights",
     "fit_gaussian_mixture_weights",
     "prepare_gaussian_mixture_fit",
     "prune_mixture",

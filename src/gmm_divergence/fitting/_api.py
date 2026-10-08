@@ -104,10 +104,36 @@ def fit_gaussian_mixture_weights(
 
 
 def fit_categorical_mixture_weights(
-    p_w: npt.ArrayLike, q_i_w: npt.ArrayLike, /, method: FitMethod
+    p_w: npt.ArrayLike, q_i_w: npt.ArrayLike, /, *, method: FitMethod
 ) -> CategoricalMixtureFitResult:
-    """Fit categorical-mixture weights using the categorical fitting backend."""
-    return categorical.fit_categorical_mixture_weights(p_w, q_i_w, method)
+    r"""Fit a weighted mixture of categorical distributions using forward KL.
+
+    Find nonnegative candidate weights that sum to one and minimize
+
+    $$
+    D_{\mathrm{KL}}\left(
+        p \;\middle\|\; \sum_{i=1}^{M} \alpha_i q_i
+    \right),
+    $$
+
+    where `p` is the target distribution and `q_i` are the candidates.
+
+    Parameters
+    ----------
+    p_w : array-like, shape (n_categories,)
+        Target categorical probability distribution.
+    q_i_w : array-like, shape (n_candidates, n_categories)
+        Candidate probability distributions, one per row.
+    method : FitMethod
+        Simplex optimization method.
+
+    Returns
+    -------
+    CategoricalMixtureFitResult
+        Optimized candidate weights, fitted categorical probabilities,
+        KL divergence, and optimizer convergence information.
+    """
+    return categorical.fit_categorical_mixture_weights(p_w, q_i_w, method=method)
 
 
 def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
