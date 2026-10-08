@@ -70,6 +70,12 @@ def test_statistics_arrays_are_independent_and_read_only() -> None:
 
 
 def test_regularization_is_only_applied_at_conversion() -> None:
+    with pytest.raises(TypeError, match="regularizer"):
+        component_statistics(
+            [[2, 3]],
+            responsibilities=[[1]],
+            regularizer=gd.covariance.DiagonalLoading(),  # pyright: ignore[reportCallIssue]
+        )
     stats = component_statistics([[2, 3]], responsibilities=[[1]])
     np.testing.assert_array_equal(stats.covariances, np.zeros((1, 2, 2)))
     with pytest.raises(ValueError, match="positive definite"):
