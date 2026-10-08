@@ -10,10 +10,10 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
 
-def kl_mode_occupancy(
+def kl_categorical(
     p_w: npt.ArrayLike, q_w: npt.ArrayLike, /, *, epsilon: float = 0.0
 ) -> DivergenceResult:
-    r"""Compute the KL between two discrete distributions based on their mode occupancy.
+    r"""Compute categorical KL between two probability vectors over shared categories.
 
     Computes
 
@@ -37,7 +37,7 @@ def kl_mode_occupancy(
     Returns
     -------
     DivergenceResult
-        Result object containing the KL divergence based on mode occupancy.
+        Result object containing categorical KL in nats.
     """
     p_w = np.asarray(p_w, dtype=np.float64)
     q_w = np.asarray(q_w, dtype=np.float64)
@@ -71,8 +71,8 @@ def kl_mode_occupancy(
             q_w = (q_w / epsilon + 1) / (1 / epsilon + len(q_w))
 
     if np.any((p_w > 0) & (q_w == 0)):
-        return DivergenceResult(value=np.inf, method="mode_occupancy")
+        return DivergenceResult(value=np.inf, method="categorical_kl")
 
     mask = p_w > 0
     kl = np.sum(p_w[mask] * (np.log(p_w[mask]) - np.log(q_w[mask])))
-    return DivergenceResult(value=float(max(0.0, kl)), method="mode_occupancy")
+    return DivergenceResult(value=float(max(0.0, kl)), method="categorical_kl")

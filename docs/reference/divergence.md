@@ -5,7 +5,7 @@ icon: lucide/equal-approximately
 # Divergence API
 
 Top-level divergence helpers are documented under [Top-level API](root.md). This
-page documents estimator configuration classes and mode-occupancy diagnostics
+page documents estimator configuration classes and categorical KL divergence
 from `gmm_divergence.divergence`.
 
 ::: gmm_divergence.divergence
@@ -23,23 +23,23 @@ from `gmm_divergence.divergence`.
 
 ::: gmm_divergence.divergence.Variational
 
-## Mode Occupancy
+## Categorical KL Divergence
 
-`mode_occupancy_kl` compares probability vectors over shared categories. It is
-separate from `kl_divergence`: it measures categorical occupancy differences,
-not divergence between mixture densities. Corresponding indices must refer to
-the same category; independently fitted GMM components are not automatically
-aligned, and components need not represent distinct modes.
+`categorical_kl_divergence` compares probability vectors over shared categories.
+Corresponding indices must refer to the same category. Mode occupancy is one
+use case: independently fitted GMM components must be aligned first, and
+components need not represent distinct modes. This function computes categorical
+KL, rather than divergence between mixture densities.
 
 ```python
 import gmm_divergence as gd
 
-result = gd.divergence.mode_occupancy_kl([0.8, 0.2], [0.5, 0.5])
+result = gd.divergence.categorical_kl_divergence([0.8, 0.2], [0.5, 0.5])
 assert result.value > 0
 
 # Smoothing changes the probability vectors and makes this comparison finite.
-smoothed = gd.divergence.mode_occupancy_kl([1.0, 0.0], [0.0, 1.0], epsilon=1e-8)
+smoothed = gd.divergence.categorical_kl_divergence([1.0, 0.0], [0.0, 1.0], epsilon=1e-8)
 assert smoothed.value > 0
 ```
 
-::: gmm_divergence.divergence.mode_occupancy_kl
+::: gmm_divergence.divergence.categorical_kl_divergence

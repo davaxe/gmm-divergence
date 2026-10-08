@@ -15,9 +15,9 @@ from gmm_divergence.divergence._options import (
     Unscented,
     Variational,
 )
+from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
-from gmm_divergence.divergence.methods._mode_occupancy import kl_mode_occupancy
 from gmm_divergence.divergence.methods._monte_carlo import kl_monte_carlo
 from gmm_divergence.divergence.methods._unscented import kl_unscented
 from gmm_divergence.divergence.methods._variational import kl_variational
@@ -30,10 +30,10 @@ if TYPE_CHECKING:
     from gmm_divergence.distributions._typing import GaussianLike
 
 
-def mode_occupancy_kl(
+def categorical_kl_divergence(
     p_weights: npt.ArrayLike, q_weights: npt.ArrayLike, /, *, epsilon: float = 0.0
 ) -> DivergenceResult:
-    r"""Compute directed categorical KL between aligned mode occupancies.
+    r"""Compute directed categorical KL between probability vectors over shared categories.
 
     Parameters
     ----------
@@ -50,17 +50,17 @@ def mode_occupancy_kl(
     -------
     DivergenceResult
         Categorical $D_{\mathrm{KL}}(p_w \| q_w)$ in nats, with method
-        `"mode_occupancy"`. Without smoothing, a positive reference weight
+        `"categorical_kl"`. Without smoothing, a positive reference weight
         paired with a zero comparison weight gives positive infinity.
 
     Notes
     -----
-    This measures differences in occupancy of shared categories, rather than
-    KL between Gaussian mixture densities. Gaussian components need not be
-    distinct modes, and independently fitted mixtures may order components
-    differently. No component matching is performed. Inputs are not modified.
+    Categories may represent mode occupancies or any other shared outcomes.
+    When comparing Gaussian mixture weights, the caller must align components;
+    independently fitted mixtures may order components differently, and
+    components need not represent distinct modes. Inputs are not modified.
     """
-    return kl_mode_occupancy(p_weights, q_weights, epsilon=epsilon)
+    return kl_categorical(p_weights, q_weights, epsilon=epsilon)
 
 
 def kl_divergence(
