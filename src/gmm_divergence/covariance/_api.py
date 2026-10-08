@@ -56,17 +56,17 @@ def regularize_covariance(
     Parameters
     ----------
     covariance : array-like
-        A matrix of shape ``(d, d)`` or a batch of shape ``(n, d, d)``.
+        A matrix of shape `(d, d)` or a batch of shape `(n, d, d)`.
     regularizer : CovarianceRegularizer
-        Explicit regularization configuration, such as ``DiagonalLoading()``
-        or ``LowRank(rank=2)``.
+        Explicit regularization configuration, such as `DiagonalLoading()`
+        or `LowRank(rank=2)`.
     batched : bool or None, default=None
         Whether the input is batched. If omitted, infer this from its rank.
 
     Notes
     -----
     The input is never modified. The returned covariance is an independent,
-    read-only ``float64`` array.
+    read-only `float64` array.
     """
     match regularizer:
         case DiagonalLoading(eps=eps):

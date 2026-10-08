@@ -124,7 +124,7 @@ def combine_gaussians(
     Returns
     -------
     GaussianMixture or CombinedGaussianMixture
-        The combined GaussianMixture. If `include_mapping` is ``True``, a
+        The combined GaussianMixture. If `include_mapping` is `True`, a
         CombinedGaussianMixture containing the mixture and component mapping is
         returned.
 

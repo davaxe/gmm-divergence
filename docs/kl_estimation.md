@@ -39,6 +39,9 @@ D_{\mathrm{KL}}(p \| q) = \int p(x) \log \frac{p(x)}{q(x)} dx = \mathbb{E}_{X\si
 \right].
 $$
 
+Throughout this library, mathematical expressions use $D_{\mathrm{KL}}(p \| q)$;
+“KL divergence” is the abbreviation used in prose.
+
 For Gaussian mixtures, this can be expressed more explicitly as
 
 $$

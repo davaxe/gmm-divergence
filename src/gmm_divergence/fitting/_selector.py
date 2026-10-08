@@ -133,10 +133,10 @@ class ThresholdSelector(_KLSelectorBase):
 class ToleranceSelector(_KLSelectorBase):
     """Select candidates within a tolerance of the best KL score.
 
-    In absolute mode, candidates with `KL <= min(KL) + delta` are kept. In
-    relative mode, candidates with `KL <= min(KL) + delta * abs(min(KL))` are
-    kept, so `delta=0.5` means within 50% of the best score when the best score
-    is positive.
+    In absolute mode, candidates with scores at most the minimum score plus
+    `delta` are kept. In relative mode, the tolerance is
+    `delta * abs(minimum_score)`, so `delta=0.5` means within 50% of the best
+    score when the best score is positive.
     """
 
     delta: float

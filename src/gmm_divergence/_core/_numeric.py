@@ -17,7 +17,7 @@ def logsumexp(a: FloatArray, axis: int = -1) -> FloatArray:
 def pairwise_gaussian_kl(
     p_means: FloatArray, p_covariances: Covariances, q_means: FloatArray, q_covariances: Covariances
 ) -> FloatArray:
-    """Compute KL(N_p_i || N_q_j) for all Gaussian component pairs.
+    r"""Compute $D_{\mathrm{KL}}(p_i \| q_j)$ for all Gaussian component pairs.
 
     Parameters
     ----------
@@ -34,7 +34,7 @@ def pairwise_gaussian_kl(
     -------
     FloatArray
         Matrix of shape (n_p, n_q), where entry (i, j) is
-        KL(N_p_i || N_q_j).
+        $D_{\mathrm{KL}}(p_i \| q_j)$.
     """
     if p_means.ndim != 2:
         msg = f"p_means must have shape (n_p, d), got {p_means.shape}."

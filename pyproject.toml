@@ -1,6 +1,6 @@
 [project]
 name = "gmm-divergence"
-version = "0.0.1a8"
+version = "0.0.1a9"
 description = "Utilities for estimating divergences between Gaussian mixture models."
 readme = "README.md"
 authors = [
@@ -25,6 +25,7 @@ classifiers = [
 ]
 dependencies = [
     "numpy>=1.26",
+    "scikit-learn>=1.7.2",
     "scipy>=1.15.3",
     "typing-extensions>=4.13.2",
 ]
@@ -52,6 +53,7 @@ lint = [
 typecheck = [
     "scipy-stubs>=1.15.3.0",
     "basedpyright>=1.0.0",
+    "scikit-learn-stubs>=0.0.3",
 ]
 example = [
 ]

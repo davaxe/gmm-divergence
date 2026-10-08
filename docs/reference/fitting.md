@@ -14,6 +14,31 @@ candidate-selection helpers from `gmm_divergence.fitting`.
         members: false
         show_root_full_path: true
 
+## Fitting From Samples
+
+Fit mixture parameters from observations directly with scikit-learn, then
+convert the fitted estimator using `GaussianMixture.from_sklearn_gmm`.
+The constructor supports all four sklearn covariance types and expands them
+into full covariance matrices.
+
+```python
+import numpy as np
+from sklearn.mixture import GaussianMixture
+
+import gmm_divergence as gd
+
+rng = np.random.default_rng(0)
+samples = np.concatenate([rng.normal(-2, 1, size=(100, 1)), rng.normal(2, 0.5, size=(100, 1))])
+estimator = GaussianMixture(n_components=2, covariance_type="diag", n_init=3, random_state=0).fit(
+    samples
+)
+gmm = gd.GaussianMixture.from_sklearn_gmm(estimator)
+assert gmm.n_components == 2
+```
+
+See [GaussianMixture](root.md#gmm_divergence.GaussianMixture) for the conversion
+constructor and other ways to construct mixtures.
+
 ## Objective Configuration
 
 ::: gmm_divergence.fitting.ForwardKL

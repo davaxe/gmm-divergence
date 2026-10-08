@@ -15,8 +15,8 @@ Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 class MonteCarlo:
     """Estimate KL with an explicit sample source.
 
-    Set ``target_standard_error`` to enable adaptive sampling. Adaptive sampling
-    is intentionally restricted to ``Draw`` because it needs additional samples.
+    Set `target_standard_error` to enable adaptive sampling. Adaptive sampling
+    is intentionally restricted to `Draw` because it needs additional samples.
     """
 
     sampling: SampleSpec = field(default_factory=Draw)

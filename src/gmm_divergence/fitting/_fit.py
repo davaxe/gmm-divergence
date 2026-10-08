@@ -47,11 +47,10 @@ if TYPE_CHECKING:
 class FitSolution:
     """Optimizer output for a prepared mixture-weight fit.
 
-    ``parameters`` contains the optimizer coordinates: logits for
-    :class:`SoftmaxLBFGSB` and simplex weights for :class:`SimplexSLSQP`.
-    ``active_weights`` always contains the corresponding candidate weights.
-    Both arrays are independent and read-only, making them safe to reuse as
-    warm-start inputs.
+    `parameters` contains the optimizer coordinates: logits for `SoftmaxLBFGSB`
+    and simplex weights for `SimplexSLSQP`. `active_weights` always contains the
+    corresponding candidate weights. Both arrays are independent and read-only,
+    making them safe to reuse as warm-start inputs.
     """
 
     method: FitMethod

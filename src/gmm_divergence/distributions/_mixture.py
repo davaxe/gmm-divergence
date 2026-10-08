@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
+from sklearn.mixture import GaussianMixture as SklearnGaussianMixture
 from typing_extensions import override
 
 from gmm_divergence._core._numeric import logsumexp
@@ -63,6 +64,48 @@ class GaussianMixture:
         return cls(
             weights=np.array(weights), means=np.array(means), covariances=np.array(covariances)
         )
+
+    @classmethod
+    def from_sklearn_gmm(cls, gmm: SklearnGaussianMixture) -> GaussianMixture:
+        """Convert a fitted sklearn mixture, expanding covariances to full matrices."""
+        means = np.array(gmm.means_, dtype=np.float64)
+        weights = as_weights(gmm.weights_)
+        sklearn_covariances = np.array(gmm.covariances_, dtype=np.float64)
+        n_components, n_features = means.shape
+        covariance_type = cast("str", gmm.get_params()["covariance_type"])
+        match covariance_type:
+            case "full":
+                covariances = sklearn_covariances
+            case "tied":
+                covariances = np.repeat(sklearn_covariances[None, :, :], n_components, axis=0)
+            case "diag":
+                covariances = sklearn_covariances[:, :, None] * np.eye(n_features)
+            case "spherical":
+                covariances = sklearn_covariances[:, None, None] * np.eye(n_features)
+            case _:
+                msg = f"Unsupported sklearn covariance type: {covariance_type!r}."
+                raise ValueError(msg)
+        return cls.from_arrays(weights=weights, means=means, covariances=covariances)
+
+    def to_sklearn_gmm(self) -> SklearnGaussianMixture:
+        """Convert to a sklearn mixture ready for evaluation and sampling.
+
+        Parameters are copied without fitting data. Optimization history and
+        convergence diagnostics are unavailable because no fitting is performed.
+        """
+        mixture = SklearnGaussianMixture(n_components=self.n_components, covariance_type="full")
+        mixture.weights_ = self.weights.copy()
+        mixture.means_ = self.means.copy()
+        mixture.covariances_ = self.covariances.copy()
+        # Sklearn uses upper triangular factors U such that precision = U @ U.T.
+        inverse_chol = np.linalg.solve(
+            self.chol(), np.broadcast_to(np.eye(self.dim), self.covariances.shape)
+        )
+        precision_chol = np.swapaxes(inverse_chol, -1, -2)
+        mixture.precisions_cholesky_ = precision_chol
+        mixture.precisions_ = precision_chol @ np.swapaxes(precision_chol, -1, -2)
+        mixture.n_features_in_ = self.dim
+        return mixture
 
     @classmethod
     def from_regularized_arrays(
@@ -186,6 +229,32 @@ class GaussianMixture:
             means=self.means[indices],
             covariances=self.covariances[indices],
         )
+
+    def responsibilities(self, x: npt.ArrayLike) -> FloatArray:
+        """Compute the responsibilities of each component for the given points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_samples, n_features)
+            Points at which to compute responsibilities.
+
+        Returns
+        -------
+        responsibilities : array, shape (n_samples, n_components)
+            The responsibilities of each component for each point, normalized to
+            sum to 1 across components.
+        """
+        if self.n_components == 1:
+            return np.ones(
+                (1, as_points(x, n_features=self.dim, name="x").shape[0]), dtype=np.float64
+            )
+
+        x = as_points(x, n_features=self.dim, name="x")
+        log_probs = np.array([self.get_component(k).logpdf(x) for k in range(self.n_components)])
+        log_weights = np.log(self.weights)[:, None]
+        log_responsibilities = log_weights + log_probs
+        log_responsibilities -= logsumexp(log_responsibilities, axis=0)
+        return np.exp(log_responsibilities).T
 
     @override
     def __repr__(self) -> str:

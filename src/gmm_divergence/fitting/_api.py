@@ -48,7 +48,7 @@ def prepare_mixture_weight_fit(
     Returns
     -------
     PreparedFit
-        Cached objective data with separate ``solve`` and ``report`` stages.
+        Cached objective data with separate `solve` and `report` stages.
     """
     return wfit.prepare_mixture_weight_fit(
         p=p, q_i=q_i, objective=objective, candidate_selection=candidate_selector

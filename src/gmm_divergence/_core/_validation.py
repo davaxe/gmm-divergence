@@ -107,7 +107,7 @@ def as_points(
     writable: bool = False,
     require_nonempty: bool = False,
 ) -> FloatArray:
-    """Return validated points with shape ``(n_points, n_features)``."""
+    """Return validated points with shape `(n_points, n_features)`."""
     points_arr = np.asarray(points, dtype=np.float64)
     if points_arr.ndim == 1:
         points_arr = points_arr[None, :]
@@ -138,7 +138,7 @@ def as_sample_batches(
     name: str = "Sample batches",
     writable: bool = False,
 ) -> FloatArray:
-    """Return validated sample batches with shape ``(n_distributions, n_samples, n_features)``."""
+    """Return validated sample batches with shape `(n_distributions, n_samples, n_features)`."""
     samples_arr = np.asarray(samples, dtype=np.float64)
     if samples_arr.ndim != 3 or samples_arr.shape[0] != n_distributions:
         msg = (

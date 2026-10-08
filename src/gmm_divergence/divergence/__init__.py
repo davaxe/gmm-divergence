@@ -4,6 +4,7 @@ from gmm_divergence.divergence._api import (
     component_kl_matrix,
     jensen_shannon_divergence,
     kl_divergence,
+    mode_occupancy_kl,
     symmetric_kl_divergence,
 )
 from gmm_divergence.divergence._options import (
@@ -25,5 +26,6 @@ __all__ = [
     "component_kl_matrix",
     "jensen_shannon_divergence",
     "kl_divergence",
+    "mode_occupancy_kl",
     "symmetric_kl_divergence",
 ]
