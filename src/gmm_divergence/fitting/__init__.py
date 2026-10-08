@@ -5,7 +5,7 @@ from gmm_divergence.fitting._api import (
     prepare_mixture_weight_fit,
     prune_mixture,
 )
-from gmm_divergence.fitting._fit import FitSolution, PreparedFit
+from gmm_divergence.fitting._component_statistics import ComponentStatistics, component_statistics
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     FitMethod,
@@ -27,11 +27,13 @@ from gmm_divergence.fitting._selector import (
     rank_candidates,
     score_candidates,
 )
+from gmm_divergence.fitting._weight_fitting import FitSolution, PreparedFit
 
 __all__ = [
     "BidirectionalKL",
     "CandidateSelection",
     "CandidateSelector",
+    "ComponentStatistics",
     "FitMethod",
     "FitObjective",
     "FitSolution",
@@ -46,6 +48,7 @@ __all__ = [
     "ThresholdSelector",
     "ToleranceSelector",
     "TopKSelector",
+    "component_statistics",
     "fit_mixture_weights",
     "prepare_mixture_weight_fit",
     "prune_mixture",

@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-import gmm_divergence.fitting._fit as wfit
+import gmm_divergence.fitting._weight_fitting as wfit
 from gmm_divergence._core._validation import validate_nonnegative_finite
 
 if TYPE_CHECKING:
@@ -14,9 +14,9 @@ if TYPE_CHECKING:
 
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
-    from gmm_divergence.fitting._fit import PreparedFit
     from gmm_divergence.fitting._options import FitMethod, FitObjective
     from gmm_divergence.fitting._selector import CandidateSelector
+    from gmm_divergence.fitting._weight_fitting import PreparedFit
     from gmm_divergence.results import FitResult
 
 

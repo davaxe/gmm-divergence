@@ -244,12 +244,10 @@ class GaussianMixture:
             The responsibilities of each component for each point, normalized to
             sum to 1 across components.
         """
-        if self.n_components == 1:
-            return np.ones(
-                (1, as_points(x, n_features=self.dim, name="x").shape[0]), dtype=np.float64
-            )
-
         x = as_points(x, n_features=self.dim, name="x")
+        if self.n_components == 1:
+            return np.ones((x.shape[0], 1), dtype=np.float64)
+
         log_probs = np.array([self.get_component(k).logpdf(x) for k in range(self.n_components)])
         log_weights = np.log(self.weights)[:, None]
         log_responsibilities = log_weights + log_probs

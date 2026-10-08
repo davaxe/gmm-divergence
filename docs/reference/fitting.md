@@ -39,6 +39,27 @@ assert gmm.n_components == 2
 See [GaussianMixture](root.md#gmm_divergence.GaussianMixture) for the conversion
 constructor and other ways to construct mixtures.
 
+## Component Statistics
+
+Use fixed responsibilities or a shared reference mixture to estimate empirical
+component statistics. Component indices stay aligned with the supplied
+assignments, and components with zero responsibility mass are rejected.
+Regularization is applied only when converting statistics into a mixture.
+
+```python
+import gmm_divergence as gd
+
+stats = gd.fitting.component_statistics(
+    [[0.0], [2.0], [4.0]], responsibilities=[[1, 0], [0.5, 0.5], [0, 1]]
+)
+population = stats.to_gaussian_mixture(regularizer=gd.covariance.DiagonalLoading())
+assert population.n_components == 2
+```
+
+::: gmm_divergence.fitting.component_statistics
+
+::: gmm_divergence.fitting.ComponentStatistics
+
 ## Objective Configuration
 
 ::: gmm_divergence.fitting.ForwardKL
