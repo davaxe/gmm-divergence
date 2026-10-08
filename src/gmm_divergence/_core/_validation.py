@@ -5,6 +5,9 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from gmm_divergence._core._arrays import readonly_copy
+from gmm_divergence._core._numeric import symmetrize
+
 if TYPE_CHECKING:
     import numpy.typing as npt
 
@@ -64,16 +67,7 @@ def as_covariance(
     writable: bool = False,
 ) -> Covariance:
     """Return a validated symmetric positive-definite covariance matrix."""
-    covariance_arr = np.array(covariance, dtype=np.float64, copy=True)
-    full_shape = (n_features, n_features)
-    if covariance_arr.shape != full_shape:
-        msg = f"{name} must have shape {full_shape}, got {covariance_arr.shape}."
-        raise ValueError(msg)
-    covariance_arr = _validate_symmetric(covariance_arr, name=name)
-    covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
-    covariance_arr = _validate_covariance_values(covariance_arr, name=name)
-    covariance_arr.setflags(write=writable)
-    return covariance_arr
+    return _as_covariance_array(covariance, (n_features, n_features), name=name, writable=writable)
 
 
 def as_covariances(
@@ -86,16 +80,55 @@ def as_covariances(
     writable: bool = False,
 ) -> Covariances:
     """Return a validated stack of symmetric positive-definite covariances."""
-    covariances_arr = np.array(covariances, dtype=np.float64, copy=True)
-    full_shape = (n_components, n_features, n_features)
-    if covariances_arr.shape != full_shape:
-        msg = f"{name} must have shape {full_shape}, got {covariances_arr.shape}."
+    return _as_covariance_array(
+        covariances, (n_components, n_features, n_features), name=name, writable=writable
+    )
+
+
+def _as_covariance_array(
+    values: npt.ArrayLike, shape: tuple[int, ...], *, name: str, writable: bool
+) -> FloatArray:
+    array = np.asarray(values, dtype=np.float64)
+    if array.shape != shape:
+        msg = f"{name} must have shape {shape}, got {array.shape}."
         raise ValueError(msg)
-    covariances_arr = _validate_symmetric(covariances_arr, name=name)
-    covariances_arr = 0.5 * (covariances_arr + np.swapaxes(covariances_arr, -1, -2))
-    covariances_arr = _validate_covariance_values(covariances_arr, name=name)
-    covariances_arr.setflags(write=writable)
-    return covariances_arr
+    _validate_symmetric(array, name=name)
+    array = symmetrize(array)
+    _validate_covariance_values(array, name=name)
+    array.setflags(write=writable)
+    return array
+
+
+def as_probabilities(values: npt.ArrayLike, /, *, name: str = "Weights") -> FloatArray:
+    """Validate a probability vector with sum tolerance rtol=1e-7, atol=1e-8.
+
+    Values must be finite and nonnegative. No normalization or clipping is applied.
+    """
+    array = np.asarray(values, dtype=np.float64)
+    if array.ndim != 1 or array.size == 0:
+        msg = f"{name} must be a nonempty probability vector."
+        raise ValueError(msg)
+    _validate_probabilities(array, name=name)
+    return readonly_copy(array, dtype=np.float64)
+
+
+def as_probability_rows(values: npt.ArrayLike, /, *, name: str) -> FloatArray:
+    """Validate nonempty probability rows using the same policy as probability vectors."""
+    array = np.asarray(values, dtype=np.float64)
+    if array.ndim != 2 or 0 in array.shape:
+        msg = f"{name} must be a nonempty 2D array of probability rows."
+        raise ValueError(msg)
+    _validate_probabilities(array, name=name)
+    return readonly_copy(array, dtype=np.float64)
+
+
+def _validate_probabilities(array: FloatArray, *, name: str) -> None:
+    if not np.isfinite(array).all() or (array < 0).any():
+        msg = f"{name} must be finite and nonnegative."
+        raise ValueError(msg)
+    if not np.allclose(array.sum(axis=-1), 1.0, rtol=1e-7, atol=1e-8):
+        msg = f"{name} must sum to one along the last axis."
+        raise ValueError(msg)
 
 
 def as_points(
@@ -164,14 +197,6 @@ def as_sample_batches(
     return samples_arr
 
 
-def as_positive_sample_count(n_samples: object, /, *, name: str = "n_samples") -> int:
-    """Return a validated positive sample count."""
-    if not isinstance(n_samples, int) or isinstance(n_samples, bool) or n_samples <= 0:
-        msg = f"{name} must be a positive integer, got {n_samples}."
-        raise ValueError(msg)
-    return n_samples
-
-
 def validate_positive_int(value: object, /, *, name: str) -> int:
     """Validate a positive integer option."""
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
@@ -204,7 +229,7 @@ def validate_unit_interval(value: float, /, *, name: str) -> float:
     return value
 
 
-def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> FloatArray:
+def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None:
     if not np.all(np.isfinite(covariance)):
         msg = f"{name} must contain only finite values."
         raise ValueError(msg)
@@ -214,11 +239,9 @@ def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> Floa
     except np.linalg.LinAlgError as exc:
         msg = f"{name} must be positive definite."
         raise ValueError(msg) from exc
-    return covariance
 
 
-def _validate_symmetric(covariance: FloatArray, /, *, name: str) -> FloatArray:
+def _validate_symmetric(covariance: FloatArray, /, *, name: str) -> None:
     if not np.allclose(covariance, np.swapaxes(covariance, -1, -2)):
         msg = f"{name} must be symmetric."
         raise ValueError(msg)
-    return covariance

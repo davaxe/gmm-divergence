@@ -6,7 +6,8 @@ from typing import TYPE_CHECKING, Literal, TypeAlias, overload
 
 import numpy as np
 
-from gmm_divergence._core._validation import validate_positive_finite
+from gmm_divergence._core._numeric import symmetrize
+from gmm_divergence._core._validation import validate_positive_finite, validate_positive_int
 from gmm_divergence.covariance._shape import validate_covariance_input
 
 if TYPE_CHECKING:
@@ -32,7 +33,7 @@ class RelativeToTrace:
     r"""Multiplier $c$ in $\varepsilon = c\,\mathrm{tr}(\Sigma)/d$."""
 
     def __post_init__(self) -> None:
-        validate_positive_finite(self.c, name="c")
+        _ = validate_positive_finite(self.c, name="c")
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,9 +80,9 @@ class ResidualVariance:
     r"""Target rank $r$ used to define the discarded spectrum."""
 
     def __post_init__(self) -> None:
-        validate_positive_finite(self.c, name="c")
+        _ = validate_positive_finite(self.c, name="c")
         if self.r is not None:
-            _ = _as_positive_rank(self.r, name="r")
+            _ = validate_positive_int(self.r, name="r")
 
 
 EpsilonHeuristic: TypeAlias = RelativeToTrace | TargetConditionNumber | ResidualVariance
@@ -130,92 +131,56 @@ def estimate_epsilon(
         `(n,)` is returned with one epsilon per covariance.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    shape_kind = validate_covariance_input(covariance_arr, batched=batched)
-    covariance_arr = _symmetrize(covariance_arr)
-    heuristic = _as_epsilon_heuristic(heuristic)
+    _ = validate_covariance_input(covariance_arr, batched=batched)
+    covariance_arr = symmetrize(covariance_arr)
+    return epsilon_from_covariance(covariance_arr, _as_epsilon_heuristic(heuristic))
+
+
+def epsilon_from_covariance(
+    covariance: FloatArray, heuristic: EpsilonHeuristic
+) -> float | FloatArray:
+    """Evaluate an epsilon heuristic on validated, symmetric covariance input."""
     match heuristic:
         case RelativeToTrace(c=c):
-            return _relative_trace(covariance_arr, c=c, batched=shape_kind)
+            return _relative_trace(covariance, c=c)
         case TargetConditionNumber(kappa=kappa):
-            return _target_condition_number(covariance_arr, kappa=kappa, batched=shape_kind)
+            return _target_condition_number(covariance, kappa=kappa)
         case ResidualVariance(c=c, r=rank):
-            return _residual_variance(covariance_arr, c=c, rank=rank, batched=shape_kind)
+            return _residual_variance(covariance, c=c, rank=rank)
 
 
-def _relative_trace(
-    covariance: FloatArray, *, c: float, batched: Literal["single", "batched"]
-) -> float | FloatArray:
-    validate_positive_finite(c, name="c")
-    if batched == "single":
-        dim = covariance.shape[0]
-        scale = max(float(np.trace(covariance) / dim), 0.0)
-        return float(c * scale)
-
-    dim = covariance.shape[1]
-    scale = np.maximum(np.trace(covariance, axis1=1, axis2=2) / dim, 0.0)
-    return (c * scale).astype(np.float64, copy=False)
+def _relative_trace(covariance: FloatArray, *, c: float) -> float | FloatArray:
+    _ = validate_positive_finite(c, name="c")
+    scale = np.maximum(np.trace(covariance, axis1=-2, axis2=-1) / covariance.shape[-1], 0.0)
+    return _epsilon_result(c * scale)
 
 
-def _target_condition_number(
-    covariance: FloatArray, *, kappa: float, batched: Literal["single", "batched"]
-) -> float | FloatArray:
+def _target_condition_number(covariance: FloatArray, *, kappa: float) -> float | FloatArray:
     if not np.isfinite(kappa) or kappa <= 1.0:
         msg = f"kappa must be a finite value greater than 1, got {kappa}."
         raise ValueError(msg)
-
-    symmetrized = _symmetrize(covariance)
-    eigvals = np.linalg.eigvalsh(symmetrized)
-
-    if batched == "single":
-        lambda_min = float(eigvals[0])
-        lambda_max = float(eigvals[-1])
-        eps = max((lambda_max - kappa * lambda_min) / (kappa - 1.0), 0.0)
-        return float(eps)
-
-    lambda_min = eigvals[:, 0]
-    lambda_max = eigvals[:, -1]
-    eps = np.maximum((lambda_max - kappa * lambda_min) / (kappa - 1.0), 0.0)
-    return eps.astype(np.float64, copy=False)
+    eigvals = np.linalg.eigvalsh(covariance)
+    eps = np.maximum((eigvals[..., -1] - kappa * eigvals[..., 0]) / (kappa - 1.0), 0.0)
+    return _epsilon_result(eps)
 
 
-def _residual_variance(
-    covariance: FloatArray, *, c: float, rank: int | None, batched: Literal["single", "batched"]
-) -> float | FloatArray:
-    validate_positive_finite(c, name="c")
+def _residual_variance(covariance: FloatArray, *, c: float, rank: int | None) -> float | FloatArray:
+    _ = validate_positive_finite(c, name="c")
     if rank is None:
         msg = "ResidualVariance.r must be provided when using the residual_variance heuristic."
         raise ValueError(msg)
-    rank = _as_positive_rank(rank, name="rank")
-
-    symmetrized = _symmetrize(covariance)
-    eigvals = np.linalg.eigvalsh(symmetrized)
-    n_discarded = _n_discarded(eigvals.shape[-1], rank=rank)
-
-    if batched == "single":
-        discarded = eigvals[:n_discarded]
-        if discarded.size == 0:
-            return 0.0
-        return float(c * np.mean(np.maximum(discarded, 0.0)))
-
+    rank = validate_positive_int(rank, name="rank")
+    eigvals = np.linalg.eigvalsh(covariance)
+    n_discarded = max(eigvals.shape[-1] - rank, 0)
     if n_discarded == 0:
-        return np.zeros(covariance.shape[0], dtype=np.float64)
-    discarded = np.maximum(eigvals[:, :n_discarded], 0.0)
-    return (c * np.mean(discarded, axis=1)).astype(np.float64, copy=False)
+        return _epsilon_result(np.zeros(covariance.shape[:-2], dtype=np.float64))
+    discarded = np.maximum(eigvals[..., :n_discarded], 0.0)
+    return _epsilon_result(c * np.mean(discarded, axis=-1))
 
 
-def _n_discarded(dim: int, *, rank: int) -> int:
-    return max(dim - min(rank, dim), 0)
-
-
-def _symmetrize(covariance: FloatArray) -> FloatArray:
-    return 0.5 * (covariance + np.swapaxes(covariance, -1, -2))
-
-
-def _as_positive_rank(value: object, *, name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        msg = f"{name} must be a positive integer, got {value}."
-        raise ValueError(msg)
-    return value
+def _epsilon_result(value: npt.ArrayLike) -> float | FloatArray:
+    array = np.asarray(value, dtype=np.float64)
+    return float(array) if array.ndim == 0 else array
 
 
 def _as_epsilon_heuristic(value: object) -> EpsilonHeuristic:

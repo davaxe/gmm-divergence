@@ -8,9 +8,9 @@ from typing_extensions import override
 
 from gmm_divergence._core._validation import (
     as_points,
-    as_positive_sample_count,
     as_sample_batches,
     as_weights,
+    validate_positive_int,
 )
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
@@ -55,7 +55,7 @@ class Draw(SampleSpec, BatchSampleSpec):
     """Random generator or seed used when drawing samples."""
 
     def __post_init__(self) -> None:
-        _ = as_positive_sample_count(self.n_samples, name="n_samples")
+        _ = validate_positive_int(self.n_samples, name="n_samples")
 
     @override
     def sample(self, distribution: GaussianLike) -> FloatArray:
@@ -89,7 +89,7 @@ class Stratified(SampleSpec, BatchSampleSpec):
     """Random generator or seed used when drawing samples."""
 
     def __post_init__(self) -> None:
-        _ = as_positive_sample_count(self.n_samples, name="n_samples")
+        _ = validate_positive_int(self.n_samples, name="n_samples")
 
     @override
     def sample(self, distribution: GaussianLike) -> FloatArray:
@@ -99,11 +99,7 @@ class Stratified(SampleSpec, BatchSampleSpec):
     @override
     def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
         """Return one stratified sample batch per distribution."""
-        rng = np.random.default_rng(self.rng)
-        return _sample_each_distribution(
-            distributions,
-            lambda distribution: stratified_mixture_samples(distribution, self, rng=rng).samples,
-        )
+        return _stratified_sample_batches(distributions, self)[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -177,6 +173,8 @@ class StratifiedSampleResult:
     """Component index for each sample."""
     counts: npt.NDArray[np.intp]
     """Number of samples drawn from each component."""
+    integration_weights: FloatArray
+    """Mixture mass represented by each draw: component weight divided by count."""
 
 
 def stratified_mixture_samples(
@@ -198,18 +196,67 @@ def stratified_mixture_samples(
         samples.append(component.sample(int(count), rng=rng))
         component_ids.append(np.full(int(count), component_index, dtype=np.intp))
 
+    ids = np.concatenate(component_ids).astype(np.intp, copy=False)
     return StratifiedSampleResult(
         samples=np.vstack(samples).astype(np.float64, copy=False),
-        component_ids=np.concatenate(component_ids).astype(np.intp, copy=False),
+        component_ids=ids,
         counts=counts,
+        integration_weights=distribution.weights[ids] / counts[ids],
     )
+
+
+def sample_with_weights(
+    distribution: GaussianLike, sampling: SampleSpec
+) -> tuple[FloatArray, FloatArray | None]:
+    """Resolve validated observations and optional stratified integration weights."""
+    if isinstance(sampling, Stratified):
+        result = stratified_mixture_samples(distribution, sampling)
+        return as_points(
+            result.samples, n_features=distribution.dim, name="samples", require_nonempty=True
+        ), result.integration_weights
+    samples = sampling.sample(distribution)
+    if type(sampling) is not Samples:
+        samples = as_points(
+            samples, n_features=distribution.dim, name="samples", require_nonempty=True
+        )
+    return samples, None
+
+
+def sample_batches_with_weights(
+    distributions: Sequence[GaussianLike], sampling: BatchSampleSpec
+) -> tuple[FloatArray, FloatArray | None]:
+    """Resolve candidate batches while retaining independent integration weights."""
+    if isinstance(sampling, Stratified):
+        return _stratified_sample_batches(distributions, sampling)
+    batches = sampling.sample_batches(distributions)
+    if type(sampling) not in {Draw, SampleBatches}:
+        batches = as_sample_batches(
+            batches,
+            n_distributions=len(distributions),
+            n_features=distributions[0].dim,
+            name="samples",
+        )
+    return batches, None
+
+
+def _stratified_sample_batches(
+    distributions: Sequence[GaussianLike], sampling: Stratified
+) -> tuple[FloatArray, FloatArray]:
+    rng = np.random.default_rng(sampling.rng)
+    weights: list[FloatArray] = []
+
+    def sample(distribution: GaussianLike) -> FloatArray:
+        result = stratified_mixture_samples(distribution, sampling, rng=rng)
+        weights.append(result.integration_weights)
+        return result.samples
+
+    return _sample_each_distribution(distributions, sample), np.stack(weights)
 
 
 def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.NDArray[np.intp]:
     """Allocate exact stratified sample counts from mixture weights."""
-    n_samples = as_positive_sample_count(n_samples, name="n_samples")
+    n_samples = validate_positive_int(n_samples, name="n_samples")
     weights_arr = as_weights(weights, name="weights", normalize=True)
-    expected = weights_arr * n_samples
     positive = weights_arr > 0.0
     n_positive = int(np.count_nonzero(positive))
     if n_samples < n_positive:

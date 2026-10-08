@@ -8,12 +8,12 @@ import numpy.typing as npt
 from sklearn.mixture import GaussianMixture as SklearnGaussianMixture
 from typing_extensions import override
 
-from gmm_divergence._core._numeric import logsumexp
+from gmm_divergence._core._numeric import logdet_from_cholesky, logsumexp
 from gmm_divergence._core._validation import (
     as_covariances,
     as_points,
-    as_positive_sample_count,
     as_weights,
+    validate_positive_int,
 )
 from gmm_divergence.covariance import regularize_covariance
 from gmm_divergence.distributions._gaussian import Gaussian
@@ -66,9 +66,9 @@ class GaussianMixture:
     ) -> GaussianMixture:
         """Create a Gaussian mixture from array-like parameters."""
         return cls(
-            weights=np.array(weights),
-            means=np.array(means),
-            covariances=np.array(covariances)
+            weights=np.asarray(weights),
+            means=np.asarray(means),
+            covariances=np.asarray(covariances)
             if regularizer is None
             else regularize_covariance(covariances, regularizer=regularizer, batched=True),
         )
@@ -176,8 +176,6 @@ class GaussianMixture:
 
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian mixture at given points."""
-        x = as_points(x, n_features=self.dim, name="x")
-
         return gmm_logpdf(x=x, gmm=self)
 
     def chol(self) -> FloatArray:
@@ -196,7 +194,7 @@ class GaussianMixture:
             return self._log_dets
 
         chol = self.chol()
-        log_dets = 2.0 * np.sum(np.log(np.diagonal(chol, axis1=1, axis2=2)), axis=1)
+        log_dets = logdet_from_cholesky(chol)
         log_dets.setflags(write=False)
         object.__setattr__(self, "_log_dets", log_dets)
         return log_dets
@@ -248,11 +246,8 @@ class GaussianMixture:
         if self.n_components == 1:
             return np.ones((x.shape[0], 1), dtype=np.float64)
 
-        log_probs = np.array([self.get_component(k).logpdf(x) for k in range(self.n_components)])
-        log_weights = np.log(self.weights)[:, None]
-        log_responsibilities = log_weights + log_probs
-        log_responsibilities -= logsumexp(log_responsibilities, axis=0)
-        return np.exp(log_responsibilities).T
+        log_terms = _component_logpdf(self, x) + np.log(self.weights)[None, :]
+        return np.exp(log_terms - logsumexp(log_terms, axis=1)[:, None])
 
     @override
     def __repr__(self) -> str:
@@ -331,7 +326,7 @@ def sample_gmm(
     gmm: GaussianMixture, /, n_samples: int, *, rng: np.random.Generator | int | None = None
 ) -> FloatArray:
     """Draw samples from a Gaussian mixture."""
-    n_samples = as_positive_sample_count(n_samples)
+    n_samples = validate_positive_int(n_samples, name="n_samples")
     rng = np.random.default_rng(rng)
 
     component_ids = rng.choice(gmm.n_components, size=n_samples, p=gmm.weights)
@@ -345,18 +340,18 @@ def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
     """Evaluate the log-density of a Gaussian mixture without an explicit Python loop."""
     x = as_points(x, n_features=gmm.dim, name="x")
 
-    _, n_features = x.shape
-    log_weights = np.log(gmm.weights)  # (K,)
-    chol = gmm.chol()  # (K, D, D)
-    log_dets = gmm.log_dets()  # (K,)
-    diff = x[None, :, :] - gmm.means[:, None, :]  # (K, N, D)
-    rhs = np.swapaxes(diff, 1, 2)  # (K, D, N)
-    y = np.linalg.solve(chol, rhs)  # (K, D, N)
-    mahal = np.sum(y * y, axis=1)  # (K, N)
-    constant = n_features * np.log(2.0 * np.pi)
-    log_gaussian = -0.5 * (constant + log_dets[:, None] + mahal)  # (K, N)
-    log_probs = log_weights[:, None] + log_gaussian  # (K, N)
-    return logsumexp(log_probs.T, axis=1)  # (N,)
+    log_terms = _component_logpdf(gmm, x) + np.log(gmm.weights)[None, :]
+    return logsumexp(log_terms, axis=1)
+
+
+def _component_logpdf(gmm: GaussianMixture, x: FloatArray) -> FloatArray:
+    """Evaluate component densities at validated points using cached factors."""
+    diff = x[None, :, :] - gmm.means[:, None, :]
+    rhs = np.swapaxes(diff, 1, 2)
+    whitened = np.linalg.solve(gmm.chol(), rhs)
+    mahalanobis = np.sum(whitened**2, axis=1)
+    constant = gmm.dim * np.log(2.0 * np.pi)
+    return (-0.5 * (constant + gmm.log_dets()[:, None] + mahalanobis)).T
 
 
 def gmm_pdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:

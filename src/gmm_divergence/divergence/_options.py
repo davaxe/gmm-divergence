@@ -30,19 +30,19 @@ class MonteCarlo:
                 msg = "max_samples and batch_size require target_standard_error."
                 raise ValueError(msg)
             return
-        validate_positive_finite(self.target_standard_error, name="target_standard_error")
+        _ = validate_positive_finite(self.target_standard_error, name="target_standard_error")
         if not isinstance(self.sampling, Draw):
             msg = "Adaptive MonteCarlo requires sampling.Draw."
             raise TypeError(msg)
         if self.max_samples is None:
             msg = "max_samples is required for adaptive MonteCarlo."
             raise ValueError(msg)
-        validate_positive_int(self.max_samples, name="max_samples")
+        _ = validate_positive_int(self.max_samples, name="max_samples")
         if self.max_samples < self.sampling.n_samples:
             msg = "max_samples must be at least sampling.n_samples."
             raise ValueError(msg)
         if self.batch_size is not None:
-            validate_positive_int(self.batch_size, name="batch_size")
+            _ = validate_positive_int(self.batch_size, name="batch_size")
 
 
 @dataclass(frozen=True, slots=True)

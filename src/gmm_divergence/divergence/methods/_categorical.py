@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
+from gmm_divergence._core._validation import as_probabilities
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
@@ -45,17 +46,8 @@ def kl_categorical(
         msg = "Expected nonempty weight vectors of equal length."
         raise ValueError(msg)
 
-    if not np.all(np.isfinite(p_w)) or not np.all(np.isfinite(q_w)):
-        msg_0 = "Weights must be finite."
-        raise ValueError(msg_0)
-
-    if np.any(p_w < 0) or np.any(q_w < 0):
-        msg_1 = "Weights must be nonnegative."
-        raise ValueError(msg_1)
-
-    if not np.isclose(p_w.sum(), 1.0) or not np.isclose(q_w.sum(), 1.0):
-        msg_2 = "Weights must sum to one."
-        raise ValueError(msg_2)
+    p_w = as_probabilities(p_w)
+    q_w = as_probabilities(q_w)
 
     if not np.isfinite(epsilon) or epsilon < 0:
         msg_3 = "epsilon must be finite and nonnegative."

@@ -7,14 +7,13 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence._core._sampling import Stratified, stratified_mixture_samples
-from gmm_divergence._core._validation import as_points, as_sample_batches, as_weights
+from gmm_divergence._core._sampling import sample_batches_with_weights, sample_with_weights
+from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._combine import (
     CombinedGaussianMixture,
     MixtureMapping,
     combine_gaussians,
 )
-from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.fitting._objectives import build_gaussian_mixture_objective
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
@@ -33,8 +32,8 @@ if TYPE_CHECKING:
 
     import numpy.typing as npt
 
-    from gmm_divergence._core._sampling import BatchSampleSpec, SampleSpec
     from gmm_divergence._core._types import FloatArray
+    from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.fitting._selector import CandidateSelection, CandidateSelector
 
@@ -80,15 +79,17 @@ class PreparedGaussianMixtureFit:
 
     def solve(self, *, method: FitMethod) -> SimplexOptimizationResult:
         """Optimize the prepared objective without rebuilding cached data."""
-        return solve_gaussian_mixture_fit(self, method=method)
+        return optimize_simplex(
+            self.simplex_objective, n_weights=self.n_active_candidates, method=method
+        )
 
     def report(self, solution: SimplexOptimizationResult, /) -> GaussianMixtureFitResult:
         """Construct a full fit result from an optimizer solution."""
         return build_gaussian_mixture_fit_result(self, solution)
 
 
-def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
-    """Validate candidate distributions and return their count."""
+def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> None:
+    """Validate the candidate distributions."""
     q_component = len(q_i)
     if q_component == 0:
         msg = "q_i must contain at least one distribution."
@@ -101,7 +102,6 @@ def _validate_q_i(q_i: Sequence[Gaussian | GaussianMixture], p_dim: int) -> int:
     if q_dim != p_dim:
         msg = f"p and q_i distributions must have the same dimensionality, got {p_dim} and {q_dim}."
         raise ValueError(msg)
-    return q_component
 
 
 def _resolve_objective_samples(
@@ -112,79 +112,20 @@ def _resolve_objective_samples(
     p_samples = q_samples = p_weights = q_weights = None
     match objective:
         case ForwardKL(sampling=sampling):
-            p_samples, p_weights = _sample_with_integration_weights(p, sampling)
+            p_samples, p_weights = sample_with_weights(p, sampling)
         case ReverseKL(q_sampling=q_sampling):
-            q_samples, q_weights = _sample_batches_with_integration_weights(q_i, q_sampling)
+            q_samples, q_weights = sample_batches_with_weights(q_i, q_sampling)
         case BidirectionalKL(p_sampling=p_sampling, q_sampling=q_sampling, alpha=alpha):
             if alpha > 0.0:
-                p_samples, p_weights = _sample_with_integration_weights(p, p_sampling)
+                p_samples, p_weights = sample_with_weights(p, p_sampling)
             if alpha < 1.0:
-                q_samples, q_weights = _sample_batches_with_integration_weights(q_i, q_sampling)
+                q_samples, q_weights = sample_batches_with_weights(q_i, q_sampling)
         case JensenShannon(p_sampling=p_sampling, q_sampling=q_sampling):
-            p_samples, p_weights = _sample_with_integration_weights(p, p_sampling)
-            q_samples, q_weights = _sample_batches_with_integration_weights(q_i, q_sampling)
+            p_samples, p_weights = sample_with_weights(p, p_sampling)
+            q_samples, q_weights = sample_batches_with_weights(q_i, q_sampling)
         case MomentMatching():
             pass
     return p_samples, q_samples, p_weights, q_weights
-
-
-def _sample_with_integration_weights(
-    distribution: Gaussian | GaussianMixture, sampling: SampleSpec
-) -> tuple[FloatArray, FloatArray | None]:
-    """Retain the mixture mass represented by each stratified observation."""
-    if not isinstance(sampling, Stratified):
-        return _validated_samples(sampling.sample(distribution), distribution), None
-    return _stratified_samples_with_integration_weights(distribution, sampling)
-
-
-def _stratified_samples_with_integration_weights(
-    distribution: Gaussian | GaussianMixture,
-    sampling: Stratified,
-    *,
-    rng: np.random.Generator | None = None,
-) -> tuple[FloatArray, FloatArray]:
-    """Give each draw from component k integration weight pi_k / n_k."""
-    result = stratified_mixture_samples(distribution, sampling, rng=rng)
-    weights = np.ones(1) if isinstance(distribution, Gaussian) else distribution.weights
-    ids = result.component_ids
-    integration_weights = weights[ids] / result.counts[ids]
-    return _validated_samples(result.samples, distribution), integration_weights
-
-
-def _sample_batches_with_integration_weights(
-    distributions: Sequence[Gaussian | GaussianMixture], sampling: BatchSampleSpec
-) -> tuple[FloatArray, FloatArray | None]:
-    """Use a shared random generator and separate weights for each candidate batch."""
-    if not isinstance(sampling, Stratified):
-        return _validated_sample_batches(
-            sampling.sample_batches(distributions), distributions
-        ), None
-    rng = np.random.default_rng(sampling.rng)
-    batches: list[FloatArray] = []
-    integration_weights: list[FloatArray] = []
-    for distribution in distributions:
-        samples, weights = _stratified_samples_with_integration_weights(
-            distribution, sampling, rng=rng
-        )
-        batches.append(samples)
-        integration_weights.append(weights)
-    return _validated_sample_batches(np.stack(batches), distributions), np.stack(
-        integration_weights
-    )
-
-
-def _validated_samples(
-    samples: npt.ArrayLike, distribution: Gaussian | GaussianMixture
-) -> FloatArray:
-    return as_points(samples, n_features=distribution.dim, name="samples", require_nonempty=True)
-
-
-def _validated_sample_batches(
-    samples: npt.ArrayLike, distributions: Sequence[Gaussian | GaussianMixture]
-) -> FloatArray:
-    return as_sample_batches(
-        samples, n_distributions=len(distributions), n_features=distributions[0].dim, name="samples"
-    )
 
 
 def prepare_gaussian_mixture_fit(
@@ -207,7 +148,7 @@ def prepare_gaussian_mixture_fit(
         active_candidates = candidates
         active_indices = tuple(range(original_count))
 
-    _ = _validate_q_i(active_candidates, p.dim)
+    _validate_q_i(active_candidates, p.dim)
     p_samples, q_samples, p_weights, q_weights = _resolve_objective_samples(
         p, active_candidates, objective
     )
@@ -226,15 +167,6 @@ def prepare_gaussian_mixture_fit(
         active_candidate_indices=active_indices,
         candidate_count=original_count,
         simplex_objective=simplex_objective,
-    )
-
-
-def solve_gaussian_mixture_fit(
-    prepared: PreparedGaussianMixtureFit, /, *, method: FitMethod
-) -> SimplexOptimizationResult:
-    """Optimize a prepared fitting objective using the shared scipy backend."""
-    return optimize_simplex(
-        prepared.simplex_objective, n_weights=prepared.n_active_candidates, method=method
     )
 
 

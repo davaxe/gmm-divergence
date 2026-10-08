@@ -58,7 +58,7 @@ class LinearShrinkage:
     """Interpolation weight between the covariance and isotropic target."""
 
     def __post_init__(self) -> None:
-        _validate_unit_interval(self.alpha, name="alpha")
+        _ = _validate_unit_interval(self.alpha, name="alpha")
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,7 +81,7 @@ class DiagonalShrinkage:
     """Interpolation weight between the covariance and diagonal target."""
 
     def __post_init__(self) -> None:
-        _validate_unit_interval(self.alpha, name="alpha")
+        _ = _validate_unit_interval(self.alpha, name="alpha")
 
 
 @dataclass(frozen=True, slots=True)
@@ -109,7 +109,7 @@ class EigenvalueClipping:
     """Smallest allowed eigenvalue after clipping."""
 
     def __post_init__(self) -> None:
-        validate_positive_finite(self.min_eigenvalue, name="min_eigenvalue")
+        _ = validate_positive_finite(self.min_eigenvalue, name="min_eigenvalue")
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,7 +141,7 @@ class LowRank:
     """Diagonal loading amount or epsilon heuristic."""
 
     def __post_init__(self) -> None:
-        validate_positive_int(self.rank, name="rank")
+        _ = validate_positive_int(self.rank, name="rank")
         _validate_epsilon_spec(self.eps, name="eps")
 
 

@@ -9,13 +9,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 from scipy.optimize import Bounds, LinearConstraint, minimize
 
+from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._types import FloatArray
 from gmm_divergence._core._validation import as_weights, validate_positive_int
 from gmm_divergence.fitting._options import SoftmaxLBFGSB
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
-
     from gmm_divergence._core._types import Weights
     from gmm_divergence.fitting._options import FitMethod
 
@@ -70,7 +69,10 @@ class SimplexOptimizationResult:
     """Optimizer termination message."""
 
     def __post_init__(self) -> None:
-        parameters = _freeze_vector(self.parameters, name="parameters")
+        parameters = readonly_copy(self.parameters, dtype=np.float64)
+        if parameters.ndim != 1 or parameters.size == 0 or not np.isfinite(parameters).all():
+            msg = "parameters must be a nonempty finite 1D array."
+            raise ValueError(msg)
         active_weights = as_weights(
             self.active_weights,
             expected_length=parameters.shape[0],
@@ -102,7 +104,7 @@ def optimize_simplex(
     The callable receives a weight vector and returns its scalar objective
     value and gradient. No distributions or prepared-fit data are required.
     """
-    validate_positive_int(n_weights, name="n_weights")
+    _ = validate_positive_int(n_weights, name="n_weights")
     if isinstance(method, SoftmaxLBFGSB):
         initial = (
             np.array(method.initial_logits, dtype=np.float64)
@@ -168,12 +170,3 @@ def _validate_initial_vector(values: FloatArray, expected_length: int, *, name: 
     if values.ndim != 1 or values.shape[0] != expected_length or not np.all(np.isfinite(values)):
         msg = f"{name} must be a finite 1D array with length {expected_length}."
         raise ValueError(msg)
-
-
-def _freeze_vector(values: npt.ArrayLike, *, name: str) -> FloatArray:
-    vector = np.array(values, dtype=np.float64, copy=True)
-    if vector.ndim != 1 or vector.shape[0] == 0 or not np.all(np.isfinite(vector)):
-        msg = f"{name} must be a nonempty finite 1D array."
-        raise ValueError(msg)
-    vector.setflags(write=False)
-    return vector

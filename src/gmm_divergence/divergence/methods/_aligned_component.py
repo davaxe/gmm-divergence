@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence._core._numeric import pairwise_gaussian_kl
+from gmm_divergence._core._numeric import gaussian_kl_from_factors
 from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.results import AlignedKLResult
 
@@ -70,9 +70,9 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
 
     weight_kl = kl_categorical(p.weights, q.weights).value
 
-    component_kls = np.diag(
-        pairwise_gaussian_kl(p.means, p.covariances, q.means, q.covariances)
-    ).copy()
+    component_kls = gaussian_kl_from_factors(
+        p.covariances, q.means - p.means, q.chol(), p.log_dets(), q.log_dets()
+    )
     component_kls.setflags(write=False)
     weighted_component_kl = float(np.dot(p.weights, component_kls))
 

@@ -6,12 +6,14 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
+from gmm_divergence._core._arrays import readonly_copy
+from gmm_divergence._core._validation import as_probability_rows
 from gmm_divergence.covariance import regularize_covariance
 from gmm_divergence.distributions import GaussianMixture
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.covariance import CovarianceRegularizer
+from gmm_divergence.covariance import CovarianceRegularizer
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,8 +28,7 @@ class ComponentStatistics:
 
     def __post_init__(self) -> None:
         for name in ("weights", "means", "covariances", "soft_counts", "effective_sample_sizes"):
-            array = np.array(getattr(self, name), dtype=np.float64, copy=True)
-            array.setflags(write=False)
+            array = readonly_copy(getattr(self, name), dtype=np.float64)
             object.__setattr__(self, name, array)
 
     def to_gaussian_mixture(
@@ -147,13 +148,7 @@ def _validate_component_statistics_inputs(
         msg_1 = "responsibilities must have shape (n_samples, n_components)."
         raise ValueError(msg_1)
 
-    if not np.isfinite(r).all() or (r < 0).any():
-        msg_2 = "responsibilities must be finite and nonnegative."
-        raise ValueError(msg_2)
-
-    if not np.allclose(r.sum(axis=1), 1.0, rtol=1e-7, atol=1e-8):
-        msg_3 = "Each row of responsibilities must sum to one."
-        raise ValueError(msg_3)
+    r = as_probability_rows(r, name="responsibilities")
 
     empty = np.flatnonzero(r.sum(axis=0) == 0)
     if empty.size:

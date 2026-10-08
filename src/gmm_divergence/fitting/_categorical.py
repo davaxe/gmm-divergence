@@ -6,7 +6,7 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 
-from gmm_divergence._core._validation import as_weights
+from gmm_divergence._core._validation import as_probabilities, as_probability_rows
 from gmm_divergence.fitting._simplex import ObjectiveFn, optimize_simplex
 from gmm_divergence.results import CategoricalMixtureFitResult
 
@@ -43,38 +43,13 @@ def fit_categorical_mixture_weights(
 def _validate_categorical_fit_inputs(
     p_w: npt.ArrayLike, q_i_w: npt.ArrayLike
 ) -> tuple[FloatArray, FloatArray]:
-    p_w = as_weights(p_w, name="p_w", writable=False, normalize=False)
-    if np.abs(p_w.sum() - 1.0) > 1e-12:
-        msg = "p_w must sum to one."
-        raise ValueError(msg)
-
-    q_i_w = np.asarray(q_i_w, dtype=np.float64)
-
-    if q_i_w.ndim != 2:
-        msg = f"q_i_w must be a 2D array, got {q_i_w.ndim}D."
-        raise ValueError(msg)
-
+    p_w = as_probabilities(p_w, name="p_w")
+    q_i_w = as_probability_rows(q_i_w, name="q_i_w")
     if q_i_w.shape[1] != p_w.shape[0]:
         msg = (
             "q_i_w must have the same number of columns as p_w, got"
             f" {q_i_w.shape[1]} vs {p_w.shape[0]}."
         )
-        raise ValueError(msg)
-
-    if q_i_w.shape[0] == 0:
-        msg_0 = "q_i_w must contain at least one candidate."
-        raise ValueError(msg_0)
-
-    if not np.all(np.isfinite(q_i_w)):
-        msg = "q_i_w must contain only finite values."
-        raise ValueError(msg)
-
-    if np.any(q_i_w < 0.0):
-        msg = "q_i_w must be nonnegative."
-        raise ValueError(msg)
-
-    if not np.allclose(q_i_w.sum(axis=1), 1.0, rtol=1e-7, atol=1e-8):
-        msg = "Each row of q_i_w must sum to one."
         raise ValueError(msg)
 
     return p_w, q_i_w

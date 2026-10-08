@@ -6,6 +6,7 @@ from typing import TYPE_CHECKING, Literal, overload
 import numpy as np
 import numpy.typing as npt
 
+from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._validation import as_weights
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
@@ -22,8 +23,8 @@ class MixtureMapping:
     """Component index within the original input mixture for each flattened output component."""
 
     def __post_init__(self) -> None:
-        source_index = np.array(self.source_index, dtype=np.intp, copy=True)
-        local_component_index = np.array(self.local_component_index, dtype=np.intp, copy=True)
+        source_index = readonly_copy(self.source_index, dtype=np.intp)
+        local_component_index = readonly_copy(self.local_component_index, dtype=np.intp)
         if (
             source_index.ndim != 1
             or local_component_index.ndim != 1
@@ -31,8 +32,6 @@ class MixtureMapping:
         ):
             msg = "MixtureMapping indices must be one-dimensional arrays with matching shapes."
             raise ValueError(msg)
-        source_index.setflags(write=False)
-        local_component_index.setflags(write=False)
         object.__setattr__(self, "source_index", source_index)
         object.__setattr__(self, "local_component_index", local_component_index)
 

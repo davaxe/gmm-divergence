@@ -2,9 +2,7 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING
 
-import numpy as np
-from scipy.linalg import cho_solve
-
+from gmm_divergence._core._numeric import gaussian_kl_from_factors
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
@@ -56,16 +54,7 @@ def kl_closed_form(p: Gaussian, q: Gaussian) -> DivergenceResult:
     if p.dim != q.dim:
         msg = "Both distributions must have the same dimensionality."
         raise ValueError(msg)
-    dim = p.dim
-    q_chol = q.chol()
-    solved_covariance = cho_solve((q_chol, True), p.covariance, check_finite=False)
-    trace_term = float(np.trace(solved_covariance))
-    mean_diff = q.mean - p.mean
-    whitened_mean_diff = np.linalg.solve(q_chol, mean_diff)
-    quadratic_term = float(whitened_mean_diff @ whitened_mean_diff)
-    logdet_q = q.log_det()
-    logdet_p = p.log_det()
-    log_det_ratio = float(logdet_q - logdet_p)
-    return DivergenceResult(
-        value=0.5 * (trace_term + quadratic_term - dim + log_det_ratio), method="closed_form"
+    value = gaussian_kl_from_factors(
+        p.covariance, q.mean - p.mean, q.chol(), p.log_det(), q.log_det()
     )
+    return DivergenceResult(value=float(value), method="closed_form")

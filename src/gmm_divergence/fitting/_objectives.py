@@ -70,10 +70,6 @@ class _ForwardKL:
     eps: float = 1e-300
     include_constant: bool = False
 
-    @property
-    def n_components(self) -> int:
-        return int(self.log_q_on_p_samples.shape[1])
-
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         weights = np.asarray(weights, dtype=np.float64)
         log_qw, responsibilities = mixture_stats(self.log_q_on_p_samples, weights, eps=self.eps)
@@ -189,10 +185,6 @@ class _JensenShannon:
     p_integration_weights: FloatArray | None = None
     q_integration_weights: FloatArray | None = None
     eps: float = 1e-300
-
-    @property
-    def n_components(self) -> int:
-        return int(self.log_q_on_q_samples.shape[0])
 
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         w = np.asarray(weights, dtype=np.float64)

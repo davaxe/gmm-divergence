@@ -132,6 +132,12 @@ def fit_categorical_mixture_weights(
     CategoricalMixtureFitResult
         Optimized candidate weights, fitted categorical probabilities,
         KL divergence, and optimizer convergence information.
+
+    Notes
+    -----
+    Probabilities must be finite and strictly nonnegative. Target and candidate
+    rows must sum to one within `rtol=1e-7`, `atol=1e-8`. Inputs are not
+    normalized or clipped.
     """
     return categorical.fit_categorical_mixture_weights(p_w, q_i_w, method=method)
 
@@ -161,7 +167,7 @@ def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> Gaus
     ValueError
         If all components are pruned.
     """
-    validate_nonnegative_finite(min_weight, name="min_weight")
+    _ = validate_nonnegative_finite(min_weight, name="min_weight")
 
     weights = mixture.weights
     keep_mask = weights >= min_weight

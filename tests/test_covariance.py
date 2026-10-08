@@ -106,3 +106,51 @@ def test_estimate_epsilon_rejects_nonfinite_or_asymmetric_covariances() -> None:
         _ = estimate_epsilon([[np.nan]], heuristic=RelativeToTrace())
     with pytest.raises(ValueError, match="symmetric"):
         _ = estimate_epsilon([[1.0, 10.0], [0.0, 1.0]], heuristic=TargetConditionNumber())
+
+
+@pytest.mark.parametrize(
+    "regularizer",
+    [
+        DiagonalLoading(eps=0.3),
+        DiagonalLoading(eps=RelativeToTrace(c=0.1)),
+        DiagonalLoading(eps=TargetConditionNumber(kappa=3)),
+        LinearShrinkage(alpha=0.2),
+        DiagonalShrinkage(alpha=0.4),
+        EigenvalueClipping(min_eigenvalue=0.8),
+        LowRank(rank=1, eps=0.2),
+        LowRank(rank=1, eps=ResidualVariance()),
+    ],
+)
+def test_batched_regularization_matches_independent_single_matrices(
+    regularizer: gd.covariance.CovarianceRegularizer,
+) -> None:
+    matrices = np.array([[[3.0, 1.0], [1.0, 2.0]], [[1.0, 0.2], [0.2, 0.4]]])
+    before = matrices.copy()
+    matrices.setflags(write=False)
+    batch = regularize_covariance(matrices, regularizer=regularizer, batched=True)
+    expected = np.stack([
+        regularize_covariance(matrix, regularizer=regularizer, batched=False) for matrix in matrices
+    ])
+    np.testing.assert_allclose(batch, expected, rtol=1e-12, atol=1e-12)
+    np.testing.assert_array_equal(matrices, before)
+    assert batch.shape == matrices.shape
+    assert not batch.flags.writeable
+    assert not np.shares_memory(batch, matrices)
+
+
+@pytest.mark.parametrize("rank", [1, 2, 3])
+def test_epsilon_heuristics_keep_scalar_and_batch_return_shapes(rank: int) -> None:
+    matrices = np.stack([np.diag([1.0, 2.0, 5.0]), np.diag([2.0, 4.0, 8.0])])
+    for heuristic in [
+        RelativeToTrace(c=0.1),
+        TargetConditionNumber(kappa=3),
+        ResidualVariance(r=rank),
+    ]:
+        batch = estimate_epsilon(matrices, heuristic=heuristic, batched=True)
+        singles = [
+            estimate_epsilon(matrix, heuristic=heuristic, batched=False) for matrix in matrices
+        ]
+        assert all(isinstance(value, float) for value in singles)
+        assert isinstance(batch, np.ndarray)
+        assert batch.shape == (2,)
+        np.testing.assert_allclose(batch, singles, rtol=1e-12, atol=1e-12)

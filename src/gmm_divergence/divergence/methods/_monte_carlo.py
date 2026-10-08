@@ -5,10 +5,12 @@ from typing import TYPE_CHECKING
 import numpy as np
 import numpy.typing as npt
 
-from gmm_divergence._core._sampling import Draw, Stratified, stratified_mixture_samples
-from gmm_divergence._core._validation import as_points
-from gmm_divergence.distributions._gaussian import Gaussian
-from gmm_divergence.distributions._mixture import GaussianMixture
+from gmm_divergence._core._sampling import (
+    Draw,
+    Stratified,
+    sample_with_weights,
+    stratified_mixture_samples,
+)
 from gmm_divergence.results import DivergenceResult, MonteCarloStatistics
 
 if TYPE_CHECKING:
@@ -63,7 +65,7 @@ def kl_monte_carlo(
     if estimator.target_standard_error is not None:
         return _adaptive_kl_monte_carlo(p, q, estimator)
 
-    samples = as_points(sampling.sample(p), n_features=p.dim, name="samples", require_nonempty=True)
+    samples, _ = sample_with_weights(p, sampling)
     pointwise_kl = _pointwise_kl(p, q, samples)
     return _result_from_pointwise(pointwise_kl)
 
@@ -100,22 +102,19 @@ def _adaptive_kl_monte_carlo(
 def _kl_monte_carlo_stratified(
     p: GaussianLike, q: GaussianLike, /, *, sampling: Stratified
 ) -> DivergenceResult:
-    p = GaussianMixture.from_components([p]) if isinstance(p, Gaussian) else p
     result = stratified_mixture_samples(p, sampling)
     pointwise_kl = _pointwise_kl(p, q, result.samples)
-    weights = np.asarray(p.weights, dtype=np.float64)
-    component_means = np.zeros_like(weights, dtype=np.float64)
+    weights, _, _ = p.component_arrays()
     component_variances = np.zeros_like(weights, dtype=np.float64)
 
     for component_index, count in enumerate(result.counts):
         if count == 0:
             continue
         values = pointwise_kl[result.component_ids == component_index]
-        component_means[component_index] = float(np.mean(values))
         if count > 1:
             component_variances[component_index] = float(np.var(values, ddof=1))
 
-    value = float(np.dot(weights, component_means))
+    value = float(np.dot(result.integration_weights, pointwise_kl))
     positive_counts = result.counts[weights > 0.0]
     if np.any(positive_counts < 2):
         sample_variance = float("nan")

@@ -51,6 +51,8 @@ def categorical_kl_divergence(
         Nonempty, finite, nonnegative probability vectors of equal length,
         each summing to one. Index `k` must represent the same category in
         both vectors; the caller is responsible for this correspondence.
+        Sums are checked with `rtol=1e-7`, `atol=1e-8`; negative values are
+        rejected without clipping.
     epsilon : float, default=0.0
         Finite, nonnegative additive smoothing amount. For `K` categories,
         each vector becomes `(weights + epsilon) / (1 + K * epsilon)`.

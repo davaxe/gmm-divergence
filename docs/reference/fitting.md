@@ -61,6 +61,15 @@ assert population.n_components == 2
 
 ::: gmm_divergence.fitting.ComponentStatistics
 
+## Probability Validation
+
+Categorical targets, candidate probability rows, and component responsibilities
+share the same validation policy: values must be finite and nonnegative, and
+sums must be one within `rtol=1e-7`, `atol=1e-8`. Inputs are copied without
+normalization or negative-value clipping. Categorical KL uses the same policy.
+Optimizer weight vectors retain their separate validation, which permits
+unnormalized positive weights when evaluating gradients.
+
 ## Objective Configuration
 
 Sampled objectives accept `sampling.Stratified` on either side. Each observation
