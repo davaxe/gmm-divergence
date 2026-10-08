@@ -26,21 +26,31 @@ class Gaussian:
     _log_det: float | None = field(default=None, init=False, repr=False)
 
     @classmethod
-    def from_arrays(cls, mean: npt.ArrayLike, covariance: npt.ArrayLike) -> Gaussian:
+    def from_arrays(
+        cls,
+        mean: npt.ArrayLike,
+        covariance: npt.ArrayLike,
+        regularizer: CovarianceRegularizer | None = None,
+    ) -> Gaussian:
         """Create a Gaussian instance from array-like inputs."""
-        return cls(mean=np.array(mean), covariance=np.array(covariance))
+        return cls(
+            mean=np.array(mean),
+            covariance=np.array(covariance)
+            if regularizer is None
+            else regularize_covariance(covariance, regularizer=regularizer, batched=False),
+        )
 
     @classmethod
-    def from_regularized_arrays(
-        cls, mean: npt.ArrayLike, covariance: npt.ArrayLike, *, regularizer: CovarianceRegularizer
+    def from_samples(
+        cls, x: npt.ArrayLike, regularizer: CovarianceRegularizer | None = None
     ) -> Gaussian:
-        """Create a Gaussian after explicitly regularizing its covariance.
-
-        This constructor keeps `from_arrays` strict while providing a convenient
-        path for estimated or nearly singular covariances.
-        """
-        regularized = regularize_covariance(covariance, regularizer=regularizer, batched=False)
-        return cls.from_arrays(mean=mean, covariance=regularized)
+        """Create a Gaussian instance from sample data."""
+        samples = np.asarray(x, dtype=np.float64)
+        mean = np.mean(samples, axis=0)
+        covariance = np.cov(samples, rowvar=False, bias=False)
+        if regularizer is not None:
+            covariance = regularize_covariance(covariance, regularizer=regularizer, batched=False)
+        return cls.from_arrays(mean=mean, covariance=covariance)
 
     @classmethod
     def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:

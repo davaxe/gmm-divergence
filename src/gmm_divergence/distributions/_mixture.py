@@ -58,11 +58,19 @@ class GaussianMixture:
 
     @classmethod
     def from_arrays(
-        cls, weights: npt.ArrayLike, means: npt.ArrayLike, covariances: npt.ArrayLike
+        cls,
+        weights: npt.ArrayLike,
+        means: npt.ArrayLike,
+        covariances: npt.ArrayLike,
+        regularizer: CovarianceRegularizer | None = None,
     ) -> GaussianMixture:
         """Create a Gaussian mixture from array-like parameters."""
         return cls(
-            weights=np.array(weights), means=np.array(means), covariances=np.array(covariances)
+            weights=np.array(weights),
+            means=np.array(means),
+            covariances=np.array(covariances)
+            if regularizer is None
+            else regularize_covariance(covariances, regularizer=regularizer, batched=True),
         )
 
     @classmethod
@@ -108,24 +116,16 @@ class GaussianMixture:
         return mixture
 
     @classmethod
-    def from_regularized_arrays(
-        cls,
-        weights: npt.ArrayLike,
-        means: npt.ArrayLike,
-        covariances: npt.ArrayLike,
-        *,
-        regularizer: CovarianceRegularizer,
-    ) -> GaussianMixture:
-        """Create a Gaussian mixture after explicitly regularizing covariances.
+    def from_samples(cls, x: npt.ArrayLike, n_components: int) -> GaussianMixture:
+        """Fit a Gaussian mixture to sample data using sklearn's EM algorithm.
 
-        This constructor keeps `from_arrays` strict while providing a convenient
-        path for estimated or nearly singular component covariances.
+        This uses default configuration to fit the GMM. For full control over
+        the fitting process, use sklearn's GaussianMixture directly and then
+        convert to this class using `from_sklearn_gmm`.
         """
-        return cls.from_arrays(
-            weights=weights,
-            means=means,
-            covariances=regularize_covariance(covariances, regularizer=regularizer, batched=True),
-        )
+        samples = np.asarray(x, dtype=np.float64)
+        sklearn_gmm = SklearnGaussianMixture(n_components=n_components).fit(samples)
+        return cls.from_sklearn_gmm(sklearn_gmm)
 
     @classmethod
     def from_components(
