@@ -236,3 +236,86 @@ def test_candidate_selection_requires_a_complete_partition() -> None:
             objective=gd.fitting.MomentMatching(),
             candidate_selector=InvalidSelector(),
         )
+
+
+def _samples_at_mean(
+    self: gd.Gaussian, n_samples: int, rng: np.random.Generator | int | None = None
+) -> npt.NDArray[np.float64]:
+    del rng
+    return np.repeat(self.mean[None, :], n_samples, axis=0)
+
+
+@pytest.mark.parametrize("n_samples", [2, 7])
+@pytest.mark.parametrize(
+    "objective_name", ["forward", "reverse", "bidirectional", "js", "alpha0", "alpha1"]
+)
+def test_stratified_objectives_match_component_weighted_expectations(
+    monkeypatch: pytest.MonkeyPatch, objective_name: str, n_samples: int
+) -> None:
+    # Fixed draws isolate allocation bias from random sampling error. The unused
+    # third component verifies that zero counts do not cause division by zero.
+    monkeypatch.setattr(gd.Gaussian, "sample", _samples_at_mean)
+    components = [gd.Gaussian.univariate(-2), gd.Gaussian.univariate(2), gd.Gaussian.univariate(9)]
+    p = gd.GaussianMixture.from_components(components, weights=[0.99, 0.01, 0])
+    candidates = [
+        gd.GaussianMixture.from_components(components, weights=[0.9, 0.1, 0]),
+        gd.GaussianMixture.from_components(components, weights=[0.2, 0.8, 0]),
+        gd.Gaussian.univariate(0),
+    ]
+    # A precomputed sample per percentage point represents the exact component
+    # expectation with an ordinary mean, independently of stratified allocation.
+    p_samples = np.repeat([[-2.0], [2.0]], [99, 1], axis=0)
+    q_samples = np.stack([
+        np.repeat([[-2.0], [2.0]], [90, 10], axis=0),
+        np.repeat([[-2.0], [2.0]], [20, 80], axis=0),
+        np.zeros((100, 1)),
+    ])
+    stratified = gd.sampling.Stratified(n_samples, rng=0)
+    empirical_p = gd.sampling.Samples(p_samples)
+    empirical_q = gd.sampling.SampleBatches(q_samples)
+    if objective_name == "forward":
+        objective = gd.fitting.ForwardKL(stratified)
+        expected_objective = gd.fitting.ForwardKL(empirical_p)
+    elif objective_name == "reverse":
+        objective = gd.fitting.ReverseKL(stratified)
+        expected_objective = gd.fitting.ReverseKL(empirical_q)
+    elif objective_name == "js":
+        objective = gd.fitting.JensenShannon(stratified, stratified)
+        expected_objective = gd.fitting.JensenShannon(empirical_p, empirical_q)
+    else:
+        alpha = {"bidirectional": 0.3, "alpha0": 0.0, "alpha1": 1.0}[objective_name]
+        objective = gd.fitting.BidirectionalKL(stratified, stratified, alpha=alpha)
+        expected_objective = gd.fitting.BidirectionalKL(empirical_p, empirical_q, alpha=alpha)
+    with np.errstate(divide="ignore"):
+        prepared = gd.fitting.prepare_gaussian_mixture_fit(p, candidates, objective=objective)
+        expected = gd.fitting.prepare_gaussian_mixture_fit(
+            p, candidates, objective=expected_objective
+        )
+    weights = np.array([0.2, 0.3, 0.5])
+    value, gradient = prepared.evaluate(weights)
+    expected_value, expected_gradient = expected.evaluate(weights)
+    assert value == pytest.approx(expected_value, abs=1e-12)
+    assert gradient == pytest.approx(expected_gradient, abs=1e-12)
+    step = 1e-6
+    differences = []
+    for direction in np.eye(3):
+        upper, _ = prepared.evaluate(weights + step * direction)
+        lower, _ = prepared.evaluate(weights - step * direction)
+        differences.append((upper - lower) / (2 * step))
+    assert gradient == pytest.approx(differences, rel=1e-5, abs=1e-8)
+
+
+def test_stratified_forward_fit_preserves_rare_component_mass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gd.Gaussian, "sample", _samples_at_mean)
+    candidates = [gd.Gaussian.univariate(-10), gd.Gaussian.univariate(10)]
+    p = gd.GaussianMixture.from_components(candidates, weights=[0.99, 0.01])
+    result = gd.fit_gaussian_mixture_weights(
+        p,
+        candidates,
+        objective=gd.fitting.ForwardKL(gd.sampling.Stratified(2, rng=0)),
+        method=gd.fitting.SoftmaxLBFGSB(tol=1e-10),
+    )
+    assert result.converged
+    assert result.weights == pytest.approx(p.weights, abs=1e-6)

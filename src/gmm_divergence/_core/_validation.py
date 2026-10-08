@@ -69,9 +69,9 @@ def as_covariance(
     if covariance_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariance_arr.shape}."
         raise ValueError(msg)
-    _validate_symmetric(covariance_arr, name=name)
+    covariance_arr = _validate_symmetric(covariance_arr, name=name)
     covariance_arr = 0.5 * (covariance_arr + covariance_arr.T)
-    _validate_covariance_values(covariance_arr, name=name)
+    covariance_arr = _validate_covariance_values(covariance_arr, name=name)
     covariance_arr.setflags(write=writable)
     return covariance_arr
 
@@ -91,9 +91,9 @@ def as_covariances(
     if covariances_arr.shape != full_shape:
         msg = f"{name} must have shape {full_shape}, got {covariances_arr.shape}."
         raise ValueError(msg)
-    _validate_symmetric(covariances_arr, name=name)
+    covariances_arr = _validate_symmetric(covariances_arr, name=name)
     covariances_arr = 0.5 * (covariances_arr + np.swapaxes(covariances_arr, -1, -2))
-    _validate_covariance_values(covariances_arr, name=name)
+    covariances_arr = _validate_covariance_values(covariances_arr, name=name)
     covariances_arr.setflags(write=writable)
     return covariances_arr
 
@@ -172,35 +172,39 @@ def as_positive_sample_count(n_samples: object, /, *, name: str = "n_samples") -
     return n_samples
 
 
-def validate_positive_int(value: object, /, *, name: str) -> None:
+def validate_positive_int(value: object, /, *, name: str) -> int:
     """Validate a positive integer option."""
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         msg = f"{name} must be a positive integer, got {value}."
         raise ValueError(msg)
+    return int(value)
 
 
-def validate_positive_finite(value: float, /, *, name: str) -> None:
+def validate_positive_finite(value: float, /, *, name: str) -> float:
     """Validate a positive finite scalar option."""
     if not isfinite(value) or value <= 0.0:
         msg = f"{name} must be a positive finite value, got {value}."
         raise ValueError(msg)
+    return value
 
 
-def validate_nonnegative_finite(value: float, /, *, name: str) -> None:
+def validate_nonnegative_finite(value: float, /, *, name: str) -> float:
     """Validate a nonnegative finite scalar option."""
     if not isfinite(value) or value < 0.0:
         msg = f"{name} must be a nonnegative finite value, got {value}."
         raise ValueError(msg)
+    return value
 
 
-def validate_unit_interval(value: float, /, *, name: str) -> None:
+def validate_unit_interval(value: float, /, *, name: str) -> float:
     """Validate a finite scalar in the closed unit interval."""
     if not isfinite(value) or not 0.0 <= value <= 1.0:
         msg = f"{name} must be a finite value in [0, 1], got {value}."
         raise ValueError(msg)
+    return value
 
 
-def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None:
+def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> FloatArray:
     if not np.all(np.isfinite(covariance)):
         msg = f"{name} must contain only finite values."
         raise ValueError(msg)
@@ -210,9 +214,11 @@ def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None
     except np.linalg.LinAlgError as exc:
         msg = f"{name} must be positive definite."
         raise ValueError(msg) from exc
+    return covariance
 
 
-def _validate_symmetric(covariance: FloatArray, /, *, name: str) -> None:
+def _validate_symmetric(covariance: FloatArray, /, *, name: str) -> FloatArray:
     if not np.allclose(covariance, np.swapaxes(covariance, -1, -2)):
         msg = f"{name} must be symmetric."
         raise ValueError(msg)
+    return covariance

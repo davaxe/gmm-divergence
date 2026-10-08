@@ -63,6 +63,13 @@ assert population.n_components == 2
 
 ## Objective Configuration
 
+Sampled objectives accept `sampling.Stratified` on either side. Each observation
+from component $k$ receives integration weight $\pi_k/n_k$, where $n_k$ is the
+number of draws allocated to that component. Objective values and gradients
+therefore preserve the mixture weights even when rounded sample counts differ
+from the component proportions. `Draw`, `Samples`, and `SampleBatches` use
+ordinary sample means.
+
 ::: gmm_divergence.fitting.ForwardKL
 
 ::: gmm_divergence.fitting.ReverseKL
