@@ -9,6 +9,7 @@ from typing import TypeAlias
 import numpy as np
 import numpy.typing as npt
 
+from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._sampling import BatchSampleSpec, Draw, SampleSpec
 from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
@@ -38,8 +39,8 @@ class SoftmaxLBFGSB:
     """Optional initial unconstrained logits for the active candidates."""
 
     def __post_init__(self) -> None:
-        _validate_positive_float(self.tol, name="tol")
-        _validate_positive_int(self.max_iterations, name="max_iterations")
+        _ = _validate_positive_float(self.tol, name="tol")
+        _ = _validate_positive_int(self.max_iterations, name="max_iterations")
         _freeze_optional_vector(self, "initial_logits")
 
 
@@ -77,9 +78,9 @@ class SimplexSLSQP:
     """Optional initial simplex weights for the active candidates."""
 
     def __post_init__(self) -> None:
-        _validate_positive_float(self.tol, name="tol")
-        _validate_positive_int(self.max_iterations, name="max_iterations")
-        validate_nonnegative_finite(self.min_weight, name="min_weight")
+        _ = _validate_positive_float(self.tol, name="tol")
+        _ = _validate_positive_int(self.max_iterations, name="max_iterations")
+        _ = validate_nonnegative_finite(self.min_weight, name="min_weight")
         _freeze_optional_vector(self, "initial_weights")
 
 
@@ -241,9 +242,8 @@ def _freeze_optional_vector(instance: object, name: str) -> None:
     value = getattr(instance, name)
     if value is None:
         return
-    vector = np.array(value, dtype=np.float64, copy=True)
+    vector = readonly_copy(value, dtype=np.float64)
     if vector.ndim != 1 or not np.all(np.isfinite(vector)):
         msg = f"{name} must be a finite 1D array."
         raise ValueError(msg)
-    vector.setflags(write=False)
     object.__setattr__(instance, name, vector)

@@ -14,10 +14,15 @@ def logsumexp(a: FloatArray, axis: int = -1) -> FloatArray:
     return np.asarray(scipy.special.logsumexp(a, axis=axis), dtype=np.float64)
 
 
+def symmetrize(array: FloatArray) -> FloatArray:
+    """Average a matrix or batch with its transpose over the last two axes."""
+    return 0.5 * (array + np.swapaxes(array, -1, -2))
+
+
 def pairwise_gaussian_kl(
     p_means: FloatArray, p_covariances: Covariances, q_means: FloatArray, q_covariances: Covariances
 ) -> FloatArray:
-    """Compute KL(N_p_i || N_q_j) for all Gaussian component pairs.
+    r"""Compute $D_{\mathrm{KL}}(p_i \| q_j)$ for all Gaussian component pairs.
 
     Parameters
     ----------
@@ -34,7 +39,7 @@ def pairwise_gaussian_kl(
     -------
     FloatArray
         Matrix of shape (n_p, n_q), where entry (i, j) is
-        KL(N_p_i || N_q_j).
+        $D_{\mathrm{KL}}(p_i \| q_j)$.
     """
     if p_means.ndim != 2:
         msg = f"p_means must have shape (n_p, d), got {p_means.shape}."
@@ -67,17 +72,38 @@ def pairwise_gaussian_kl(
         )
         raise ValueError(msg)
 
-    chol_p = np.linalg.cholesky(p_covariances)
-    chol_q = np.linalg.cholesky(q_covariances)
-    logdet_p = 2.0 * np.sum(np.log(np.diagonal(chol_p, axis1=1, axis2=2)), axis=1)
-    logdet_q = 2.0 * np.sum(np.log(np.diagonal(chol_q, axis1=1, axis2=2)), axis=1)
-    logdet_term = logdet_q[None, :] - logdet_p[:, None]
-    whitened_covariances = np.linalg.solve(chol_q[:, None, :, :], p_covariances[None, :, :, :])
-    solved_covariances = np.linalg.solve(
-        np.swapaxes(chol_q, 1, 2)[:, None, :, :], whitened_covariances
+    chol_p = np.linalg.cholesky(p_covariances).astype(np.float64, copy=False)
+    chol_q = np.linalg.cholesky(q_covariances).astype(np.float64, copy=False)
+    return gaussian_kl_from_factors(
+        p_covariances[:, None],
+        q_means[None, :] - p_means[:, None],
+        chol_q[None, :],
+        logdet_from_cholesky(chol_p)[:, None],
+        logdet_from_cholesky(chol_q)[None, :],
     )
-    trace_term = np.trace(solved_covariances, axis1=2, axis2=3).T
-    diff = q_means[None, :, :] - p_means[:, None, :]
-    whitened_diff = np.linalg.solve(chol_q[None, :, :, :], diff[..., None])[..., 0]
-    quad_term = np.einsum("ija,ija->ij", whitened_diff, whitened_diff)
-    return 0.5 * (logdet_term - d + trace_term + quad_term)
+
+
+def logdet_from_cholesky(chol: FloatArray) -> FloatArray:
+    """Return scalar or batched log-determinants from Cholesky factors."""
+    return np.asarray(
+        2.0 * np.sum(np.log(np.diagonal(chol, axis1=-2, axis2=-1)), axis=-1), dtype=np.float64
+    )
+
+
+def gaussian_kl_from_factors(
+    p_covariance: FloatArray,
+    mean_difference: FloatArray,
+    q_chol: FloatArray,
+    p_logdet: FloatArray | float,
+    q_logdet: FloatArray | float,
+) -> FloatArray:
+    """Evaluate Gaussian KL using broadcast-compatible arrays and cached factors."""
+    whitened_covariance = np.linalg.solve(q_chol, p_covariance)
+    solved_covariance = np.linalg.solve(q_chol.swapaxes(-1, -2), whitened_covariance)
+    trace = np.trace(solved_covariance, axis1=-2, axis2=-1)
+    whitened_difference = np.linalg.solve(q_chol, mean_difference[..., None])[..., 0]
+    quadratic = np.sum(whitened_difference**2, axis=-1)
+    return np.asarray(
+        0.5 * (trace + quadratic - mean_difference.shape[-1] + q_logdet - p_logdet),
+        dtype=np.float64,
+    )

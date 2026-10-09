@@ -1,6 +1,8 @@
 """Public divergence API."""
 
 from gmm_divergence.divergence._api import (
+    aligned_component_kl,
+    categorical_kl_divergence,
     component_kl_matrix,
     jensen_shannon_divergence,
     kl_divergence,
@@ -22,6 +24,8 @@ __all__ = [
     "MonteCarlo",
     "Unscented",
     "Variational",
+    "aligned_component_kl",
+    "categorical_kl_divergence",
     "component_kl_matrix",
     "jensen_shannon_divergence",
     "kl_divergence",

@@ -15,6 +15,8 @@ from gmm_divergence.divergence._options import (
     Unscented,
     Variational,
 )
+from gmm_divergence.divergence.methods._aligned_component import aligned_component_kl
+from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
 from gmm_divergence.divergence.methods._monte_carlo import kl_monte_carlo
@@ -23,14 +25,60 @@ from gmm_divergence.divergence.methods._variational import kl_variational
 from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
+    import numpy.typing as npt
+
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._typing import GaussianLike
+
+__all__ = [
+    "aligned_component_kl",
+    "categorical_kl_divergence",
+    "component_kl_matrix",
+    "jensen_shannon_divergence",
+    "kl_divergence",
+    "symmetric_kl_divergence",
+]
+
+
+def categorical_kl_divergence(
+    p_weights: npt.ArrayLike, q_weights: npt.ArrayLike, /, *, epsilon: float = 0.0
+) -> DivergenceResult:
+    r"""Compute directed categorical KL between probability vectors over shared categories.
+
+    Parameters
+    ----------
+    p_weights, q_weights : array-like
+        Nonempty, finite, nonnegative probability vectors of equal length,
+        each summing to one. Index `k` must represent the same category in
+        both vectors; the caller is responsible for this correspondence.
+        Sums are checked with `rtol=1e-7`, `atol=1e-8`; negative values are
+        rejected without clipping.
+    epsilon : float, default=0.0
+        Finite, nonnegative additive smoothing amount. For `K` categories,
+        each vector becomes `(weights + epsilon) / (1 + K * epsilon)`.
+        Smoothing changes the probability distributions being compared.
+
+    Returns
+    -------
+    DivergenceResult
+        Categorical $D_{\mathrm{KL}}(p_w \| q_w)$ in nats, with method
+        `"categorical_kl"`. Without smoothing, a positive reference weight
+        paired with a zero comparison weight gives positive infinity.
+
+    Notes
+    -----
+    Categories may represent mode occupancies or any other shared outcomes.
+    When comparing Gaussian mixture weights, the caller must align components;
+    independently fitted mixtures may order components differently, and
+    components need not represent distinct modes. Inputs are not modified.
+    """
+    return kl_categorical(p_weights, q_weights, epsilon=epsilon)
 
 
 def kl_divergence(
     p: GaussianLike, q: GaussianLike, /, *, estimator: KLEstimator
 ) -> DivergenceResult:
-    r"""Compute the directed Kullback--Leibler divergence ``KL(p || q)``.
+    r"""Compute the directed Kullback--Leibler divergence $D_{\mathrm{KL}}(p \| q)$.
 
     Computes
 
@@ -48,11 +96,11 @@ def kl_divergence(
     ----------
     p, q : Gaussian or GaussianMixture
         Reference and comparison distributions. They must have equal
-        dimensionality; the divergence is evaluated from ``p`` to ``q``.
+        dimensionality; the divergence is evaluated from `p` to `q`.
     estimator : KLEstimator
-        Explicit estimator configuration. ``ClosedForm`` requires two
-        :class:`Gaussian` inputs. ``MonteCarlo`` samples from ``p``; therefore
-        ``sampling.Samples`` must contain samples drawn from ``p``.
+        Explicit estimator configuration. `ClosedForm` requires two
+        :class:`Gaussian` inputs. `MonteCarlo` samples from `p`; therefore
+        `sampling.Samples` must contain samples drawn from `p`.
 
     Returns
     -------
@@ -79,8 +127,8 @@ def kl_divergence(
 def component_kl_matrix(p: GaussianLike, q: GaussianLike, /) -> FloatArray:
     r"""Return pairwise closed-form KL divergences between components.
 
-    The result has shape ``(p_components, q_components)`` and element
-    ``(i, j)`` equals ``KL(p_i || q_j)``. A :class:`Gaussian` is treated as a
+    The result has shape `(p_components, q_components)` and element
+    `(i, j)` equals $D_{\mathrm{KL}}(p_i \| q_j)$. A :class:`Gaussian` is treated as a
     one-component mixture.
 
     Parameters
@@ -92,7 +140,7 @@ def component_kl_matrix(p: GaussianLike, q: GaussianLike, /) -> FloatArray:
     Returns
     -------
     FloatArray
-        A ``float64`` diagnostic matrix. It is not the KL divergence between
+        A `float64` diagnostic matrix. It is not the KL divergence between
         the full mixtures.
 
     """
@@ -115,22 +163,22 @@ def symmetric_kl_divergence(
     $$
 
     The directional estimators are intentionally separate. In particular,
-    precomputed samples for ``forward`` must originate from ``p``, while those
-    for ``reverse`` must originate from ``q``.
+    precomputed samples for `forward` must originate from `p`, while those
+    for `reverse` must originate from `q`.
 
     Parameters
     ----------
     p, q : Gaussian or GaussianMixture
         Distributions to compare. They must have equal dimensionality.
     forward : KLEstimator
-        Estimator for ``KL(p || q)``.
+        Estimator for $D_{\mathrm{KL}}(p \| q)$.
     reverse : KLEstimator
-        Estimator for ``KL(q || p)``.
+        Estimator for $D_{\mathrm{KL}}(q \| p)$.
 
     Returns
     -------
     DivergenceResult
-        Average of the directed estimates. ``num_samples`` is the total only
+        Average of the directed estimates. `num_samples` is the total only
         when both estimates report a sample count.
 
     """
@@ -166,16 +214,16 @@ def jensen_shannon_divergence(
     p, q : Gaussian or GaussianMixture
         Distributions to compare. They must have equal dimensionality.
     p_to_midpoint : KLEstimator
-        Estimator for ``KL(p || m)``. Any supplied samples must be drawn from
-        ``p``.
+        Estimator for $D_{\mathrm{KL}}(p \| m)$. Any supplied samples must be drawn from
+        `p`.
     q_to_midpoint : KLEstimator
-        Estimator for ``KL(q || m)``. Any supplied samples must be drawn from
-        ``q``.
+        Estimator for $D_{\mathrm{KL}}(q \| m)$. Any supplied samples must be drawn from
+        `q`.
 
     Returns
     -------
     DivergenceResult
-        Jensen--Shannon estimate. ``num_samples`` is the total only when both
+        Jensen--Shannon estimate. `num_samples` is the total only when both
         directed estimators report a sample count.
 
     """

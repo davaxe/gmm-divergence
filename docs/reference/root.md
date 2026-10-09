@@ -16,8 +16,9 @@ configuration objects.
 | `combine_gaussians` | Build a combined Gaussian mixture |
 | `kl_divergence`, `symmetric_kl_divergence`, `jensen_shannon_divergence` | Main divergence helpers |
 | `component_kl_matrix` | Pairwise component KL diagnostics |
-| `fit_mixture_weights`, `prune_mixture` | Main fitting helpers |
-| `DivergenceResult`, `FitResult` | Result containers |
+| `aligned_component_kl` | Joint KL for aligned component labels and observations |
+| `fit_gaussian_mixture_weights`, `prune_mixture` | Main fitting helpers |
+| `AlignedKLResult`, `DivergenceResult`, `GaussianMixtureFitResult` | Result containers |
 
 ## What Lives In Namespaces
 
@@ -63,14 +64,18 @@ configuration objects are documented on their namespace pages.
 
 ::: gmm_divergence.component_kl_matrix
 
+::: gmm_divergence.aligned_component_kl
+
 ## Fitting Helpers
 
-::: gmm_divergence.fit_mixture_weights
+::: gmm_divergence.fit_gaussian_mixture_weights
 
 ::: gmm_divergence.prune_mixture
 
 ## Results
 
+::: gmm_divergence.AlignedKLResult
+
 ::: gmm_divergence.DivergenceResult
 
-::: gmm_divergence.FitResult
+::: gmm_divergence.GaussianMixtureFitResult

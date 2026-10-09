@@ -2,14 +2,12 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
 
 from gmm_divergence._core._numeric import logsumexp
-from gmm_divergence._core._types import FloatArray
 from gmm_divergence.fitting._options import (
     BidirectionalKL,
     ForwardKL,
@@ -19,21 +17,27 @@ from gmm_divergence.fitting._options import (
 )
 
 if TYPE_CHECKING:
-    from gmm_divergence._core._types import Weights
+    from collections.abc import Sequence
+
+    from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
     from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.fitting._simplex import ObjectiveFn
 
 
-ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
-
-
-def softmax(theta: FloatArray) -> Weights:
-    """Numerically stable softmax."""
-    theta = np.asarray(theta, dtype=np.float64)
-    z = theta - np.max(theta)
-    exp_z = np.exp(z)
-    return (exp_z / np.sum(exp_z)).astype(np.float64)
+def _sample_mean(
+    values: FloatArray, integration_weights: FloatArray | None, *, axis: int
+) -> FloatArray:
+    """Average samples using their integration weights when supplied."""
+    if integration_weights is None:
+        return np.mean(values, axis=axis)
+    # Weights describe the leading sample dimensions; trailing axes hold densities.
+    expanded_weights = integration_weights.reshape((
+        *integration_weights.shape,
+        *((1,) * (values.ndim - integration_weights.ndim)),
+    ))
+    return np.sum(values * expanded_weights, axis=axis)
 
 
 def logpdf_matrix(components: Sequence[GaussianLike], samples: FloatArray) -> FloatArray:
@@ -56,42 +60,30 @@ def mixture_stats(
     return log_qw.astype(np.float64), responsibilities.astype(np.float64)
 
 
-def with_softmax(simplex_objective: ObjectiveFn) -> ObjectiveFn:
-    """Wrap a simplex objective as an objective over softmax logits."""
-
-    def objective(theta: FloatArray) -> tuple[float, FloatArray]:
-        weights = softmax(theta)
-        value, grad_w = simplex_objective(weights)
-        grad_w = np.asarray(grad_w, dtype=np.float64)
-        grad_theta = weights * (grad_w - np.dot(weights, grad_w))
-        return float(value), grad_theta.astype(np.float64)
-
-    return objective
-
-
 @dataclass(frozen=True, slots=True)
 class _ForwardKL:
     """Monte Carlo forward KL objective over simplex weights."""
 
     log_q_on_p_samples: FloatArray
     log_p_on_p_samples: FloatArray | None = None
+    p_integration_weights: FloatArray | None = None
     eps: float = 1e-300
     include_constant: bool = False
-
-    @property
-    def n_components(self) -> int:
-        return int(self.log_q_on_p_samples.shape[1])
 
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         weights = np.asarray(weights, dtype=np.float64)
         log_qw, responsibilities = mixture_stats(self.log_q_on_p_samples, weights, eps=self.eps)
 
-        value = -float(np.mean(log_qw))
+        value = -float(_sample_mean(log_qw, self.p_integration_weights, axis=0))
         if self.include_constant and self.log_p_on_p_samples is not None:
-            value += float(np.mean(self.log_p_on_p_samples))
+            value += float(
+                _sample_mean(self.log_p_on_p_samples, self.p_integration_weights, axis=0)
+            )
 
         weights_safe = np.maximum(weights, self.eps)
-        grad = -np.mean(responsibilities / weights_safe[None, :], axis=0)
+        grad = -_sample_mean(
+            responsibilities / weights_safe[None, :], self.p_integration_weights, axis=0
+        )
         return float(value), grad.astype(np.float64)
 
 
@@ -100,10 +92,11 @@ def forward_kl(
     q_components: Sequence[GaussianLike],
     p_samples: FloatArray,
     *,
+    p_integration_weights: FloatArray | None = None,
     include_constant: bool = False,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    """Build a simplex objective for forward KL, `KL(p || q_w)`."""
+    r"""Build a simplex objective for forward KL, $D_{\mathrm{KL}}(p \| q_w)$."""
     p_samples = np.asarray(p_samples, dtype=np.float64)
     log_q_on_p_samples = logpdf_matrix(q_components, p_samples)
 
@@ -117,6 +110,7 @@ def forward_kl(
     return _ForwardKL(
         log_q_on_p_samples=log_q_on_p_samples,
         log_p_on_p_samples=log_p_on_p_samples,
+        p_integration_weights=p_integration_weights,
         eps=eps,
         include_constant=include_constant,
     )
@@ -128,6 +122,7 @@ class _ReverseKL:
 
     log_q_on_q_samples: FloatArray
     log_p_on_q_samples: FloatArray
+    q_integration_weights: FloatArray | None = None
     eps: float = 1e-300
 
     @property
@@ -139,13 +134,19 @@ class _ReverseKL:
         log_w = np.log(np.maximum(weights, self.eps))
 
         log_qw = logsumexp(self.log_q_on_q_samples + log_w[None, None, :], axis=2)
-        component_terms = np.mean(log_qw - self.log_p_on_q_samples, axis=1)
+        component_terms = _sample_mean(
+            log_qw - self.log_p_on_q_samples, self.q_integration_weights, axis=1
+        )
         value = float(np.dot(weights, component_terms))
 
         correction = np.zeros(self.n_components, dtype=np.float64)
         for i in range(self.n_components):
             ratio_i = np.exp(self.log_q_on_q_samples[i] - log_qw[i, :, None])
-            correction += weights[i] * np.mean(ratio_i, axis=0)
+            correction += weights[i] * _sample_mean(
+                ratio_i,
+                None if self.q_integration_weights is None else self.q_integration_weights[i],
+                axis=0,
+            )
 
         grad = component_terms + correction
         return float(value), grad.astype(np.float64)
@@ -156,13 +157,20 @@ def reverse_kl(
     q_components: Sequence[GaussianLike],
     q_samples: FloatArray,
     *,
+    q_integration_weights: FloatArray | None = None,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    """Build a simplex objective for fixed-sample reverse KL, `KL(q_w || p)`."""
+    r"""Build a simplex objective for reverse KL, $D_{\mathrm{KL}}(q_w \| p)$.
+
+    Uses fixed samples from each candidate distribution.
+    """
     log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(p, q_components, q_samples)
 
     return _ReverseKL(
-        log_q_on_q_samples=log_q_on_q_samples, log_p_on_q_samples=log_p_on_q_samples, eps=eps
+        log_q_on_q_samples=log_q_on_q_samples,
+        log_p_on_q_samples=log_p_on_q_samples,
+        q_integration_weights=q_integration_weights,
+        eps=eps,
     )
 
 
@@ -174,11 +182,9 @@ class _JensenShannon:
     log_p_on_p_samples: FloatArray
     log_q_on_q_samples: FloatArray
     log_p_on_q_samples: FloatArray
+    p_integration_weights: FloatArray | None = None
+    q_integration_weights: FloatArray | None = None
     eps: float = 1e-300
-
-    @property
-    def n_components(self) -> int:
-        return int(self.log_q_on_q_samples.shape[0])
 
     def __call__(self, weights: FloatArray) -> tuple[float, FloatArray]:
         w = np.asarray(weights, dtype=np.float64)
@@ -188,12 +194,24 @@ class _JensenShannon:
         log_w = np.log(np.maximum(w, self.eps))
         log_qw_q = logsumexp(self.log_q_on_q_samples + log_w, axis=-1)
         log_m_q = np.logaddexp(self.log_p_on_q_samples, log_qw_q) - log_2
-        forward_kl = np.mean(self.log_p_on_p_samples - log_m_p)
-        reverse_kl_per_component = np.mean(log_qw_q - log_m_q, axis=1)
+        forward_kl = _sample_mean(
+            self.log_p_on_p_samples - log_m_p, self.p_integration_weights, axis=0
+        )
+        reverse_kl_per_component = _sample_mean(
+            log_qw_q - log_m_q, self.q_integration_weights, axis=1
+        )
         value = 0.5 * (forward_kl + np.dot(w, reverse_kl_per_component))
-        forward_grad = -0.25 * np.mean(np.exp(self.log_q_on_p_samples - log_m_p[:, None]), axis=0)
-        mean_q_over_qw = np.mean(np.exp(self.log_q_on_q_samples - log_qw_q[..., None]), axis=1)
-        mean_q_over_m = np.mean(np.exp(self.log_q_on_q_samples - log_m_q[..., None]), axis=1)
+        forward_grad = -0.25 * _sample_mean(
+            np.exp(self.log_q_on_p_samples - log_m_p[:, None]), self.p_integration_weights, axis=0
+        )
+        mean_q_over_qw = _sample_mean(
+            np.exp(self.log_q_on_q_samples - log_qw_q[..., None]),
+            self.q_integration_weights,
+            axis=1,
+        )
+        mean_q_over_m = _sample_mean(
+            np.exp(self.log_q_on_q_samples - log_m_q[..., None]), self.q_integration_weights, axis=1
+        )
         reverse_grad = (
             0.5 * reverse_kl_per_component + 0.5 * (w @ mean_q_over_qw) - 0.25 * (w @ mean_q_over_m)
         )
@@ -206,6 +224,8 @@ def jensen_shannon(
     p_samples: FloatArray,
     q_samples: FloatArray,
     *,
+    p_integration_weights: FloatArray | None = None,
+    q_integration_weights: FloatArray | None = None,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
     """Build a simplex objective for Jensen-Shannon divergence."""
@@ -218,8 +238,10 @@ def jensen_shannon(
     return _JensenShannon(
         log_q_on_p_samples=log_q_on_p_samples,
         log_p_on_p_samples=log_p_on_p_samples,
+        p_integration_weights=p_integration_weights,
         log_q_on_q_samples=log_q_on_q_samples,
         log_p_on_q_samples=log_p_on_q_samples,
+        q_integration_weights=q_integration_weights,
         eps=eps,
     )
 
@@ -264,6 +286,8 @@ def bidirectional_kl(
     p_samples: FloatArray | None = None,
     q_samples: FloatArray | None = None,
     *,
+    p_integration_weights: FloatArray | None = None,
+    q_integration_weights: FloatArray | None = None,
     alpha: float = 0.5,
     include_forward_constant: bool = False,
     eps: float = 1e-300,
@@ -282,6 +306,7 @@ def bidirectional_kl(
                 p=p,
                 q_components=q_components,
                 p_samples=p_samples,
+                p_integration_weights=p_integration_weights,
                 include_constant=include_forward_constant,
                 eps=eps,
             )
@@ -292,7 +317,15 @@ def bidirectional_kl(
         if q_samples is None:
             msg = "q_samples is required when reverse_weight is nonzero."
             raise ValueError(msg)
-        objectives.append(reverse_kl(p=p, q_components=q_components, q_samples=q_samples, eps=eps))
+        objectives.append(
+            reverse_kl(
+                p=p,
+                q_components=q_components,
+                q_samples=q_samples,
+                q_integration_weights=q_integration_weights,
+                eps=eps,
+            )
+        )
         objective_weights.append(float(reverse_weight))
 
     return _WeightedSum(
@@ -341,32 +374,49 @@ def moment_matching(
     return _MomentMatching(p_moments=p_moments, q_moments=q_moments)
 
 
-def build_simplex_objective(
+def build_gaussian_mixture_objective(
     *,
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
     p: Gaussian | GaussianMixture,
     q_i: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray | None,
     q_samples: FloatArray | None,
+    p_integration_weights: FloatArray | None = None,
+    q_integration_weights: FloatArray | None = None,
 ) -> ObjectiveFn:
     match objective:
         case ForwardKL():
             if p_samples is None:
                 msg = "p_samples is required for forward KL."
                 raise ValueError(msg)
-            return forward_kl(p, q_i, p_samples)
+            return forward_kl(p, q_i, p_samples, p_integration_weights=p_integration_weights)
         case ReverseKL():
             if q_samples is None:
                 msg = "q_samples is required for reverse KL."
                 raise ValueError(msg)
-            return reverse_kl(p, q_i, q_samples)
+            return reverse_kl(p, q_i, q_samples, q_integration_weights=q_integration_weights)
         case BidirectionalKL(alpha=alpha):
-            return bidirectional_kl(p, q_i, p_samples=p_samples, q_samples=q_samples, alpha=alpha)
+            return bidirectional_kl(
+                p,
+                q_i,
+                p_samples=p_samples,
+                q_samples=q_samples,
+                alpha=alpha,
+                p_integration_weights=p_integration_weights,
+                q_integration_weights=q_integration_weights,
+            )
         case JensenShannon():
             if q_samples is None or p_samples is None:
                 msg = "Both p_samples and q_samples are required for Jensen-Shannon."
                 raise ValueError(msg)
-            return jensen_shannon(p, q_i, p_samples=p_samples, q_samples=q_samples)
+            return jensen_shannon(
+                p,
+                q_i,
+                p_samples=p_samples,
+                q_samples=q_samples,
+                p_integration_weights=p_integration_weights,
+                q_integration_weights=q_integration_weights,
+            )
         case MomentMatching(fit_second_moments=fit_second_moments):
             return moment_matching(p, q_i, second_moments=fit_second_moments)
 

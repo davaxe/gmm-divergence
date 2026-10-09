@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from gmm_divergence._core._types import Weights
+    from gmm_divergence._core._types import FloatArray, Weights
     from gmm_divergence.distributions._combine import CombinedGaussianMixture
     from gmm_divergence.fitting._options import FitMethod, FitObjective
 
@@ -38,11 +38,11 @@ class DivergenceResult:
 
 
 @dataclass(frozen=True, slots=True, repr=False)
-class FitResult:
+class GaussianMixtureFitResult:
     """Result of fitting a Gaussian mixture.
 
     Primary result when using
-    [`fit_mixture_weights`][gmm_divergence.fitting.fit_mixture_weights]
+    [`fit_gaussian_mixture_weights`][gmm_divergence.fitting.fit_gaussian_mixture_weights]
     and related functions.
     """
 
@@ -71,7 +71,7 @@ class FitResult:
         """Return fitted weights paired with original candidate indices.
 
         If candidate selection was used, indices refer to the original `q_i`
-        sequence passed to `fit_mixture_weights`. Otherwise they are simply
+        sequence passed to `fit_gaussian_mixture_weights`. Otherwise they are simply
         `0, 1, ..., n_candidates - 1`.
         """
         return sorted(
@@ -83,3 +83,33 @@ class FitResult:
     def candidate_weight_dict(self) -> dict[int, float]:
         """Return fitted weights keyed by original candidate index."""
         return dict(self.candidate_weights())
+
+
+@dataclass(frozen=True, slots=True)
+class CategoricalMixtureFitResult:
+    """Result of fitting a mixture of categorical distributions."""
+
+    weights: FloatArray
+    fitted_probabilities: FloatArray
+    objective_value: float
+    fit_method: FitMethod
+    iterations: int
+    converged: bool
+    optimizer_message: str
+
+
+@dataclass(frozen=True, slots=True)
+class AlignedKLResult:
+    """Joint KL decomposition for aligned component labels and observations, in nats."""
+
+    value: float
+    """Total aligned-component KL divergence."""
+
+    weight_kl: float
+    """KL divergence between the mixture weights."""
+
+    component_kls: FloatArray
+    """Per-component Gaussian KL divergences, shape (n_components,)."""
+
+    weighted_component_kl: float
+    """Reference-weighted sum of the component KL divergences."""

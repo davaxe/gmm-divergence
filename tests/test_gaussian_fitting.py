@@ -33,7 +33,7 @@ class _CountingSamples:
 
 def test_explicit_fitting_configs_and_immutable_result() -> None:
     p, candidates = _fixture()
-    result = gd.fit_mixture_weights(
+    result = gd.fit_gaussian_mixture_weights(
         p,
         candidates,
         method=gd.fitting.SimplexSLSQP(initial_weights=[0.5, 0.5]),
@@ -61,7 +61,7 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
         return original_logpdf(self, x)
 
     monkeypatch.setattr(gd.Gaussian, "logpdf", counting_logpdf)
-    prepared = gd.fitting.prepare_mixture_weight_fit(
+    prepared = gd.fitting.prepare_gaussian_mixture_fit(
         p, candidates, objective=gd.fitting.ForwardKL(sampling=sampling)
     )
 
@@ -103,14 +103,14 @@ def test_fitting_validates_bounds_and_initial_values() -> None:
     with pytest.raises(ValueError, match="min_weight"):
         _ = gd.fitting.SimplexSLSQP(min_weight=-1.0)
     with pytest.raises(ValueError, match="infeasible"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SimplexSLSQP(min_weight=0.6),
             objective=gd.fitting.MomentMatching(),
         )
     with pytest.raises(ValueError, match="length 2"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
@@ -154,7 +154,7 @@ def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPa
         pytest.fail(f"ReverseKL unexpectedly sampled p with {args!r} and {kwargs!r}")
 
     monkeypatch.setattr(gd.GaussianMixture, "sample", fail_if_sampled)
-    prepared = gd.fitting.prepare_mixture_weight_fit(
+    prepared = gd.fitting.prepare_gaussian_mixture_fit(
         p,
         candidates,
         objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(q_samples)),
@@ -165,11 +165,11 @@ def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPa
     assert np.all(np.isfinite(gradient))
 
 
-def test_fit_solution_requires_simplex_weights() -> None:
+def test_simplex_optimization_result_requires_simplex_weights() -> None:
     method = gd.fitting.SimplexSLSQP()
 
     with pytest.raises(ValueError, match="sum to one"):
-        _ = gd.fitting.FitSolution(
+        _ = gd.fitting.SimplexOptimizationResult(
             method=method,
             parameters=np.array([2.0, 3.0]),
             active_weights=np.array([2.0, 3.0]),
@@ -185,7 +185,7 @@ def test_fitting_rejects_empty_sample_batches() -> None:
     empty_batches = np.empty((len(candidates), 0, p.dim), dtype=np.float64)
 
     with pytest.raises(ValueError, match="at least one sample"):
-        _ = gd.fitting.prepare_mixture_weight_fit(
+        _ = gd.fitting.prepare_gaussian_mixture_fit(
             p,
             candidates,
             objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(empty_batches)),
@@ -204,7 +204,7 @@ class _FirstOnly(CandidateSelector):
 
 def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
     p, candidates = _fixture()
-    result = gd.fit_mixture_weights(
+    result = gd.fit_gaussian_mixture_weights(
         p,
         candidates,
         method=gd.fitting.SoftmaxLBFGSB(),
@@ -229,10 +229,93 @@ def test_candidate_selection_requires_a_complete_partition() -> None:
             return CandidateSelection(selected_indices=(0, 0), rejected_indices=())
 
     with pytest.raises(ValueError, match="complete non-overlapping"):
-        _ = gd.fit_mixture_weights(
+        _ = gd.fit_gaussian_mixture_weights(
             p,
             candidates,
             method=gd.fitting.SoftmaxLBFGSB(),
             objective=gd.fitting.MomentMatching(),
             candidate_selector=InvalidSelector(),
         )
+
+
+def _samples_at_mean(
+    self: gd.Gaussian, n_samples: int, rng: np.random.Generator | int | None = None
+) -> npt.NDArray[np.float64]:
+    del rng
+    return np.repeat(self.mean[None, :], n_samples, axis=0)
+
+
+@pytest.mark.parametrize("n_samples", [2, 7])
+@pytest.mark.parametrize(
+    "objective_name", ["forward", "reverse", "bidirectional", "js", "alpha0", "alpha1"]
+)
+def test_stratified_objectives_match_component_weighted_expectations(
+    monkeypatch: pytest.MonkeyPatch, objective_name: str, n_samples: int
+) -> None:
+    # Fixed draws isolate allocation bias from random sampling error. The unused
+    # third component verifies that zero counts do not cause division by zero.
+    monkeypatch.setattr(gd.Gaussian, "sample", _samples_at_mean)
+    components = [gd.Gaussian.univariate(-2), gd.Gaussian.univariate(2), gd.Gaussian.univariate(9)]
+    p = gd.GaussianMixture.from_components(components, weights=[0.99, 0.01, 0])
+    candidates = [
+        gd.GaussianMixture.from_components(components, weights=[0.9, 0.1, 0]),
+        gd.GaussianMixture.from_components(components, weights=[0.2, 0.8, 0]),
+        gd.Gaussian.univariate(0),
+    ]
+    # A precomputed sample per percentage point represents the exact component
+    # expectation with an ordinary mean, independently of stratified allocation.
+    p_samples = np.repeat([[-2.0], [2.0]], [99, 1], axis=0)
+    q_samples = np.stack([
+        np.repeat([[-2.0], [2.0]], [90, 10], axis=0),
+        np.repeat([[-2.0], [2.0]], [20, 80], axis=0),
+        np.zeros((100, 1)),
+    ])
+    stratified = gd.sampling.Stratified(n_samples, rng=0)
+    empirical_p = gd.sampling.Samples(p_samples)
+    empirical_q = gd.sampling.SampleBatches(q_samples)
+    if objective_name == "forward":
+        objective = gd.fitting.ForwardKL(stratified)
+        expected_objective = gd.fitting.ForwardKL(empirical_p)
+    elif objective_name == "reverse":
+        objective = gd.fitting.ReverseKL(stratified)
+        expected_objective = gd.fitting.ReverseKL(empirical_q)
+    elif objective_name == "js":
+        objective = gd.fitting.JensenShannon(stratified, stratified)
+        expected_objective = gd.fitting.JensenShannon(empirical_p, empirical_q)
+    else:
+        alpha = {"bidirectional": 0.3, "alpha0": 0.0, "alpha1": 1.0}[objective_name]
+        objective = gd.fitting.BidirectionalKL(stratified, stratified, alpha=alpha)
+        expected_objective = gd.fitting.BidirectionalKL(empirical_p, empirical_q, alpha=alpha)
+    with np.errstate(divide="ignore"):
+        prepared = gd.fitting.prepare_gaussian_mixture_fit(p, candidates, objective=objective)
+        expected = gd.fitting.prepare_gaussian_mixture_fit(
+            p, candidates, objective=expected_objective
+        )
+    weights = np.array([0.2, 0.3, 0.5])
+    value, gradient = prepared.evaluate(weights)
+    expected_value, expected_gradient = expected.evaluate(weights)
+    assert value == pytest.approx(expected_value, abs=1e-12)
+    assert gradient == pytest.approx(expected_gradient, abs=1e-12)
+    step = 1e-6
+    differences = []
+    for direction in np.eye(3):
+        upper, _ = prepared.evaluate(weights + step * direction)
+        lower, _ = prepared.evaluate(weights - step * direction)
+        differences.append((upper - lower) / (2 * step))
+    assert gradient == pytest.approx(differences, rel=1e-5, abs=1e-8)
+
+
+def test_stratified_forward_fit_preserves_rare_component_mass(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(gd.Gaussian, "sample", _samples_at_mean)
+    candidates = [gd.Gaussian.univariate(-10), gd.Gaussian.univariate(10)]
+    p = gd.GaussianMixture.from_components(candidates, weights=[0.99, 0.01])
+    result = gd.fit_gaussian_mixture_weights(
+        p,
+        candidates,
+        objective=gd.fitting.ForwardKL(gd.sampling.Stratified(2, rng=0)),
+        method=gd.fitting.SoftmaxLBFGSB(tol=1e-10),
+    )
+    assert result.converged
+    assert result.weights == pytest.approx(p.weights, abs=1e-6)

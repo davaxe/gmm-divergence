@@ -10,6 +10,7 @@ import numpy as np
 import numpy.typing as npt
 from typing_extensions import override
 
+from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._validation import validate_nonnegative_finite
 from gmm_divergence.divergence._api import kl_divergence
 
@@ -31,8 +32,7 @@ class CandidateSelection:
         object.__setattr__(self, "selected_indices", _freeze_indices(self.selected_indices))
         object.__setattr__(self, "rejected_indices", _freeze_indices(self.rejected_indices))
         if self.scores is not None:
-            scores = np.array(self.scores, dtype=np.float64, copy=True)
-            scores.setflags(write=False)
+            scores = readonly_copy(self.scores, dtype=np.float64)
             object.__setattr__(self, "scores", scores)
 
 
@@ -121,7 +121,7 @@ class ThresholdSelector(_KLSelectorBase):
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        validate_nonnegative_finite(self.threshold, name="threshold")
+        _ = validate_nonnegative_finite(self.threshold, name="threshold")
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -133,10 +133,10 @@ class ThresholdSelector(_KLSelectorBase):
 class ToleranceSelector(_KLSelectorBase):
     """Select candidates within a tolerance of the best KL score.
 
-    In absolute mode, candidates with `KL <= min(KL) + delta` are kept. In
-    relative mode, candidates with `KL <= min(KL) + delta * abs(min(KL))` are
-    kept, so `delta=0.5` means within 50% of the best score when the best score
-    is positive.
+    In absolute mode, candidates with scores at most the minimum score plus
+    `delta` are kept. In relative mode, the tolerance is
+    `delta * abs(minimum_score)`, so `delta=0.5` means within 50% of the best
+    score when the best score is positive.
     """
 
     delta: float
@@ -144,7 +144,7 @@ class ToleranceSelector(_KLSelectorBase):
 
     def __post_init__(self) -> None:
         _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        validate_nonnegative_finite(self.delta, name="delta")
+        _ = validate_nonnegative_finite(self.delta, name="delta")
         if self.mode not in {"absolute", "relative"}:
             msg = "mode must be 'absolute' or 'relative'."
             raise ValueError(msg)
@@ -215,10 +215,6 @@ def _validate_candidate_sequence(q_i: Sequence[GaussianLike]) -> None:
         raise ValueError(msg)
 
 
-def _kl_divergence_value(p: GaussianLike, q: GaussianLike, /, *, estimator: KLEstimator) -> float:
-    return kl_divergence(p, q, estimator=estimator).value
-
-
 def _compute_kl_values(
     p: GaussianLike,
     q_i: Sequence[GaussianLike],
@@ -229,7 +225,7 @@ def _compute_kl_values(
     estimator: KLEstimator,
 ) -> FloatArray:
     def kl(p: GaussianLike, q: GaussianLike) -> float:
-        return _kl_divergence_value(p, q, estimator=estimator)
+        return kl_divergence(p, q, estimator=estimator).value
 
     match direction:
         case "forward":

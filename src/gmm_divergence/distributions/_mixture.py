@@ -1,18 +1,19 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING, Literal, cast, overload
 
 import numpy as np
 import numpy.typing as npt
+from sklearn.mixture import GaussianMixture as SklearnGaussianMixture
 from typing_extensions import override
 
-from gmm_divergence._core._numeric import logsumexp
+from gmm_divergence._core._numeric import logdet_from_cholesky, logsumexp
 from gmm_divergence._core._validation import (
     as_covariances,
     as_points,
-    as_positive_sample_count,
     as_weights,
+    validate_positive_int,
 )
 from gmm_divergence.covariance import regularize_covariance
 from gmm_divergence.distributions._gaussian import Gaussian
@@ -57,32 +58,74 @@ class GaussianMixture:
 
     @classmethod
     def from_arrays(
-        cls, weights: npt.ArrayLike, means: npt.ArrayLike, covariances: npt.ArrayLike
-    ) -> GaussianMixture:
-        """Create a Gaussian mixture from array-like parameters."""
-        return cls(
-            weights=np.array(weights), means=np.array(means), covariances=np.array(covariances)
-        )
-
-    @classmethod
-    def from_regularized_arrays(
         cls,
         weights: npt.ArrayLike,
         means: npt.ArrayLike,
         covariances: npt.ArrayLike,
-        *,
-        regularizer: CovarianceRegularizer,
+        regularizer: CovarianceRegularizer | None = None,
     ) -> GaussianMixture:
-        """Create a Gaussian mixture after explicitly regularizing covariances.
-
-        This constructor keeps `from_arrays` strict while providing a convenient
-        path for estimated or nearly singular component covariances.
-        """
-        return cls.from_arrays(
-            weights=weights,
-            means=means,
-            covariances=regularize_covariance(covariances, regularizer=regularizer, batched=True),
+        """Create a Gaussian mixture from array-like parameters."""
+        return cls(
+            weights=np.asarray(weights),
+            means=np.asarray(means),
+            covariances=np.asarray(covariances)
+            if regularizer is None
+            else regularize_covariance(covariances, regularizer=regularizer, batched=True),
         )
+
+    @classmethod
+    def from_sklearn_gmm(cls, gmm: SklearnGaussianMixture) -> GaussianMixture:
+        """Convert a fitted sklearn mixture, expanding covariances to full matrices."""
+        means = np.array(gmm.means_, dtype=np.float64)
+        weights = as_weights(gmm.weights_)
+        sklearn_covariances = np.array(gmm.covariances_, dtype=np.float64)
+        n_components, n_features = means.shape
+        covariance_type = cast("str", gmm.get_params()["covariance_type"])
+        match covariance_type:
+            case "full":
+                covariances = sklearn_covariances
+            case "tied":
+                covariances = np.repeat(sklearn_covariances[None, :, :], n_components, axis=0)
+            case "diag":
+                covariances = sklearn_covariances[:, :, None] * np.eye(n_features)
+            case "spherical":
+                covariances = sklearn_covariances[:, None, None] * np.eye(n_features)
+            case _:
+                msg = f"Unsupported sklearn covariance type: {covariance_type!r}."
+                raise ValueError(msg)
+        return cls.from_arrays(weights=weights, means=means, covariances=covariances)
+
+    def to_sklearn_gmm(self) -> SklearnGaussianMixture:
+        """Convert to a sklearn mixture ready for evaluation and sampling.
+
+        Parameters are copied without fitting data. Optimization history and
+        convergence diagnostics are unavailable because no fitting is performed.
+        """
+        mixture = SklearnGaussianMixture(n_components=self.n_components, covariance_type="full")
+        mixture.weights_ = self.weights.copy()
+        mixture.means_ = self.means.copy()
+        mixture.covariances_ = self.covariances.copy()
+        # Sklearn uses upper triangular factors U such that precision = U @ U.T.
+        inverse_chol = np.linalg.solve(
+            self.chol(), np.broadcast_to(np.eye(self.dim), self.covariances.shape)
+        )
+        precision_chol = np.swapaxes(inverse_chol, -1, -2)
+        mixture.precisions_cholesky_ = precision_chol
+        mixture.precisions_ = precision_chol @ np.swapaxes(precision_chol, -1, -2)
+        mixture.n_features_in_ = self.dim
+        return mixture
+
+    @classmethod
+    def from_samples(cls, x: npt.ArrayLike, n_components: int) -> GaussianMixture:
+        """Fit a Gaussian mixture to sample data using sklearn's EM algorithm.
+
+        This uses default configuration to fit the GMM. For full control over
+        the fitting process, use sklearn's GaussianMixture directly and then
+        convert to this class using `from_sklearn_gmm`.
+        """
+        samples = np.asarray(x, dtype=np.float64)
+        sklearn_gmm = SklearnGaussianMixture(n_components=n_components).fit(samples)
+        return cls.from_sklearn_gmm(sklearn_gmm)
 
     @classmethod
     def from_components(
@@ -133,8 +176,6 @@ class GaussianMixture:
 
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
         """Evaluate the log-density of the Gaussian mixture at given points."""
-        x = as_points(x, n_features=self.dim, name="x")
-
         return gmm_logpdf(x=x, gmm=self)
 
     def chol(self) -> FloatArray:
@@ -153,7 +194,7 @@ class GaussianMixture:
             return self._log_dets
 
         chol = self.chol()
-        log_dets = 2.0 * np.sum(np.log(np.diagonal(chol, axis1=1, axis2=2)), axis=1)
+        log_dets = logdet_from_cholesky(chol)
         log_dets.setflags(write=False)
         object.__setattr__(self, "_log_dets", log_dets)
         return log_dets
@@ -186,6 +227,27 @@ class GaussianMixture:
             means=self.means[indices],
             covariances=self.covariances[indices],
         )
+
+    def responsibilities(self, x: npt.ArrayLike) -> FloatArray:
+        """Compute the responsibilities of each component for the given points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_samples, n_features)
+            Points at which to compute responsibilities.
+
+        Returns
+        -------
+        responsibilities : array, shape (n_samples, n_components)
+            The responsibilities of each component for each point, normalized to
+            sum to 1 across components.
+        """
+        x = as_points(x, n_features=self.dim, name="x")
+        if self.n_components == 1:
+            return np.ones((x.shape[0], 1), dtype=np.float64)
+
+        log_terms = _component_logpdf(self, x) + np.log(self.weights)[None, :]
+        return np.exp(log_terms - logsumexp(log_terms, axis=1)[:, None])
 
     @override
     def __repr__(self) -> str:
@@ -264,7 +326,7 @@ def sample_gmm(
     gmm: GaussianMixture, /, n_samples: int, *, rng: np.random.Generator | int | None = None
 ) -> FloatArray:
     """Draw samples from a Gaussian mixture."""
-    n_samples = as_positive_sample_count(n_samples)
+    n_samples = validate_positive_int(n_samples, name="n_samples")
     rng = np.random.default_rng(rng)
 
     component_ids = rng.choice(gmm.n_components, size=n_samples, p=gmm.weights)
@@ -278,18 +340,18 @@ def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
     """Evaluate the log-density of a Gaussian mixture without an explicit Python loop."""
     x = as_points(x, n_features=gmm.dim, name="x")
 
-    _, n_features = x.shape
-    log_weights = np.log(gmm.weights)  # (K,)
-    chol = gmm.chol()  # (K, D, D)
-    log_dets = gmm.log_dets()  # (K,)
-    diff = x[None, :, :] - gmm.means[:, None, :]  # (K, N, D)
-    rhs = np.swapaxes(diff, 1, 2)  # (K, D, N)
-    y = np.linalg.solve(chol, rhs)  # (K, D, N)
-    mahal = np.sum(y * y, axis=1)  # (K, N)
-    constant = n_features * np.log(2.0 * np.pi)
-    log_gaussian = -0.5 * (constant + log_dets[:, None] + mahal)  # (K, N)
-    log_probs = log_weights[:, None] + log_gaussian  # (K, N)
-    return logsumexp(log_probs.T, axis=1)  # (N,)
+    log_terms = _component_logpdf(gmm, x) + np.log(gmm.weights)[None, :]
+    return logsumexp(log_terms, axis=1)
+
+
+def _component_logpdf(gmm: GaussianMixture, x: FloatArray) -> FloatArray:
+    """Evaluate component densities at validated points using cached factors."""
+    diff = x[None, :, :] - gmm.means[:, None, :]
+    rhs = np.swapaxes(diff, 1, 2)
+    whitened = np.linalg.solve(gmm.chol(), rhs)
+    mahalanobis = np.sum(whitened**2, axis=1)
+    constant = gmm.dim * np.log(2.0 * np.pi)
+    return (-0.5 * (constant + gmm.log_dets()[:, None] + mahalanobis)).T
 
 
 def gmm_pdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
