@@ -2,10 +2,11 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from gmm_divergence._core._numeric import pairwise_gaussian_kl
-from gmm_divergence.distributions._combine import combine_gaussians
+from gmm_divergence.distributions._combine import combine_distributions
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.divergence._options import (
     ClosedForm,
@@ -15,7 +16,7 @@ from gmm_divergence.divergence._options import (
     Unscented,
     Variational,
 )
-from gmm_divergence.divergence.methods._aligned_component import aligned_component_kl
+from gmm_divergence.divergence.methods._aligned_component import aligned_joint_kl_divergence
 from gmm_divergence.divergence.methods._categorical import kl_categorical
 from gmm_divergence.divergence.methods._closed_form import kl_closed_form
 from gmm_divergence.divergence.methods._gaussian_approx import kl_gaussian_approximation
@@ -28,10 +29,10 @@ if TYPE_CHECKING:
     import numpy.typing as npt
 
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.distributions._typing import GaussianDistribution
 
 __all__ = [
-    "aligned_component_kl",
+    "aligned_joint_kl_divergence",
     "categorical_kl_divergence",
     "component_kl_matrix",
     "jensen_shannon_divergence",
@@ -41,13 +42,13 @@ __all__ = [
 
 
 def categorical_kl_divergence(
-    p_weights: npt.ArrayLike, q_weights: npt.ArrayLike, /, *, epsilon: float = 0.0
+    p: npt.ArrayLike, q: npt.ArrayLike, *, epsilon: float = 0.0
 ) -> DivergenceResult:
     r"""Compute directed categorical KL between probability vectors over shared categories.
 
     Parameters
     ----------
-    p_weights, q_weights : array-like
+    p, q : array-like
         Nonempty, finite, nonnegative probability vectors of equal length,
         each summing to one. Index `k` must represent the same category in
         both vectors; the caller is responsible for this correspondence.
@@ -55,13 +56,13 @@ def categorical_kl_divergence(
         rejected without clipping.
     epsilon : float, default=0.0
         Finite, nonnegative additive smoothing amount. For `K` categories,
-        each vector becomes `(weights + epsilon) / (1 + K * epsilon)`.
+        each vector becomes `(probabilities + epsilon) / (1 + K * epsilon)`.
         Smoothing changes the probability distributions being compared.
 
     Returns
     -------
     DivergenceResult
-        Categorical $D_{\mathrm{KL}}(p_w \| q_w)$ in nats, with method
+        Categorical $D_{\mathrm{KL}}(p_w \| q_w)$ in nats, with divergence
         `"categorical_kl"`. Without smoothing, a positive reference weight
         paired with a zero comparison weight gives positive infinity.
 
@@ -72,11 +73,11 @@ def categorical_kl_divergence(
     independently fitted mixtures may order components differently, and
     components need not represent distinct modes. Inputs are not modified.
     """
-    return kl_categorical(p_weights, q_weights, epsilon=epsilon)
+    return kl_categorical(p, q, epsilon=epsilon)
 
 
 def kl_divergence(
-    p: GaussianLike, q: GaussianLike, /, *, estimator: KLEstimator
+    p: GaussianDistribution, q: GaussianDistribution, *, estimator: KLEstimator
 ) -> DivergenceResult:
     r"""Compute the directed Kullback--Leibler divergence $D_{\mathrm{KL}}(p \| q)$.
 
@@ -112,19 +113,20 @@ def kl_divergence(
     _validate_same_dimension(p, q)
     match estimator:
         case MonteCarlo():
-            return kl_monte_carlo(p, q, estimator=estimator)
+            result = kl_monte_carlo(p, q, estimator=estimator)
         case Unscented():
-            return kl_unscented(p, q)
-        case MomentMatchedGaussian(approximation=approximation):
-            return kl_gaussian_approximation(p, q, approximation=approximation)
+            result = kl_unscented(p, q)
+        case MomentMatchedGaussian():
+            result = kl_gaussian_approximation(p, q)
         case ClosedForm():
             p_gaussian, q_gaussian = _require_gaussian_pair(p, q)
-            return kl_closed_form(p_gaussian, q_gaussian)
+            result = kl_closed_form(p_gaussian, q_gaussian)
         case Variational():
-            return kl_variational(p, q)
+            result = kl_variational(p, q)
+    return replace(result, estimator=estimator)
 
 
-def component_kl_matrix(p: GaussianLike, q: GaussianLike, /) -> FloatArray:
+def component_kl_matrix(p: GaussianDistribution, q: GaussianDistribution) -> FloatArray:
     r"""Return pairwise closed-form KL divergences between components.
 
     The result has shape `(p_components, q_components)` and element
@@ -151,7 +153,7 @@ def component_kl_matrix(p: GaussianLike, q: GaussianLike, /) -> FloatArray:
 
 
 def symmetric_kl_divergence(
-    p: GaussianLike, q: GaussianLike, /, *, forward: KLEstimator, reverse: KLEstimator
+    p: GaussianDistribution, q: GaussianDistribution, *, forward: KLEstimator, reverse: KLEstimator
 ) -> DivergenceResult:
     r"""Compute the symmetrized Kullback--Leibler divergence.
 
@@ -178,7 +180,7 @@ def symmetric_kl_divergence(
     Returns
     -------
     DivergenceResult
-        Average of the directed estimates. `num_samples` is the total only
+        Average of the directed estimates. `n_evaluations` is the total only
         when both estimates report a sample count.
 
     """
@@ -186,13 +188,18 @@ def symmetric_kl_divergence(
     reverse_result = kl_divergence(q, p, estimator=reverse)
     return DivergenceResult(
         value=0.5 * (forward_result.value + reverse_result.value),
-        method="symmetric_kl",
-        num_samples=_sum_num_samples(forward_result, reverse_result),
+        divergence="symmetric_kl",
+        terms=(forward_result, reverse_result),
+        n_evaluations=_sum_evaluations(forward_result, reverse_result),
     )
 
 
 def jensen_shannon_divergence(
-    p: GaussianLike, q: GaussianLike, /, *, p_to_midpoint: KLEstimator, q_to_midpoint: KLEstimator
+    p: GaussianDistribution,
+    q: GaussianDistribution,
+    *,
+    p_to_midpoint: KLEstimator,
+    q_to_midpoint: KLEstimator,
 ) -> DivergenceResult:
     r"""Compute the Jensen--Shannon divergence between two distributions.
 
@@ -223,34 +230,40 @@ def jensen_shannon_divergence(
     Returns
     -------
     DivergenceResult
-        Jensen--Shannon estimate. `num_samples` is the total only when both
+        Jensen--Shannon estimate. `n_evaluations` is the total only when both
         directed estimators report a sample count.
 
     """
     _validate_same_dimension(p, q)
-    midpoint = combine_gaussians([p, q], weights=[0.5, 0.5])
+    midpoint = combine_distributions([p, q], weights=[0.5, 0.5])
     p_result = kl_divergence(p, midpoint, estimator=p_to_midpoint)
     q_result = kl_divergence(q, midpoint, estimator=q_to_midpoint)
     return DivergenceResult(
         value=0.5 * (p_result.value + q_result.value),
-        method="jensen_shannon",
-        num_samples=_sum_num_samples(p_result, q_result),
+        divergence="jensen_shannon",
+        terms=(p_result, q_result),
+        n_evaluations=_sum_evaluations(p_result, q_result),
     )
 
 
-def _sum_num_samples(*results: DivergenceResult) -> int | None:
-    if any(result.num_samples is None for result in results):
+def _sum_evaluations(*results: DivergenceResult) -> int | None:
+    if any(result.n_evaluations is None for result in results):
         return None
-    return sum(result.num_samples for result in results if result.num_samples is not None)
+    return sum(result.n_evaluations for result in results if result.n_evaluations is not None)
 
 
-def _validate_same_dimension(p: GaussianLike, q: GaussianLike) -> None:
-    if p.dim != q.dim:
-        msg = f"Gaussian-family distribution dimensions must match, got {p.dim} and {q.dim}."
+def _validate_same_dimension(p: GaussianDistribution, q: GaussianDistribution) -> None:
+    if p.n_features != q.n_features:
+        msg = (
+            f"Gaussian-family distribution dimensions must match, got {p.n_features} "
+            f"and {q.n_features}."
+        )
         raise ValueError(msg)
 
 
-def _require_gaussian_pair(p: GaussianLike, q: GaussianLike) -> tuple[Gaussian, Gaussian]:
+def _require_gaussian_pair(
+    p: GaussianDistribution, q: GaussianDistribution
+) -> tuple[Gaussian, Gaussian]:
     if not isinstance(p, Gaussian) or not isinstance(q, Gaussian):
         msg = f"ClosedForm requires Gaussian inputs, got {type(p).__name__} and {type(q).__name__}."
         raise TypeError(msg)

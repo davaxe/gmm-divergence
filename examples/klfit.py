@@ -40,28 +40,26 @@ def main() -> None:
         msg = f"Target distribution '{args.target}' not found in data. Available labels: {labels}"
         raise ValueError(msg)
     target_index = np.where(labels == args.target)[0][0]
-    target = gd.Gaussian.from_arrays(
-        mean=data["means"][target_index], covariance=data["covs"][target_index]
-    )
+    target = gd.Gaussian(mean=data["means"][target_index], covariance=data["covs"][target_index])
     components: list[gd.Gaussian] = [
-        gd.Gaussian.from_arrays(mean=data["means"][i], covariance=data["covs"][i])
+        gd.Gaussian(mean=data["means"][i], covariance=data["covs"][i])
         for i in range(len(labels))
         if i != target_index
     ]
     component_labels = [str(label) for i, label in enumerate(labels) if i != target_index]
-    res = gd.fit_gaussian_mixture_weights(
+    res = gd.fit_gaussian_weights(
         target,
         components,
-        method=gd.fitting.SoftmaxLBFGSB(),
-        objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=0)),
+        optimizer=gd.fitting.SoftmaxLBFGSB(),
+        objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Draw(n_samples=10_000, rng=0)),
         candidate_selector=gd.fitting.TopKSelector(
-            k=6, estimator=gd.divergence.MomentMatchedGaussian()
+            k=6, scorer=gd.fitting.ForwardKLScore(estimator=gd.divergence.MomentMatchedGaussian())
         ),
     )
     forward_kl = gd.kl_divergence(
         target,
-        res.fitted_mixture.mixture,
-        estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(100_000, rng=0)),
+        res.mixture,
+        estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(n_samples=100_000, rng=0)),
     )
     print(f"Fitted forward KL: {forward_kl.value} (converged: {res.converged})")
     print(f"Fitted weights for target '{args.target}':")

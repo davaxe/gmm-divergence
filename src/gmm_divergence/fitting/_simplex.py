@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -12,11 +12,11 @@ from scipy.optimize import Bounds, LinearConstraint, minimize
 from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._types import FloatArray
 from gmm_divergence._core._validation import as_weights, validate_positive_int
-from gmm_divergence.fitting._options import SoftmaxLBFGSB
+from gmm_divergence.fitting._options import SoftmaxLBFGSB, validate_optimizer
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import Weights
-    from gmm_divergence.fitting._options import FitMethod
+    from gmm_divergence.fitting._options import Optimizer
 
 
 ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
@@ -53,7 +53,7 @@ class SimplexOptimizationResult:
     making them safe to reuse as warm-start inputs.
     """
 
-    method: FitMethod
+    optimizer: Optimizer
     """Optimizer configuration used to obtain the solution."""
     parameters: FloatArray
     """Final optimizer coordinates for the active candidates."""
@@ -61,12 +61,14 @@ class SimplexOptimizationResult:
     """Final simplex weights for the active candidates."""
     objective_value: float
     """Final scalar objective value."""
-    iterations: int
-    """Number of optimizer iterations."""
+    n_iterations: int
+    """Number of optimizer n_iterations."""
     converged: bool
     """Whether the optimizer reported convergence."""
-    optimizer_message: str
+    message: str
     """Optimizer termination message."""
+
+    _problem_token: object | None = field(default=None, repr=False, compare=False)
 
     def __post_init__(self) -> None:
         parameters = readonly_copy(self.parameters, dtype=np.float64)
@@ -89,15 +91,21 @@ class SimplexOptimizationResult:
         if not np.isfinite(self.objective_value):
             msg = f"objective_value must be finite, got {self.objective_value}."
             raise ValueError(msg)
-        if type(self.iterations) is not int or self.iterations < 0:
-            msg = f"iterations must be a nonnegative integer, got {self.iterations}."
+        if type(self.n_iterations) is not int or self.n_iterations < 0:
+            msg = f"n_iterations must be a nonnegative integer, got {self.n_iterations}."
             raise ValueError(msg)
         object.__setattr__(self, "parameters", parameters)
         object.__setattr__(self, "active_weights", normalized_weights)
 
+    def check_problem_token(self, token: object) -> None:
+        """Raise an error if the result was not produced by the given problem."""
+        if self._problem_token is not token:
+            msg = "This result was not produced by the given problem."
+            raise ValueError(msg)
+
 
 def optimize_simplex(
-    objective: ObjectiveFn, /, *, n_weights: int, method: FitMethod
+    objective: ObjectiveFn, /, *, n_weights: int, optimizer: Optimizer
 ) -> SimplexOptimizationResult:
     """Optimize an objective and gradient over simplex weights using scipy.
 
@@ -105,10 +113,11 @@ def optimize_simplex(
     value and gradient. No distributions or prepared-fit data are required.
     """
     _ = validate_positive_int(n_weights, name="n_weights")
-    if isinstance(method, SoftmaxLBFGSB):
+    _ = validate_optimizer(optimizer)
+    if isinstance(optimizer, SoftmaxLBFGSB):
         initial = (
-            np.array(method.initial_logits, dtype=np.float64)
-            if method.initial_logits is not None
+            np.array(optimizer.initial_logits, dtype=np.float64)
+            if optimizer.initial_logits is not None
             else np.zeros(n_weights, dtype=np.float64)
         )
         _validate_initial_vector(initial, n_weights, name="initial_logits")
@@ -121,12 +130,12 @@ def optimize_simplex(
             return softmax(values)
 
     else:
-        if method.min_weight * n_weights > 1.0:
+        if optimizer.min_weight * n_weights > 1.0:
             msg = "min_weight is infeasible for the number of weights."
             raise ValueError(msg)
         initial = (
-            as_weights(method.initial_weights, expected_length=n_weights, name="initial_weights")
-            if method.initial_weights is not None
+            as_weights(optimizer.initial_weights, expected_length=n_weights, name="initial_weights")
+            if optimizer.initial_weights is not None
             else np.full(n_weights, 1.0 / n_weights, dtype=np.float64)
         )
         scipy_objective = objective
@@ -137,7 +146,7 @@ def optimize_simplex(
             ub=np.array([1.0], dtype=np.float64),
         )
         bounds = Bounds(
-            lb=np.full(n_weights, method.min_weight, dtype=np.float64),
+            lb=np.full(n_weights, optimizer.min_weight, dtype=np.float64),
             ub=np.ones(n_weights, dtype=np.float64),
         )
 
@@ -151,18 +160,18 @@ def optimize_simplex(
         jac=True,
         constraints=constraints,
         bounds=bounds,
-        tol=method.tol,
-        options={"maxiter": method.max_iterations},
+        tol=optimizer.tol,
+        options={"maxiter": optimizer.max_iterations},
     )
     parameters = np.asarray(result.x, dtype=np.float64)
     return SimplexOptimizationResult(
-        method=method,
+        optimizer=optimizer,
         parameters=parameters,
         active_weights=weights_from_parameters(parameters),
         objective_value=float(result.fun),
-        iterations=int(result.nit),
+        n_iterations=int(result.nit),
         converged=bool(result.success),
-        optimizer_message=str(result.message),
+        message=str(result.message),
     )
 
 

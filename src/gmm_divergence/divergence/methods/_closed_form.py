@@ -51,10 +51,10 @@ def kl_closed_form(p: Gaussian, q: Gaussian) -> DivergenceResult:
         Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4.
         IEEE, 2007.
     """
-    if p.dim != q.dim:
+    if p.n_features != q.n_features:
         msg = "Both distributions must have the same dimensionality."
         raise ValueError(msg)
     value = gaussian_kl_from_factors(
-        p.covariance, q.mean - p.mean, q.chol(), p.log_det(), q.log_det()
+        p.covariance, q.mean - p.mean, q.cholesky(), p.log_determinant(), q.log_determinant()
     )
-    return DivergenceResult(value=float(value), method="closed_form")
+    return DivergenceResult(value=float(value), divergence="kl")

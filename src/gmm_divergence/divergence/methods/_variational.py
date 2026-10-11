@@ -1,3 +1,4 @@
+# pyright: reportPrivateUsage=false
 from __future__ import annotations
 
 from typing import TYPE_CHECKING
@@ -44,4 +45,4 @@ def kl_variational(
     log_weights_q = np.log(weights_q)
     numerator = logsumexp(log_weights_p[None, :] - kl_pp, axis=1)
     denominator = logsumexp(log_weights_q[None, :] - kl_pq, axis=1)
-    return DivergenceResult(value=np.dot(weights_p, numerator - denominator), method="variational")
+    return DivergenceResult(value=np.dot(weights_p, numerator - denominator), divergence="kl")

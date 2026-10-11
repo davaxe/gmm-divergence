@@ -80,7 +80,7 @@ def test_regularization_is_only_applied_at_conversion() -> None:
     np.testing.assert_array_equal(stats.covariances, np.zeros((1, 2, 2)))
     with pytest.raises(ValueError, match="positive definite"):
         _ = stats.to_gaussian_mixture()
-    mixture = stats.to_gaussian_mixture(regularizer=gd.covariance.DiagonalLoading(eps=0.1))
+    mixture = stats.to_gaussian_mixture(regularizer=gd.covariance.DiagonalLoading(epsilon=0.1))
     np.testing.assert_allclose(mixture.covariances, [0.1 * np.eye(2)])
     np.testing.assert_array_equal(stats.covariances, np.zeros((1, 2, 2)))
 

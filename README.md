@@ -53,9 +53,9 @@ q = gd.GaussianMixture.from_components([
 ])
 
 result = gd.kl_divergence(
-    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(50_000, rng=0))
+    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(n_samples=50_000, rng=0))
 )
-print(result.value, result.monte_carlo_stats.standard_error)
+print(result.value, result.monte_carlo.standard_error)
 ```
 
 The top-level module keeps the common distribution classes and primary helper
@@ -71,10 +71,10 @@ candidates = [
     gd.Gaussian.univariate(mean=1.5, variance=1.0),
 ]
 
-fit = gd.fit_gaussian_mixture_weights(
+fit = gd.fit_gaussian_weights(
     p,
     candidates,
-    method=gd.fitting.SoftmaxLBFGSB(),
+    optimizer=gd.fitting.SoftmaxLBFGSB(),
     objective=gd.fitting.MomentMatching(fit_second_moments=True),
 )
 print(fit.weights)
@@ -83,10 +83,16 @@ print(fit.weights)
 Fit a mixture of categorical distributions using the same optimizer options:
 
 ```python
-fit = gd.fitting.fit_categorical_mixture_weights(
-    [0.4, 0.6],
-    [[0.8, 0.2], [0.1, 0.9]],
-    method=gd.fitting.SimplexSLSQP(),
+fit = gd.fitting.fit_categorical_weights(
+    [0.4, 0.6], [[0.8, 0.2], [0.1, 0.9]], optimizer=gd.fitting.SimplexSLSQP()
 )
 print(fit.weights)
 ```
+
+
+The public API uses explicit keyword-only estimator, objective, and optimizer
+configurations. Combined and fitted mixtures compose directly with divergence
+functions and retain component provenance. Distribution parameters and result
+arrays are owned and read-only. Categorical KL and forward-KL weight fitting are
+available at the root alongside their Gaussian counterparts. See the API
+reference for sampling records, directional scoring, and prepared-fit reuse.

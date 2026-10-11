@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from math import isfinite
+from numbers import Integral, Real
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -42,11 +43,9 @@ def as_weights(
         msg = f"{name} must contain only finite values."
         raise ValueError(msg)
 
-    negative_tolerance = 1e-12
-    if np.any(weights_arr < -negative_tolerance):
+    if np.any(weights_arr < 0.0):
         msg = f"{name} must be nonnegative."
         raise ValueError(msg)
-    weights_arr = np.maximum(weights_arr, 0.0)
 
     weight_sum = float(np.sum(weights_arr))
     if not np.isfinite(weight_sum) or weight_sum <= 0.0:
@@ -199,7 +198,10 @@ def as_sample_batches(
 
 def validate_positive_int(value: object, /, *, name: str) -> int:
     """Validate a positive integer option."""
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
+    if isinstance(value, bool) or not isinstance(value, Integral):
+        msg = f"{name} must be a positive integer, got {value!r}."
+        raise TypeError(msg)
+    if value <= 0:
         msg = f"{name} must be a positive integer, got {value}."
         raise ValueError(msg)
     return int(value)
@@ -207,6 +209,7 @@ def validate_positive_int(value: object, /, *, name: str) -> int:
 
 def validate_positive_finite(value: float, /, *, name: str) -> float:
     """Validate a positive finite scalar option."""
+    _validate_real(value, name=name)
     if not isfinite(value) or value <= 0.0:
         msg = f"{name} must be a positive finite value, got {value}."
         raise ValueError(msg)
@@ -215,6 +218,7 @@ def validate_positive_finite(value: float, /, *, name: str) -> float:
 
 def validate_nonnegative_finite(value: float, /, *, name: str) -> float:
     """Validate a nonnegative finite scalar option."""
+    _validate_real(value, name=name)
     if not isfinite(value) or value < 0.0:
         msg = f"{name} must be a nonnegative finite value, got {value}."
         raise ValueError(msg)
@@ -223,10 +227,17 @@ def validate_nonnegative_finite(value: float, /, *, name: str) -> float:
 
 def validate_unit_interval(value: float, /, *, name: str) -> float:
     """Validate a finite scalar in the closed unit interval."""
+    _validate_real(value, name=name)
     if not isfinite(value) or not 0.0 <= value <= 1.0:
         msg = f"{name} must be a finite value in [0, 1], got {value}."
         raise ValueError(msg)
     return value
+
+
+def _validate_real(value: object, *, name: str) -> None:
+    if isinstance(value, bool) or not isinstance(value, Real):
+        msg = f"{name} must be a real scalar, got {value!r}."
+        raise TypeError(msg)
 
 
 def _validate_covariance_values(covariance: FloatArray, /, *, name: str) -> None:

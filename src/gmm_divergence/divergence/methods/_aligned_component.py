@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
-
 import numpy as np
 
 from gmm_divergence._core._numeric import gaussian_kl_from_factors
+from gmm_divergence.distributions._mixture import GaussianMixture
 from gmm_divergence.divergence.methods._categorical import kl_categorical
-from gmm_divergence.results import AlignedKLResult
-
-if TYPE_CHECKING:
-    from gmm_divergence.distributions._mixture import GaussianMixture
+from gmm_divergence.results import AlignedJointKLResult
 
 
-def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKLResult:
+def aligned_joint_kl_divergence(p: GaussianMixture, q: GaussianMixture) -> AlignedJointKLResult:
     r"""Compute KL divergence between Gaussian mixtures with aligned components.
 
     Given two Gaussian mixtures with corresponding component indices,
@@ -49,7 +45,7 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
 
     Returns
     -------
-    AlignedKLResult
+    AlignedJointKLResult
         KL decomposition containing:
 
         - `value`: Total joint KL divergence.
@@ -57,6 +53,8 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
         - `component_kls`: Individual Gaussian component KL values.
         - `weighted_component_kl`: Weighted sum of component KL values.
     """
+    _validate_mixture(p, name="p")
+    _validate_mixture(q, name="q")
     if p.n_components != q.n_components:
         msg = (
             "Aligned-component KL requires equal numbers of components, "
@@ -64,21 +62,30 @@ def aligned_component_kl(p: GaussianMixture, q: GaussianMixture, /) -> AlignedKL
         )
         raise ValueError(msg)
 
-    if p.dim != q.dim:
-        msg = f"Aligned-component KL requires equal feature dimensions, got {p.dim} and {q.dim}."
+    if p.n_features != q.n_features:
+        msg = (
+            f"Aligned-component KL requires equal feature dimensions, got "
+            f"{p.n_features} and {q.n_features}."
+        )
         raise ValueError(msg)
 
     weight_kl = kl_categorical(p.weights, q.weights).value
 
     component_kls = gaussian_kl_from_factors(
-        p.covariances, q.means - p.means, q.chol(), p.log_dets(), q.log_dets()
+        p.covariances, q.means - p.means, q.cholesky(), p.log_determinants(), q.log_determinants()
     )
     component_kls.setflags(write=False)
     weighted_component_kl = float(np.dot(p.weights, component_kls))
 
-    return AlignedKLResult(
+    return AlignedJointKLResult(
         value=weight_kl + weighted_component_kl,
         weight_kl=weight_kl,
         component_kls=component_kls,
         weighted_component_kl=weighted_component_kl,
     )
+
+
+def _validate_mixture(value: object, *, name: str) -> None:
+    if not isinstance(value, GaussianMixture):
+        msg = f"{name} must be a GaussianMixture with aligned components."
+        raise TypeError(msg)

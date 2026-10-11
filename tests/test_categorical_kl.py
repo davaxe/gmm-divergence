@@ -15,9 +15,9 @@ def test_categorical_kl_matches_manual_formula() -> None:
     result = gd.divergence.categorical_kl_divergence([0.8, 0.2], (0.5, 0.5))
     expected = 0.8 * np.log(0.8 / 0.5) + 0.2 * np.log(0.2 / 0.5)
     assert result.value == pytest.approx(expected)
-    assert result.method == "categorical_kl"
-    assert result.num_samples is None
-    assert result.monte_carlo_stats is None
+    assert result.divergence == "categorical_kl"
+    assert result.n_evaluations is None
+    assert result.monte_carlo is None
     reverse = gd.divergence.categorical_kl_divergence([0.5, 0.5], [0.8, 0.2])
     assert reverse.value != pytest.approx(result.value)
 

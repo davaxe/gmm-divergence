@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from math import isfinite
 from typing import TypeAlias
 
 import numpy as np
@@ -11,12 +10,12 @@ import numpy.typing as npt
 
 from gmm_divergence._core._arrays import readonly_copy
 from gmm_divergence._core._sampling import BatchSampleSpec, Draw, SampleSpec
-from gmm_divergence._core._validation import validate_nonnegative_finite
+from gmm_divergence._core._validation import validate_nonnegative_finite, validate_unit_interval
 from gmm_divergence._core._validation import validate_positive_finite as _validate_positive_float
 from gmm_divergence._core._validation import validate_positive_int as _validate_positive_int
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SoftmaxLBFGSB:
     r"""L-BFGS-B optimizer over unconstrained softmax logits.
 
@@ -44,7 +43,7 @@ class SoftmaxLBFGSB:
         _freeze_optional_vector(self, "initial_logits")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class SimplexSLSQP:
     r"""SLSQP optimizer over simplex-constrained weights.
 
@@ -84,7 +83,7 @@ class SimplexSLSQP:
         _freeze_optional_vector(self, "initial_weights")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ForwardKL:
     r"""Forward KL fitting objective configuration.
 
@@ -101,20 +100,23 @@ class ForwardKL:
 
     where $p$ is the reference distribution and $q_{\mathbf{w}}$ is the
     weighted combination of the candidate mixtures. Since $\log p(X)$ does
-    not depend on $\mathbf{w}$, the implemented objective minimizes the
-    negative expected log-density of $q_{\mathbf{w}}$ under samples from $p$.
+    not depend on $\mathbf{w}$, its contribution is cached. Reported values
+    include this constant and estimate KL in nats.
     """
 
-    sampling: SampleSpec = field(default_factory=Draw)
-    """Sampling specification for the expectation under p.
+    target_sampling: SampleSpec = field(default_factory=Draw)
+    """Sampling specification for the expectation under target.
 
     Use `sampling.Draw(...)` to draw fresh samples, `sampling.Samples(...)` for
     precomputed reference samples, or `sampling.Stratified(...)` when `p` is a
     Gaussian-family distribution and fixed per-component counts are desired.
     """
 
+    def __post_init__(self) -> None:
+        _validate_sampling(self.target_sampling, name="target_sampling", operation="sample")
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ReverseKL:
     r"""Reverse KL fitting objective configuration.
 
@@ -134,7 +136,7 @@ class ReverseKL:
     those samples, so no samples from $p$ are required.
     """
 
-    q_sampling: BatchSampleSpec = field(default_factory=Draw)
+    candidate_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
@@ -142,8 +144,13 @@ class ReverseKL:
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
 
+    def __post_init__(self) -> None:
+        _validate_sampling(
+            self.candidate_sampling, name="candidate_sampling", operation="sample_batches"
+        )
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class BidirectionalKL:
     r"""Bidirectional KL fitting objective configuration.
 
@@ -162,25 +169,27 @@ class BidirectionalKL:
     objective.
     """
 
-    p_sampling: SampleSpec = field(default_factory=Draw)
+    target_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the forward term under p."""
-    q_sampling: BatchSampleSpec = field(default_factory=Draw)
+    candidate_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for the reverse term under each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
     `sampling.Stratified(...)` for fixed per-component counts, or
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
-    alpha: float = 0.5
+    forward_weight: float = 0.5
     """Weight assigned to the forward KL term."""
 
     def __post_init__(self) -> None:
-        if not isfinite(self.alpha) or not 0.0 <= self.alpha <= 1.0:
-            msg = f"alpha must be in [0, 1], got {self.alpha}."
-            raise ValueError(msg)
+        _validate_sampling(self.target_sampling, name="target_sampling", operation="sample")
+        _validate_sampling(
+            self.candidate_sampling, name="candidate_sampling", operation="sample_batches"
+        )
+        _ = validate_unit_interval(self.forward_weight, name="forward_weight")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class JensenShannon:
     r"""Jensen-Shannon fitting objective configuration.
 
@@ -204,9 +213,9 @@ class JensenShannon:
     from `p` and each candidate mixture `q_i` during optimization.
     """
 
-    p_sampling: SampleSpec = field(default_factory=Draw)
+    target_sampling: SampleSpec = field(default_factory=Draw)
     """Sampling specification for the term under p."""
-    q_sampling: BatchSampleSpec = field(default_factory=Draw)
+    candidate_sampling: BatchSampleSpec = field(default_factory=Draw)
     """Sampling specification for fixed batches from each q_i.
 
     Use `sampling.Draw(...)` to draw one batch per candidate distribution,
@@ -214,8 +223,14 @@ class JensenShannon:
     `sampling.SampleBatches(...)` to provide those batches directly.
     """
 
+    def __post_init__(self) -> None:
+        _validate_sampling(self.target_sampling, name="target_sampling", operation="sample")
+        _validate_sampling(
+            self.candidate_sampling, name="candidate_sampling", operation="sample_batches"
+        )
 
-@dataclass(frozen=True, slots=True)
+
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MomentMatching:
     r"""Moment-matching fitting objective configuration.
 
@@ -234,8 +249,16 @@ class MomentMatching:
     """Whether to include covariance information in the objective."""
 
 
-FitMethod: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
+Optimizer: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
 FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
+
+
+def validate_optimizer(optimizer: object) -> Optimizer:
+    """Reject unsupported optimizers before any preparation work."""
+    if not isinstance(optimizer, (SimplexSLSQP, SoftmaxLBFGSB)):
+        msg = "optimizer must be a SimplexSLSQP or SoftmaxLBFGSB configuration."
+        raise TypeError(msg)
+    return optimizer
 
 
 def _freeze_optional_vector(instance: object, name: str) -> None:
@@ -247,3 +270,9 @@ def _freeze_optional_vector(instance: object, name: str) -> None:
         msg = f"{name} must be a finite 1D array."
         raise ValueError(msg)
     object.__setattr__(instance, name, vector)
+
+
+def _validate_sampling(sampling: object, *, name: str, operation: str) -> None:
+    if not callable(getattr(sampling, operation, None)):
+        msg = f"{name} must implement {operation} and return SampleBatch records."
+        raise TypeError(msg)
