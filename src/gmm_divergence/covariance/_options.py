@@ -22,11 +22,11 @@ class DiagonalLoading:
     Applies the regularizer
 
     $$
-    \Sigma_{\mathrm{reg}} = \Sigma + \varepsilon I,
+    \Sigma_{\mathrm{reg}} = \Sigma + \varepsilon I_d,
     $$
 
-    where $\Sigma$ is the input covariance, $I$ is the identity matrix, and
-    $\varepsilon \ge 0$ is the diagonal loading amount.
+    where $\Sigma$ is the symmetric $d\times d$ input covariance, $I_d$ is the
+    identity matrix, and $\varepsilon\geq0$ is `epsilon` or its heuristic value.
 
     Parameters
     ----------
@@ -51,13 +51,14 @@ class IsotropicShrinkage:
     $$
     \Sigma_{\mathrm{reg}}
     =
-    (1-\alpha)\,\Sigma + \alpha\,\tau I,
+    (1-\eta)\,\Sigma + \eta\,\tau I_d,
     \qquad
     \tau = \frac{\mathrm{tr}(\Sigma)}{d},
     $$
 
-    where $d$ is the dimensionality and $\tau I$ is an isotropic covariance
-    with the same average marginal variance as $\Sigma$.
+    where $\Sigma$ is the symmetric $d\times d$ input covariance,
+    $\eta\in[0,1]$ is `strength`, and $I_d$ is the identity matrix. The target
+    $\tau I_d$ has the same average marginal variance as $\Sigma$.
 
     Parameters
     ----------
@@ -82,11 +83,12 @@ class DiagonalShrinkage:
     $$
     \Sigma_{\mathrm{reg}}
     =
-    (1-\alpha)\,\Sigma + \alpha\,\mathrm{diag}(\Sigma),
+    (1-\eta)\,\Sigma + \eta\,\mathrm{diag}(\Sigma),
     $$
 
-    where $\mathrm{diag}(\Sigma)$ is the diagonal matrix containing the
-    marginal variances of $\Sigma$.
+    where $\Sigma$ is the symmetric input covariance, $\eta\in[0,1]$ is
+    `strength`, and $\mathrm{diag}(\Sigma)$ is the diagonal matrix containing
+    its marginal variances.
 
     Parameters
     ----------
@@ -109,7 +111,7 @@ class EigenvalueClipping:
     Given an eigendecomposition
 
     $$
-    \Sigma = Q \, \mathrm{diag}(\lambda_1, \ldots, \lambda_d) \, Q^T,
+    \Sigma = U\,\mathrm{diag}(\lambda_1,\ldots,\lambda_d)\,U^\top,
     $$
 
     this method returns
@@ -117,10 +119,14 @@ class EigenvalueClipping:
     $$
     \Sigma_{\mathrm{reg}}
     =
-    Q \, \mathrm{diag}(\max(\lambda_i, \lambda_{\min})) \, Q^T,
+    U\,\mathrm{diag}\!\left(
+    \max(\lambda_1,\lambda_{\mathrm{floor}}),\ldots,
+    \max(\lambda_d,\lambda_{\mathrm{floor}})\right)\,U^\top,
     $$
 
-    where $\lambda_{\min} > 0$ is the eigenvalue floor.
+    where $U$ contains orthonormal eigenvectors of the symmetric $d\times d$
+    input covariance, $\lambda_1\leq\cdots\leq\lambda_d$ are its eigenvalues,
+    and $\lambda_{\mathrm{floor}}>0$ is `min_eigenvalue`.
 
     Parameters
     ----------
@@ -142,20 +148,22 @@ class LowRank:
     For an eigendecomposition
 
     $$
-    \Sigma = U \, \mathrm{diag}(\lambda_1, \ldots, \lambda_d) \, U^T,
+    \Sigma = U\,\mathrm{diag}(\lambda_1,\ldots,\lambda_d)\,U^\top,
     $$
 
-    the approximation keeps the leading `rank` eigenpairs and returns
+    with $\lambda_1\leq\cdots\leq\lambda_d$, retain the $r$ largest eigenpairs
+    ($r$ is `rank`) and return
 
     $$
     \Sigma_{\mathrm{reg}}
     =
-    U_r \, \Lambda_r \, U_r^T + \varepsilon I,
+    U_r\,\Lambda_r\,U_r^\top+\varepsilon I_d,
     $$
 
-    where $U_r$ contains the leading eigenvectors, $\Lambda_r$ the
-    corresponding eigenvalues, and $\varepsilon \ge 0$ is the diagonal loading
-    applied after truncation.
+    where $U_r$ contains the retained eigenvectors,
+    $\Lambda_r=\mathrm{diag}(\lambda_{d-r+1},\ldots,\lambda_d)$ their eigenvalues,
+    $I_d$ is the $d\times d$ identity, and $\varepsilon\geq0$ is `epsilon` or
+    its heuristic value. Eigenvectors and eigenvalues use the same order.
 
     Parameters
     ----------

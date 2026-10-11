@@ -46,6 +46,14 @@ def categorical_kl_divergence(
 ) -> DivergenceResult:
     r"""Compute directed categorical KL between probability vectors over shared categories.
 
+    For probability vectors $\boldsymbol{\pi}_p$ and $\boldsymbol{\pi}_q$ over
+    $K$ shared categories, the exact quantity is
+
+    $$
+    D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_q)
+    =\sum_{k:\pi_{p,k}>0}\pi_{p,k}\log\frac{\pi_{p,k}}{\pi_{q,k}}.
+    $$
+
     Parameters
     ----------
     p, q : array-like
@@ -62,9 +70,11 @@ def categorical_kl_divergence(
     Returns
     -------
     DivergenceResult
-        Categorical $D_{\mathrm{KL}}(p_w \| q_w)$ in nats, with divergence
-        `"categorical_kl"`. Without smoothing, a positive reference weight
-        paired with a zero comparison weight gives positive infinity.
+        Categorical $D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_q)$
+        in nats with divergence `"categorical_kl"`. The vectors are the supplied
+        p and q probabilities, after smoothing if requested. Without smoothing,
+        a positive reference probability paired with a zero comparison
+        probability gives positive infinity.
 
     Notes
     -----
@@ -79,7 +89,7 @@ def categorical_kl_divergence(
 def kl_divergence(
     p: GaussianDistribution, q: GaussianDistribution, *, estimator: KLEstimator
 ) -> DivergenceResult:
-    r"""Compute the directed Kullback--Leibler divergence $D_{\mathrm{KL}}(p \| q)$.
+    r"""Compute the directed Kullback-Leibler divergence $D_{\mathrm{KL}}(p \| q)$.
 
     Computes
 
@@ -90,7 +100,7 @@ def kl_divergence(
 
     The estimator is always explicit: it is never replaced automatically when
     the inputs happen to be Gaussian. Select :class:`ClosedForm` for an exact
-    Gaussian--Gaussian result, or a sampled or approximate estimator for
+    Gaussian-to-Gaussian result, or a sampled or approximate estimator for
     mixtures.
 
     Parameters
@@ -135,7 +145,8 @@ def component_kl_matrix(p: GaussianDistribution, q: GaussianDistribution) -> Flo
     r"""Return pairwise closed-form KL divergences between components.
 
     The result has shape `(p_components, q_components)` and element
-    `(i, j)` equals $D_{\mathrm{KL}}(p_i \| q_j)$. A :class:`Gaussian` is treated as a
+    `(k, j)` equals $D_{\mathrm{KL}}(p_k \| q_j)$, where $p_k$ and $q_j$ are
+    Gaussian component densities of p and q. A :class:`Gaussian` is treated as a
     one-component mixture.
 
     Parameters
@@ -160,7 +171,7 @@ def component_kl_matrix(p: GaussianDistribution, q: GaussianDistribution) -> Flo
 def symmetric_kl_divergence(
     p: GaussianDistribution, q: GaussianDistribution, *, forward: KLEstimator, reverse: KLEstimator
 ) -> DivergenceResult:
-    r"""Compute the symmetrized Kullback--Leibler divergence.
+    r"""Compute the averaged symmetric Kullback-Leibler divergence.
 
     Computes
 
@@ -169,6 +180,8 @@ def symmetric_kl_divergence(
     = \frac{1}{2}\left[D_{\mathrm{KL}}(p \| q) + D_{\mathrm{KL}}(q \| p)\right].
     $$
 
+    Here $p$ and $q$ are the reference and comparison distributions. The quantity
+    is the average, not the unscaled sum, of directed KL values in nats.
     The directional estimators are intentionally separate. In particular,
     precomputed samples for `forward` must originate from `p`, while those
     for `reverse` must originate from `q`.
@@ -207,7 +220,7 @@ def jensen_shannon_divergence(
     p_to_midpoint: KLEstimator,
     q_to_midpoint: KLEstimator,
 ) -> DivergenceResult:
-    r"""Compute the Jensen--Shannon divergence between two distributions.
+    r"""Compute the Jensen-Shannon divergence between two distributions.
 
     Computes
 
@@ -236,7 +249,7 @@ def jensen_shannon_divergence(
     Returns
     -------
     DivergenceResult
-        Jensen--Shannon divergence in nats, without taking its square root.
+        Jensen-Shannon divergence in nats, without taking its square root.
         `terms` holds the p-to-midpoint then q-to-midpoint results.
         `n_evaluations` is summed only when both terms report evaluation counts;
         uncertainty remains on the directional terms.

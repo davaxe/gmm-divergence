@@ -7,13 +7,17 @@ icon: lucide/badge-plus
 Covariance regularization utilities are imported from
 `gmm_divergence.covariance`.
 
-Covariance regularization strategies for covariance matrices are techniques used
-to ensure that the covariance matrices of the components in a GMM (or single
-Gaussians) are well-conditioned and do not lead to numerical instability during
-estimation. These strategies can help prevent issues such as singular covariance
-matrices, which can arise when the data is not sufficiently diverse or when
-there are too few data points relative to the number of parameters being
-estimated.
+Regularization can improve covariance conditioning and repair singular empirical
+estimates, for example when observations are sparse relative to feature dimension.
+It does not guarantee positive definiteness for every input and configuration;
+the returned matrices are validated, and invalid results are rejected.
+
+Following the [notation conventions](index.md#notation-and-terminology),
+$\Sigma$ is a symmetric $d\times d$ input matrix, $I_d$ is the identity,
+$\varepsilon\geq0$ is diagonal loading, $\eta\in[0,1]$ is shrinkage strength,
+$s>0$ is heuristic scale, and $r$ is retained rank. Eigenvalues are ordered
+$\lambda_1\leq\cdots\leq\lambda_d$. Symbols are mapped to their Python
+configuration fields in the generated docstrings below.
 
 Regularization never modifies the input array. Every regularizer returns an
 independent, read-only `float64` array.
@@ -23,11 +27,17 @@ independent, read-only `float64` array.
         members: false
         show_root_full_path: true
 
-Input shape determines scalar versus batched behavior: `(n_features, n_features)`
+Input shape determines single versus batched matrix behavior: `(n_features, n_features)`
 or `(n_matrices, n_features, n_features)`. `estimate_epsilon` returns a scalar or
 one value per matrix. Configure `epsilon`, heuristic `scale` and `rank`, shrinkage
 `strength`, or `max_condition_number` explicitly by keyword. Shrinkage defaults
 to `strength=1e-2` for both isotropic and diagonal targets.
+
+Trace scaling and residual-variance heuristics clip negative contributions to
+zero. Retaining full rank gives zero residual variance. The condition-number
+heuristic computes loading from the extreme eigenvalues; an all-zero covariance
+still receives zero loading, so use positive loading or eigenvalue clipping
+when that case must be repaired.
 
 ```python
 import gmm_divergence as gd

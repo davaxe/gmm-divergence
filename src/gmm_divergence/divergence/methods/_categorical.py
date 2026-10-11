@@ -19,10 +19,13 @@ def kl_categorical(
     Computes
 
     $$
-    D_{\mathrm{KL}}(p \| q) = \sum_{k=1}^K \pi_{p,k} \log \frac{\pi_{p,k}}{\pi_{q,k}}
+    D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_q)
+    =\sum_{k:\pi_{p,k}>0}\pi_{p,k}\log\frac{\pi_{p,k}}{\pi_{q,k}},
     $$
 
-    where index $k$ represents the same category in both probability vectors.
+    where $\boldsymbol{\pi}_p$ and $\boldsymbol{\pi}_q$ are the p_w and q_w
+    probability vectors over $K$ shared categories. Index $k$ represents the
+    same category in both vectors; zero reference probabilities contribute zero.
     This is categorical KL, not KL between Gaussian mixture densities.
 
     Parameters

@@ -512,7 +512,7 @@ class GaussianMixture:
 def sample_gmm(
     gmm: GaussianMixture, /, n_samples: int, *, rng: np.random.Generator | int | None = None
 ) -> FloatArray:
-    """Draw n_samples independent observations from gmm, with shape (N, D).
+    """Draw n_samples independent observations with shape (n_samples, n_features).
 
     n_samples must be positive. rng accepts a generator, integer seed, or None;
     integer seeds restart a stream, generators advance, and None uses fresh
@@ -531,8 +531,9 @@ def sample_gmm(
 def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
     """Evaluate mixture log densities without a Python loop over components.
 
-    x is a finite point (D,) or point matrix (N, D) matching gmm.n_features.
-    Returns an (N,) float64 array, including length one for a single point.
+    x is a finite point (n_features,) or point matrix (n_samples, n_features)
+    matching gmm.n_features. Returns an (n_samples,) float64 array, including
+    length one for a single point.
     """
     x = as_points(x, n_features=gmm.n_features, name="x")
 
@@ -558,7 +559,8 @@ def _component_logpdf(gmm: GaussianMixture, x: FloatArray) -> FloatArray:
 def gmm_pdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
     """Evaluate mixture densities at finite points matching gmm.n_features.
 
-    x has shape (D,) or (N, D). Returns float64 densities with shape (N,),
+    x has shape (n_features,) or (n_samples, n_features). Returns float64
+    densities with shape (n_samples,),
     including a length-one array for a single point.
     """
     return np.exp(gmm_logpdf(x, gmm))

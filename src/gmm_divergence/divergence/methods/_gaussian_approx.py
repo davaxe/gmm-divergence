@@ -13,7 +13,20 @@ if TYPE_CHECKING:
 
 
 def kl_gaussian_approximation(p: GaussianDistribution, q: GaussianDistribution) -> DivergenceResult:
-    """Compute Gaussian KL using the aggregate moments of each input.
+    r"""Compute Gaussian KL using the aggregate moments of each input.
+
+    With aggregate means $\mu_p$, $\mu_q$ and covariances $\Sigma_p$, $\Sigma_q$,
+    the approximation is
+
+    $$
+    \widehat D_{\mathrm{KL}}(p\|q)
+    =D_{\mathrm{KL}}\!\left(
+    \mathcal{N}(\mu_p,\Sigma_p)\,\|\,\mathcal{N}(\mu_q,\Sigma_q)\right).
+    $$
+
+    These moments include the input mixtures' component probabilities and
+    between-component mean variation. Distinct mixtures with identical first
+    and second moments receive zero here; the result is not a bound on mixture KL.
 
     Parameters
     ----------

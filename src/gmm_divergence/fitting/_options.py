@@ -20,10 +20,11 @@ class SoftmaxLBFGSB:
     r"""L-BFGS-B optimizer over unconstrained softmax logits.
 
     The optimizer represents mixture weights through logits
-    $\mathbf{z} \in \mathbb{R}^N$ and maps them to simplex weights with
+    $\mathbf{z}\in\mathbb{R}^{L}$ for $L$ retained candidates, and maps them
+    to candidate weights $\mathbf{w}\in\Delta_L$ with
 
     $$
-    w_i = \frac{\exp(z_i)}{\sum_{j=1}^{N}\exp(z_j)}.
+    w_i=\frac{\exp(z_i)}{\sum_{j=1}^{L}\exp(z_j)},\qquad i=1,\ldots,L.
     $$
 
     This avoids explicit simplex constraints in the optimizer while still
@@ -58,13 +59,13 @@ class SimplexSLSQP:
     r"""SLSQP optimizer over simplex-constrained weights.
 
     The optimizer works directly with the mixture weights
-    $\mathbf{w} \in \Delta_N$, where
+    $\mathbf{w}\in\Delta_L$ for $L$ retained candidates, where
 
     $$
-    \Delta_N =
+    \Delta_L =
     \left\{
-        \mathbf{w} \in \mathbb{R}^N :
-        w_i \ge 0,\ \sum_{i=1}^{N} w_i = 1
+        \mathbf{w}\in\mathbb{R}^{L}:
+        w_i\geq0,\ \sum_{i=1}^{L}w_i=1
     \right\}.
     $$
 
@@ -91,12 +92,12 @@ class SimplexSLSQP:
     max_iterations: int = 1000
     """Maximum number of optimizer iterations."""
     min_weight: float = 1e-12
-    """Minimum weight threshold for the optimizer.
+    """Lower bound for each retained candidate weight.
 
     Ideally, this would be zero, but SLSQP can fail when weights are exactly
     zero. Setting it to small positive values avoids numerical issues while
-    still allowing the optimizer to effectively prune components with negligible
-    weights."""
+    still allowing negligible candidate weights. This bound does not remove
+    candidates or their Gaussian components from the fitted mixture."""
     initial_weights: npt.ArrayLike | None = None
     """Optional initial simplex weights for the active candidates."""
 
@@ -122,8 +123,10 @@ class ForwardKL:
     \right],
     $$
 
-    where $p$ is the reference distribution and $q_{\mathbf{w}}$ is the
-    weighted combination of the candidate mixtures. Since $\log p(X)$ does
+    where $p$ is the target density and
+    $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$ combines $L$ fixed candidate densities
+    with nonnegative weights summing to one. $X$ denotes a random observation
+    from the first distribution. Since $\log p(X)$ does
     not depend on $\mathbf{w}$, its contribution is cached. Reported values
     include this constant and estimate KL in nats.
 
@@ -161,6 +164,9 @@ class ReverseKL:
     \right].
     $$
 
+    Here $p$ is the target density and $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$
+    combines $L$ fixed candidate densities with nonnegative weights summing to
+    one. $X$ is a random observation under the indicated distribution.
     The implementation evaluates a fixed-sample estimator using samples from
     each candidate mixture $q_i$. The reference density $p$ is evaluated at
     those samples, so no samples from $p$ are required.
@@ -195,13 +201,15 @@ class BidirectionalKL:
     forward and reverse KL objectives:
 
     $$
-    \alpha\,D_{\mathrm{KL}}\!\left(p \,\|\, q_{\mathbf{w}}\right)
+    \beta\,D_{\mathrm{KL}}\!\left(p \,\|\, q_{\mathbf{w}}\right)
     +
-    (1-\alpha)\,D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, p\right),
-    \qquad \alpha \in [0, 1].
+    (1-\beta)\,D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, p\right),
+    \qquad \beta\in[0,1].
     $$
 
-    Values of $\alpha$ closer to one emphasize coverage of $p$ by
+    Here $p$ is the target density, $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$ is
+    the combined candidate density, and $\beta$ is `forward_weight`.
+    Values of $\beta$ closer to one emphasize coverage of $p$ by
     $q_{\mathbf{w}}$, while values closer to zero emphasize the reverse-KL
     objective.
 
@@ -214,7 +222,7 @@ class BidirectionalKL:
         Fixed batch per candidate for the reverse term. Precomputed batches
         cover original candidates. Not consumed when forward_weight is one.
     forward_weight : float, default=0.5
-        Finite weight in [0, 1], represented by alpha in the formula. The
+        Finite weight in [0, 1], represented by beta in the formula. The
         reverse term receives 1 - forward_weight.
     """
 
@@ -258,7 +266,10 @@ class JensenShannon:
     m_{\mathbf{w}} = \frac{1}{2}p + \frac{1}{2}q_{\mathbf{w}}.
     $$
 
-    This objective is symmetric and bounded, while still using fixed samples
+    Here $p$ is the target density and $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$
+    combines fixed candidate densities with nonnegative weights summing to one.
+    The exact divergence is symmetric and bounded by $\log 2$ nats. Fitting
+    evaluates its sampled approximation using fixed observations
     from `p` and each candidate mixture `q_i` during optimization.
 
     Parameters
@@ -301,10 +312,22 @@ class MomentMatching:
     The first-moment objective compares mixture means,
 
     $$
-    \left\|\mu_p - \mu_{q_{\mathbf{w}}}\right\|_2^2,
+    \left\|\mu_{q_{\mathbf{w}}} - \mu_p\right\|_2^2,
     $$
 
-    and can optionally include second-moment information as well.
+    where $\mu_p$ and $\mu_{q_{\mathbf{w}}}$ are the aggregate means of target
+    $p$ and combined density $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$. With raw
+    second moments $M_{2,p}=\Sigma_p+\mu_p\mu_p^\top$ and
+    $M_{2,q_{\mathbf{w}}}=\Sigma_{q_{\mathbf{w}}}
+    +\mu_{q_{\mathbf{w}}}\mu_{q_{\mathbf{w}}}^\top$, the optional objective is
+
+    $$
+    \|\mu_{q_{\mathbf{w}}}-\mu_p\|_2^2
+    +\|M_{2,q_{\mathbf{w}}}-M_{2,p}\|_{\mathrm{F}}^2.
+    $$
+
+    Here $\Sigma$ denotes aggregate covariance and the Frobenius norm squares
+    and sums every matrix entry, matching the flattened array implementation.
 
     Parameters
     ----------

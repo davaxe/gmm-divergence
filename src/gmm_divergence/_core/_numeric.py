@@ -26,7 +26,10 @@ def symmetrize(array: FloatArray) -> FloatArray:
 def pairwise_gaussian_kl(
     p_means: FloatArray, p_covariances: Covariances, q_means: FloatArray, q_covariances: Covariances
 ) -> FloatArray:
-    r"""Compute $D_{\mathrm{KL}}(p_i \| q_j)$ for all Gaussian component pairs.
+    r"""Compute $D_{\mathrm{KL}}(p_k \| q_j)$ for all Gaussian component pairs.
+
+    There are n_p reference components and n_q comparison components in d
+    features. Component probabilities do not enter these Gaussian divergences.
 
     Parameters
     ----------
@@ -42,8 +45,9 @@ def pairwise_gaussian_kl(
     Returns
     -------
     FloatArray
-        Matrix of shape (n_p, n_q), where entry (i, j) is
-        $D_{\mathrm{KL}}(p_i \| q_j)$.
+        Matrix of shape (n_p, n_q), where entry (k, j) compares the kth
+        reference Gaussian component p_k with the jth comparison component q_j.
+        Values are in nats; this matrix is not full-mixture KL.
     """
     if p_means.ndim != 2:
         msg = f"p_means must have shape (n_p, d), got {p_means.shape}."

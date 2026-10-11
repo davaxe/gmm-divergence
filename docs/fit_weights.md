@@ -4,184 +4,186 @@ icon: lucide/chart-no-axes-combined
 
 # Fitting mixture weights
 
-This section describes how to fit mixture weights for a convex combination of
-fixed candidate Gaussian mixtures. Given a reference mixture $p$ and candidate
-mixtures $q_1,\dots,q_N$, the goal is to choose non-negative weights $w_i$ that
-sum to one so that the combined mixture $q_{\mathbf{w}}=\sum_i w_i q_i$
-approximates $p$ as closely as possible. The primary formulation minimizes the
-forward KL divergence $D_{\mathrm{KL}}(p\|q_{\mathbf{w}})$, with alternative
-reverse and bidirectional KL objectives discussed afterward.
+Following the [notation conventions](reference/index.md#notation-and-terminology),
+let $p$ be the fixed target density and $q_1,\ldots,q_L$ the fixed candidate
+densities. Each candidate may be a Gaussian or a Gaussian mixture. Fitting
+chooses nonnegative candidate weights $\mathbf{w}=(w_1,\ldots,w_L)^\top$ summing
+to one, so that $q_{\mathbf{w}}=\sum_{i=1}^{L}w_iq_i$ approximates $p$ under the
+chosen objective. Candidate weights $w_i$ are distinct from the component
+probabilities inside each candidate.
 
 ## Forward KL divergence formulation
 
-Similar to the previous sections, let $p$ be a fixed Gaussian mixture and let
-$\{q_i\}_{i=1}^N$ denote a collection of fixed Gaussian mixtures. Specifically,
+For Gaussian mixtures in $d$ features, write
 
 $$
-p(x) = \sum_{k=1}^{K_p} \pi_k \mathcal{N}(x;\mu_k,\Sigma_k),
+p(x)=\sum_{k=1}^{K_p}\pi_{p,k}\mathcal{N}(x;\mu_{p,k},\Sigma_{p,k}),
 $$
 
-and, for each $i \in \{1,\dots,N\}$,
+and, for candidate $i\in\{1,\ldots,L\}$,
 
 $$
-q_i(x) = \sum_{j=1}^{K_i} \omega_{ij}\mathcal{N}(x;\nu_{ij},\Lambda_{ij}).
+q_i(x)=\sum_{k=1}^{K_i}\pi_{i,k}\mathcal{N}(x;\mu_{i,k},\Sigma_{i,k}).
 $$
 
-Here, $K_p$ is the number of components in $p$, while $K_i$ is the number
-of components in the mixture $q_i$, which may vary with $i$. All mixtures are
-fixed, meaning that the component weights, means, and covariances,
+Here $K_p$ and $K_i$ are component counts, the means are $d$-dimensional vectors,
+and covariances are positive-definite $d\times d$ matrices. Each distribution's
+component probabilities are nonnegative and sum to one. All these parameters
+are fixed; only $\mathbf{w}$ is optimized. A Gaussian is the case with one
+component of probability one.
+
+The combined distribution is
 
 $$
-\{\pi_k,\mu_k,\Sigma_k\}_{k=1}^{K_p}
-\quad\text{and}\quad
-\{\omega_{ij},\nu_{ij},\Lambda_{ij}\}_{j=1}^{K_i}, \; i=1,\dots,N,
+q_{\mathbf{w}}(x)
+=\sum_{i=1}^{L}w_iq_i(x)
+=\sum_{i=1}^{L}\sum_{k=1}^{K_i}
+ w_i\pi_{i,k}\mathcal{N}(x;\mu_{i,k},\Sigma_{i,k}).
 $$
 
-are treated as fixed quantities. The objective is to find a set of non-negative weights $\{w_i\}_{i=1}^N$ that sum to one, such that the KL divergence from $p$ to the mixture
-
-$$
-q_{\mathbf{w}}(x) = \sum_{i=1}^N w_i q_i(x)
-$$
-
-is minimized. Formally, this can be expressed as the following optimization problem:
+The represented mixture contains $\sum_{i=1}^{L}K_i$ components, including any
+zero-weight components retained by the implementation. The forward objective is
 
 \begin{equation}
 \label{eq:mixture-weight-optimization}
-\begin{aligned}
-    \min_{\mathbf{w} \in \Delta_N}
-    \quad & D_{\mathrm{KL}}\!\left(p \,\|\, q_{\mathbf{w}}\right),
-\end{aligned}
+\mathbf{w}^{\star}
+=\arg\min_{\mathbf{w}\in\Delta_L}D_{\mathrm{KL}}(p\|q_{\mathbf{w}}),
 \end{equation}
 
-where
+where the $L$-coordinate probability simplex is
 
 $$
-\Delta_N =
-\left\{
-\mathbf{w} \in \mathbb{R}^N
-\,:\,
-w_i \ge 0,\;
-\sum_{i=1}^N w_i = 1
-\right\}.
-$$
-
-
-Importantly, the resulting mixture $q_{\mathbf{w}}$ is itself a Gaussian mixture, with the number of components equal to the sum of the number of components across all $q_i$:
-
-$$
-q_{\mathbf{w}}(x) = \sum_{i=1}^N w_i \sum_{j=1}^{K_i} \omega_{ij}\mathcal{N}(x;\nu_{ij},\Lambda_{ij}) = \sum_{i=1}^N \sum_{j=1}^{K_i} w_i \omega_{ij}\mathcal{N}(x;\nu_{ij},\Lambda_{ij}).
+\Delta_L=\left\{\mathbf{w}\in\mathbb{R}^{L}:
+ w_i\geq0,\ \sum_{i=1}^{L}w_i=1\right\}.
 $$
 
 ### Practical objective
 
-Using the definition of KL divergence (see [KL estimation](kl_estimation.md#definition)),
-the optimization problem in $\eqref{eq:mixture-weight-optimization}$ can be rewritten as
+The exact forward objective separates into a fixed target term and cross-entropy:
 
 $$
-\min_{\mathbf{w} \in \Delta_N}
-\quad \mathbb{E}_{X\sim p}
-\left\lbrack \log p(X) - \log q_{\mathbf{w}}(X) \right\rbrack.
+F(\mathbf{w})=D_{\mathrm{KL}}(p\|q_{\mathbf{w}})
+=C_p+H(p,q_{\mathbf{w}}),
 $$
 
-Since $p$ does not depend on $\mathbf{w}$, the optimization problem is equivalent to
-
 $$
-\min_{\mathbf{w} \in \Delta_N}
-\quad \underbrace{-\mathbb{E}_{X\sim p}
-\left\lbrack \log q_{\mathbf{w}}(X) \right\rbrack}_{= J(\mathbf{w}), \;\text{objective function}}.
+C_p=\mathbb{E}_{X\sim p}[\log p(X)],
+\qquad H(p,q_{\mathbf{w}})=-\mathbb{E}_{X\sim p}[\log q_{\mathbf{w}}(X)].
 $$
 
-The _objective function_ $J(\mathbf{w})$ is the negative expected log-likelihood of the mixture $q_{\mathbf{w}}$ under the distribution $p$ and generally cannot be expressed in closed form. However, it
-can be estimated using Monte Carlo sampling. Specifically, given $M$ independent and identically distributed (iid) samples $x^{(1)},\dots,x^{(M)}$ drawn from $p$, we can construct the following estimator for $J(\mathbf{w})$:
+$C_p$ does not depend on $\mathbf{w}$, so minimizing cross-entropy gives the same
+weights as minimizing forward KL. The implementation nevertheless includes the
+cached target term in `objective_value`, so the reported quantity estimates KL,
+not cross-entropy.
+
+With fixed target observations $x_n$ and normalized integration weights
+$a_n\geq0$, $\sum_{n=1}^{N_p}a_n=1$, preparation builds
 
 $$
-\hat{J}(\mathbf{w}) = - \frac{1}{M} \sum_{m=1}^M \log q_{\mathbf{w}}(x^{(m)}),
-\quad \text{where} \quad
-x^{(1)},\dots,x^{(M)} \overset{\mathrm{iid}}{\sim} p,
+\widehat F(\mathbf{w})
+=\sum_{n=1}^{N_p}a_n
+ \left[\log p(x_n)-\log q_{\mathbf{w}}(x_n)\right].
 $$
 
-resulting in the final practical optimization problem
+For independent observations $x_n\sim p$, use $a_n=1/N_p$. Stratified batches
+instead use the component-mass integration weights described under
+[KL estimation](kl_estimation.md#monte-carlo-estimate-and-uncertainty). The
+resulting numerical optimization problem is
 
 \begin{equation}
 \label{eq:mixture-weight-optimization-kl-simplified-monte-carlo}
-\mathbf{w}^{\star} = \arg\min_{\mathbf{w} \in \Delta_N} \hat{J}(\mathbf{w}).
+\widehat{\mathbf{w}}^{\star}
+=\arg\min_{\mathbf{w}\in\Delta_L}\widehat F(\mathbf{w}).
 \end{equation}
 
-The implementation caches the reference term and reports
-`objective_value = mean(log p(X) - log q_w(X))`, including the constant.
-It therefore estimates KL in nats while retaining the same optimizer and gradient.
+The hat distinguishes the sampled problem from the exact objective in
+$\eqref{eq:mixture-weight-optimization}$. Optimizer convergence concerns this
+fixed sampled problem, not the unknown exact optimum. Samples and densities
+are cached throughout a fit; the numerical kernels floor weights at $10^{-300}$
+when taking logarithms or dividing in forward gradients.
 
-## Alternative objective: _reverse_ KL divergence
+## Alternative objective: reverse KL divergence
 
-Alternatively, one could consider the reverse KL divergence from $q_{\mathbf{w}}$ to $p$:
+The exact reverse objective is
 
 $$
-D_{\mathrm{KL}}(q_{\mathbf{w}} \| p) = \int q_{\mathbf{w}}(x) \log \frac{q_{\mathbf{w}}(x)}{p(x)} dx = \mathbb{E}_{X\sim q_{\mathbf{w}}}
-\left\lbrack \log q_{\mathbf{w}}(X) - \log p(X) \right\rbrack.
+R(\mathbf{w})=D_{\mathrm{KL}}(q_{\mathbf{w}}\|p)
+=\mathbb{E}_{X\sim q_{\mathbf{w}}}
+ \left[\log q_{\mathbf{w}}(X)-\log p(X)\right].
 $$
 
-In this case, the optimization problem would be
+There is no need to redraw from the changing mixture during optimization.
+Linearity of integration gives
 
 \begin{equation}
 \label{eq:mixture-weight-optimization-reverse-kl}
-\begin{aligned}
-    \min_{\mathbf{w} \in \Delta_N}
-    \quad & D_{\mathrm{KL}}\!\left(q_{\mathbf{w}} \,\|\, p\right) = \mathbb{E}_{X\sim q_{\mathbf{w}}}
-\left\lbrack \log q_{\mathbf{w}}(X) - \log p(X) \right\rbrack.
-\end{aligned}
+R(\mathbf{w})=\sum_{i=1}^{L}w_i\,
+\mathbb{E}_{X\sim q_i}
+ \left[\log q_{\mathbf{w}}(X)-\log p(X)\right].
 \end{equation}
 
-This optimization problem can also be estimated using Monte Carlo sampling, but
-it requires sampling from the mixture $q_{\mathbf{w}}$, which itself depends on
-the optimization variable $\mathbf{w}$. This can make the optimization more
-challenging, as the sampling distribution changes as $\mathbf{w}$ is updated.
-
-However, the underlying components are fixed and it is possible to reuse samples from the candidate mixtures $q_i$ to construct an estimator for the reverse KL divergence. For example, given $M$ iid samples $x_i^{(1)},\dots,x_i^{(M)}$ drawn from each candidate mixture $q_i$, the following estimator for the reverse KL divergence can be constructed:
+Draw fixed observations $x_{i,n}$ from each candidate $q_i$, with $N_q$
+observations per candidate and normalized within-batch integration weights
+$a_{i,n}$. The implementation minimizes
 
 $$
-\hat{D}_{\mathrm{KL}}(q_{\mathbf{w}} \| p) = \sum_{i=1}^N w_i \left( \frac{1}{M} \sum_{m=1}^M \log q_{\mathbf{w}}(x_i^{(m)}) - \log p(x_i^{(m)}) \right),
+\widehat R(\mathbf{w})
+=\sum_{i=1}^{L}w_i\sum_{n=1}^{N_q}a_{i,n}
+ \left[\log q_{\mathbf{w}}(x_{i,n})-\log p(x_{i,n})\right].
 $$
 
-where
+For independent draws, $a_{i,n}=1/N_q$. For stratified batches, the weights
+preserve each candidate's component mass. Both log-density terms are inside the
+sample average. The target density is evaluated at candidate observations;
+reverse fitting neither requires nor consumes target observations. All candidate
+batches must have equal counts; $N_q$ need not equal the target count $N_p$ used
+by objectives that require both sources.
+
+## Alternative objective: bidirectional KL divergence
+
+Let $\beta\in[0,1]$ be `forward_weight`. The objective is
 
 $$
-x_i^{(1)},\dots,x_i^{(M)} \overset{\mathrm{iid}}{\sim} q_i, \; i=1,\dots,N.
+B_{\beta}(\mathbf{w})
+=\beta D_{\mathrm{KL}}(p\|q_{\mathbf{w}})
+ +(1-\beta)D_{\mathrm{KL}}(q_{\mathbf{w}}\|p).
 $$
 
-## Alternative objective: _bidirectional_ KL divergence
+Its sampled implementation is $\widehat B_{\beta}
+=\beta\widehat F+(1-\beta)\widehat R$, using separately configured target and
+candidate batches. At either endpoint, the unused source is not sampled.
+$\beta=1/2$ is the averaged symmetric KL, also returned by
+`symmetric_kl_divergence` when comparing two fixed distributions. The forward
+term retains its cached target-density constant.
 
-Another alternative is to consider a bidirectional KL divergence, which combines the forward and reverse KL divergences:
+## Alternative objective: Jensen-Shannon divergence
 
-$$
-D_{\mathrm{biKL}}^{\alpha}(p, q_{\mathbf{w}}) =
-\alpha D_{\mathrm{KL}}(p \| q_{\mathbf{w}})
-+ (1-\alpha) D_{\mathrm{KL}}(q_{\mathbf{w}} \| p),
-\quad 0 \le \alpha \le 1.
-$$
-
-The optimization problem would essentially be a weighted combination of the two
-previous optimization problems, and can also be estimated using Monte Carlo
-sampling. In the case of $\alpha=0.5$, the bidirectional KL divergence is
-symmetric and gives equal weight to both the forward and reverse KL divergences.
-
-## Alternative objective: _Jensen-Shannon_ divergence
-
-The Jensen-Shannon objective compares `p` and `q_w` through their midpoint
-mixture,
+Define the midpoint density
 
 $$
-m_{\mathbf{w}} = \frac{1}{2}p + \frac{1}{2}q_{\mathbf{w}},
+m_{\mathbf{w}}(x)=\tfrac12p(x)+\tfrac12q_{\mathbf{w}}(x).
 $$
 
-and minimizes
+The exact objective is
 
 $$
-D_{\mathrm{JS}}(p, q_{\mathbf{w}})
-=
-\frac{1}{2}D_{\mathrm{KL}}(p \| m_{\mathbf{w}})
-+
-\frac{1}{2}D_{\mathrm{KL}}(q_{\mathbf{w}} \| m_{\mathbf{w}}).
+D_{\mathrm{JS}}(p,q_{\mathbf{w}})
+=\tfrac12D_{\mathrm{KL}}(p\|m_{\mathbf{w}})
+ +\tfrac12D_{\mathrm{KL}}(q_{\mathbf{w}}\|m_{\mathbf{w}}).
 $$
+
+Using the same source notation as above, its fixed-sample estimate is
+
+$$
+\widehat D_{\mathrm{JS}}(p,q_{\mathbf{w}})
+=\frac12\sum_{n=1}^{N_p}a_n
+ \log\frac{p(x_n)}{m_{\mathbf{w}}(x_n)}
++\frac12\sum_{i=1}^{L}w_i\sum_{n=1}^{N_q}a_{i,n}
+ \log\frac{q_{\mathbf{w}}(x_{i,n})}{m_{\mathbf{w}}(x_{i,n})}.
+$$
+
+The exact divergence lies in $[0,\log 2]$ nats. A finite-sample estimate need not
+preserve this bound. The objective and divergence API do not take its square root.
 
 This gives a symmetric alternative to the directional KL objectives:
 
@@ -221,6 +223,50 @@ candidate mixture, and `p` is evaluated at the candidate samples. It therefore
 does not require or consume samples drawn from `p`.
 
 
+## Categorical forward KL
+
+Categorical fitting uses the same $L$ candidate weights and simplex. For $K$
+shared categories, let $\boldsymbol{\pi}_p$ be the target probability vector and
+$\pi_{i,k}$ candidate $i$'s probability of category $k$. The fitted probabilities
+and exact objective are
+
+$$
+\pi_{\mathbf{w},k}=\sum_{i=1}^{L}w_i\pi_{i,k},
+\qquad F_{\mathrm{cat}}(\mathbf{w})
+=\sum_{k:\pi_{p,k}>0}\pi_{p,k}
+ \log\frac{\pi_{p,k}}{\pi_{\mathbf{w},k}}.
+$$
+
+No observations are drawn; `fit_categorical_weights` sums directly over
+categories. Candidate rows and the target must already be normalized. A
+positive target category must have support in at least one candidate. Category
+indices must represent the same outcomes in every row.
+
+## Moment matching
+
+Let $\mu_i$ and $\Sigma_i$ denote the aggregate mean and covariance of candidate
+$q_i$, and $\mu_p$, $\Sigma_p$ those of the target. Define the raw second moment
+$M_{2,i}=\Sigma_i+\mu_i\mu_i^\top$ and similarly $M_{2,p}$. By linearity,
+
+$$
+\mu_{q_{\mathbf{w}}}=\sum_{i=1}^{L}w_i\mu_i,
+\qquad M_{2,q_{\mathbf{w}}}=\sum_{i=1}^{L}w_iM_{2,i}.
+$$
+
+The default `MomentMatching` objective is
+$\|\mu_{q_{\mathbf{w}}}-\mu_p\|_2^2$. With `fit_second_moments=True`, it is
+
+$$
+J_{\mathrm{mom}}(\mathbf{w})
+=\|\mu_{q_{\mathbf{w}}}-\mu_p\|_2^2
+ +\|M_{2,q_{\mathbf{w}}}-M_{2,p}\|_{\mathrm{F}}^2,
+$$
+
+where $\|\cdot\|_{\mathrm{F}}$ is the Frobenius norm, matching the implementation's
+sum of squared flattened entries. Covariance itself is not linear under mixing;
+raw second moments are. This exact moment objective uses no sampling, depends
+on feature scale, and is not a divergence in nats.
+
 ## Example
 
 The [`fit_gaussian_weights`](reference/root.md#gmm_divergence.fit_gaussian_weights) function fits the weights of a mixture of candidate
@@ -252,7 +298,7 @@ assert abs(result.weights[1] - 0.4) < 1e-2
 ```
 
 Here, the optimizer recovers the mixture weights of the reference distribution by
-combining the two candidate mixtures `q1` and `q2`. The result contains the final
+combining the two candidate distributions `q1` and `q2`. The result contains the final
 scalar objective value, the directly usable `result.mixture`, and optimizer
 termination metadata. `result.mixture.mapping` refers to original candidate indices.
 

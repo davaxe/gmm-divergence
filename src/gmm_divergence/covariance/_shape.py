@@ -9,7 +9,10 @@ if TYPE_CHECKING:
 
 
 def check_covariance_shape(covariance: FloatArray) -> Literal["single", "batched"]:
-    """Classify square covariance shape (d, d) as single or (n, d, d) as batched.
+    """Classify square covariance input as a single matrix or a batch.
+
+    Shapes are (n_features, n_features) for a single matrix and
+    (n_matrices, n_features, n_features) for a batch.
 
     Checks dimensionality and square trailing axes only. Does not check values,
     symmetry, positive definiteness, or whether dimensions are nonempty.
@@ -35,8 +38,9 @@ def check_covariance_shape(covariance: FloatArray) -> Literal["single", "batched
 def validate_covariance_input(covariance: FloatArray) -> Literal["single", "batched"]:
     """Classify nonempty finite covariance input as single or batched.
 
-    covariance must have shape (d, d) or (n, d, d) and be symmetric within
-    NumPy's default allclose tolerance. Positive definiteness is not required;
+    covariance must have shape (n_features, n_features) or
+    (n_matrices, n_features, n_features) and be symmetric within NumPy's default
+    allclose tolerance. Positive definiteness is not required;
     this validation is used before regularization and epsilon estimation.
     """
     shape_kind = check_covariance_shape(covariance)

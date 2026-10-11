@@ -16,6 +16,18 @@ order. Fitting requires equal observation counts across candidate batches.
 An integer `rng` seed restarts a stream on each call; a `numpy.random.Generator`
 advances its state. Batched generated sampling uses one stream across sources.
 
+With the [notation conventions](index.md#notation-and-terminology), observations
+are $x_n\in\mathbb{R}^d$, $n=1,\ldots,N$. A batch's integration weights satisfy
+$a_n\geq0$ and $\sum_{n=1}^{N}a_n=1$; an expectation is estimated by
+$\sum_{n=1}^{N}a_n f(x_n)$ for an evaluated function $f$. Omitting weights
+uses $a_n=1/N$.
+
+For stratified sampling from $p$, observation $x_{k,n}$ from component $k$ has
+weight $\pi_{p,k}/n_k$, where $\pi_{p,k}$ is that component's probability and
+$n_k$ its allocated draw count. Counts sum to $N$, every positive-weight
+component has at least one draw, and zero-weight components have none. The
+stored `component_ids` use zero-based component positions.
+
 ```python
 import gmm_divergence as gd
 

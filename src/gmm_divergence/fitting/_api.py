@@ -80,11 +80,14 @@ def fit_gaussian_weights(
     Fits nonnegative weights `w_i` such that the weighted mixture
 
     $$
-    q_w(x) = \sum_i w_i q_i(x)
+    q_{\mathbf{w}}(x)=\sum_{i=1}^{L}w_iq_i(x),
+    \qquad w_i\geq0,\quad\sum_{i=1}^{L}w_i=1,
     $$
 
-    approximates the reference distribution `p` according to the selected
-    objective.
+    approximates target density $p$ according to the selected objective.
+    Here $L$ counts candidate distributions, $\mathbf{w}$ their fitted weights,
+    and $x\in\mathbb{R}^d$ one observation. A candidate $q_i$ may itself contain
+    several Gaussian components; its internal component probabilities are fixed.
 
     Parameters
     ----------
@@ -126,12 +129,16 @@ def fit_categorical_weights(
     Find nonnegative candidate weights that sum to one and minimize
 
     $$
-    D_{\mathrm{KL}}\left(
-        p \;\middle\|\; \sum_{i=1}^{M} \alpha_i q_i
-    \right),
+    D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_{\mathbf{w}})
+    =\sum_{k:\pi_{p,k}>0}\pi_{p,k}
+    \log\frac{\pi_{p,k}}{\pi_{\mathbf{w},k}},
+    \qquad \pi_{\mathbf{w},k}=\sum_{i=1}^{L}w_i\pi_{i,k},
     $$
 
-    where `p` is the target distribution and `q_i` are the candidates.
+    where $\boldsymbol{\pi}_p$ is the target probability vector over $K$
+    categories, $\pi_{i,k}$ is candidate $i$'s probability of category $k$, and
+    $\mathbf{w}\in\Delta_L$ has $L$ nonnegative candidate weights summing to one.
+    Indices refer to the same categories in every probability vector.
 
     Parameters
     ----------

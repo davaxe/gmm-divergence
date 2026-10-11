@@ -18,7 +18,18 @@ if TYPE_CHECKING:
 def kl_monte_carlo(
     p: GaussianDistribution, q: GaussianDistribution, /, *, estimator: MonteCarlo
 ) -> DivergenceResult:
-    """Estimate directed KL using source observations and their integration design.
+    r"""Estimate directed KL using source observations and their integration design.
+
+    For $N$ source observations $x_n$ and normalized integration weights $a_n$,
+    compute the log-density ratios $\ell_n=\log p(x_n)-\log q(x_n)$ and
+
+    $$
+    \widehat D_{\mathrm{KL}}(p\|q)=\sum_{n=1}^{N}a_n\ell_n.
+    $$
+
+    Ordinary iid draws use $a_n=1/N$. Stratified draws from component $k$ of
+    $p$ use $a_n=\pi_{p,k}/n_k$, where $\pi_{p,k}$ is the component probability
+    and $n_k$ its draw count. The evaluated densities are the full mixtures.
 
     Parameters
     ----------
@@ -37,7 +48,12 @@ def kl_monte_carlo(
 
     Notes
     -----
-    Equally weighted observations are assumed iid. Stratified variance requires
+    Batches without explicit integration weights are assumed iid; their standard
+    error is $\sqrt{\sum_n(\ell_n-\bar\ell)^2/[N(N-1)]}$ for $N\geq2$, where
+    $\bar\ell$ is the ordinary mean. For stratified batches, it is
+    $\sqrt{\sum_k\pi_{p,k}^2s_k^2/n_k}$, where $s_k^2$ is the unbiased variance
+    of log-density ratios within stratum $k$, summed over positive-mass strata.
+    Stratified variance requires
     at least two observations in every positive-weight component. Arbitrarily
     weighted batches without component IDs do not support standard errors.
     """

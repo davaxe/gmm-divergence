@@ -43,8 +43,9 @@ def _sample_mean(
 def logpdf_matrix(components: Sequence[GaussianDistribution], samples: FloatArray) -> FloatArray:
     """Evaluate candidate log densities at fixed samples.
 
-    components is the ordered candidate sequence; samples has shape (N, D).
-    Returns float64 log densities with shape (N, len(components)). Candidates
+    components is the ordered candidate sequence; samples has shape
+    (n_samples, n_features). Returns float64 log densities with shape
+    (n_samples, n_candidates). Candidates
     may themselves be mixtures, rather than individual Gaussian components.
     """
     samples = np.asarray(samples, dtype=np.float64)
@@ -59,9 +60,10 @@ def mixture_stats(
 ) -> tuple[FloatArray, FloatArray]:
     """Compute log mixture densities and candidate responsibilities.
 
-    log_q has shape (N, K), and weights has shape (K,). eps floors weights only
-    when taking their logarithms. Returns log densities (N,) and responsibilities
-    (N, K); caller-supplied weights are not normalized here.
+    log_q has shape (n_samples, n_candidates), and weights has shape
+    (n_candidates,). eps floors weights only when taking their logarithms.
+    Returns log densities (n_samples,) and candidate responsibilities
+    (n_samples, n_candidates); caller-supplied weights are not normalized here.
     """
     log_w = np.log(np.maximum(np.asarray(weights, dtype=np.float64), eps))
     log_terms = np.asarray(log_q, dtype=np.float64) + log_w[None, :]
@@ -106,7 +108,7 @@ def forward_kl(
     include_constant: bool = False,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    r"""Build a simplex objective for forward KL, $D_{\mathrm{KL}}(p \| q_w)$.
+    r"""Build a simplex objective for forward KL, $D_{\mathrm{KL}}(p \| q_{\mathbf{w}})$.
 
     Parameters
     ----------
@@ -194,12 +196,13 @@ def reverse_kl(
     q_integration_weights: FloatArray | None = None,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
-    r"""Build a simplex objective for reverse KL, $D_{\mathrm{KL}}(q_w \| p)$.
+    r"""Build a simplex objective for reverse KL, $D_{\mathrm{KL}}(q_{\mathbf{w}} \| p)$.
 
     Uses fixed samples from each candidate distribution. q_components lists the
-    fixed candidates in weight order; q_samples has shape (K, N, D), with batch
-    k drawn from candidate k. target is evaluated on those same observations.
-    q_integration_weights optionally has shape (K, N) with normalized rows;
+    fixed candidates in weight order; q_samples has shape
+    (n_candidates, n_samples, n_features), with batch i drawn from candidate i.
+    target is evaluated on those same observations. q_integration_weights
+    optionally has shape (n_candidates, n_samples) with normalized rows;
     None uses ordinary within-batch means. eps floors weights for logarithms.
     Returns a cached callable producing the scalar KL estimate and gradient.
     """
@@ -272,10 +275,13 @@ def jensen_shannon(
     """Build a cached simplex objective for Jensen-Shannon divergence in nats.
 
     target and q_components are fixed reference and candidate distributions.
-    p_samples has shape (N, D) and originates from target; q_samples has shape
-    (K, M, D), with one batch from each candidate. p_integration_weights and
-    q_integration_weights optionally weight those observations with shapes (N,)
-    and (K, M). eps floors weights in logarithms. Returns a callable producing
+    p_samples has shape (n_target_samples, n_features) and originates from
+    target; q_samples has shape (n_candidates, n_candidate_samples, n_features),
+    with one batch from each candidate. p_integration_weights and
+    q_integration_weights optionally weight those observations with shapes
+    (n_target_samples,) and (n_candidates, n_candidate_samples), normalized
+    separately for the target and each candidate. eps floors weights in
+    logarithms. Returns a callable producing
     the scalar divergence estimate and weight gradient, without a square root.
     """
     p_samples = np.asarray(p_samples, dtype=np.float64)
@@ -349,10 +355,13 @@ def bidirectional_kl(
 
     target and q_components are the fixed reference and candidate distributions.
     forward_weight is in [0, 1]; the reverse term receives 1 - forward_weight.
-    p_samples has shape (N, D) and is required for a nonzero forward term.
-    q_samples has shape (K, M, D) and is required for a nonzero reverse term.
-    Optional p_integration_weights and q_integration_weights have shapes (N,)
-    and (K, M). include_forward_constant controls whether the target-density
+    p_samples has shape (n_target_samples, n_features) and is required for a
+    nonzero forward term. q_samples has shape
+    (n_candidates, n_candidate_samples, n_features) and is required for a
+    nonzero reverse term. Optional p_integration_weights and
+    q_integration_weights have shapes (n_target_samples,) and
+    (n_candidates, n_candidate_samples), normalized separately for the target
+    and each candidate. include_forward_constant controls whether the target-density
     constant is included; eps floors candidate weights for numerical stability.
     Returns a callable producing the combined value and weight gradient.
     """
@@ -457,9 +466,11 @@ def build_gaussian_mixture_objective(
     """Dispatch an objective configuration to its cached implementation.
 
     target and candidates are fixed distributions. p_samples and q_samples are
-    optional validated reference and candidate batches, shaped (N, D) and
-    (K, M, D); required sources depend on objective. Corresponding integration
-    weights have shapes (N,) and (K, M), or None for ordinary means. Public KL
+    optional validated reference and candidate batches, shaped
+    (n_target_samples, n_features) and
+    (n_candidates, n_candidate_samples, n_features); required sources depend on
+    objective. Corresponding integration weights have shapes (n_target_samples,)
+    and (n_candidates, n_candidate_samples), or None for ordinary means. Public KL
     objectives include their target-density constants in reported values.
     """
     match objective:
@@ -513,8 +524,9 @@ def gaussian_family_raw_moment_vector(
     """Return the raw moment vector used by moment-matching objectives.
 
     distribution supplies aggregate mean and covariance. With second_moments
-    False, returns the mean (D,). Otherwise returns the mean concatenated with
-    flattened covariance + outer(mean, mean), of length D + D squared.
+    False, returns the mean (n_features,). Otherwise returns the mean concatenated
+    with flattened covariance + outer(mean, mean), of length
+    n_features + n_features squared. Both quantities describe the full distribution.
     """
     mean, covariance = (distribution.mean, distribution.covariance)
     if not second_moments:

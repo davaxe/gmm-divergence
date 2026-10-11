@@ -86,18 +86,23 @@ def component_statistics(
 ) -> ComponentStatistics:
     r"""Compute empirical component statistics from fixed responsibilities.
 
-    For observations $x_i$ and responsibilities $r_{ik}$, compute
+    For $N$ observations $x_n\in\mathbb{R}^d$ and responsibilities $r_{nk}$
+    over $K$ components, with $r_{nk}\geq0$ and $\sum_{k=1}^{K}r_{nk}=1$, compute
 
     $$
-    N_k = \sum_i r_{ik}, \qquad \hat{\pi}_k = N_k/N,
-    \qquad \hat{\mu}_k = \frac{\sum_i r_{ik}x_i}{N_k},
+    N_k = \sum_{n=1}^{N}r_{nk}, \qquad \widehat\pi_k=N_k/N,
+    \qquad \widehat\mu_k=\frac{\sum_{n=1}^{N}r_{nk}x_n}{N_k},
     $$
 
     $$
-    \hat{\Sigma}_k = \frac{\sum_i r_{ik}(x_i-\hat{\mu}_k)
-    (x_i-\hat{\mu}_k)^\top}{N_k},
-    \qquad N_{\mathrm{eff},k} = \frac{N_k^2}{\sum_i r_{ik}^2}.
+    \widehat\Sigma_k=\frac{\sum_{n=1}^{N}r_{nk}(x_n-\widehat\mu_k)
+    (x_n-\widehat\mu_k)^\top}{N_k},
+    \qquad N_{\mathrm{eff},k}=\frac{N_k^2}{\sum_{n=1}^{N}r_{nk}^2}.
     $$
+
+    Here $N_k$ is the soft count, $\widehat\pi_k$ the empirical component
+    probability, $\widehat\mu_k$ and $\widehat\Sigma_k$ its estimated mean and
+    covariance, and $N_{\mathrm{eff},k}$ the Kish concentration measure.
 
     Parameters
     ----------

@@ -167,7 +167,7 @@ class Gaussian:
         return self.mean.size
 
     def cholesky(self) -> FloatArray:
-        """Return the cached, read-only lower covariance factor, shape (d, d)."""
+        """Return the cached, read-only lower covariance factor, shape (n_features, n_features)."""
         if self._chol is None:
             chol = np.linalg.cholesky(self.covariance).astype(np.float64)
             chol.setflags(write=False)
@@ -241,7 +241,9 @@ class Gaussian:
         return np.exp(self.logpdf(x))
 
     def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
-        """Return weight (1,), mean (1, d), and covariance (1, d, d) arrays.
+        """Return weight, mean, and covariance arrays for one Gaussian component.
+
+        Shapes are (1,), (1, n_features), and (1, n_features, n_features).
 
         The weight array is newly allocated; the other arrays are read-only
         views of this Gaussian's parameters.

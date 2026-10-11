@@ -9,7 +9,7 @@ from gmm_divergence.results import AlignedJointKLResult
 
 
 def aligned_joint_kl_divergence(p: GaussianMixture, q: GaussianMixture) -> AlignedJointKLResult:
-    r"""Compute KL divergence between Gaussian mixtures with aligned components.
+    r"""Compute joint KL of component labels and observations with aligned components.
 
     Given two Gaussian mixtures with corresponding component indices,
 
@@ -26,16 +26,22 @@ def aligned_joint_kl_divergence(p: GaussianMixture, q: GaussianMixture) -> Align
     $$
     D_{\mathrm{KL}}(p(k,x)\|q(k,x))
     =
-    D_{\mathrm{KL}}(\pi_p\|\pi_q)
+    D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_q)
     +
     \sum_{k=1}^{K}
     \pi_{p,k}
     D_{\mathrm{KL}}(p_k\|q_k).
     $$
 
+    Here $k\in\{1,\ldots,K\}$ is a shared component label, $x\in\mathbb{R}^d$
+    an observation, and $\boldsymbol{\pi}_p$, $\boldsymbol{\pi}_q$ the component
+    probability vectors. The conditional densities are
+    $p_k(x)=\mathcal{N}(x;\mu_{p,k},\Sigma_{p,k})$ and analogously $q_k(x)$.
+    Covariances are positive-definite $d\times d$ matrices.
     This compares the joint distributions of component label and observation,
     assuming component indices correspond. No component matching is performed.
-    It is not the marginal KL between mixture densities. Values are in nats.
+    Marginalizing over the label gives p(x) and q(x); their KL cannot exceed
+    this joint KL. The two quantities are not generally equal. Values are in nats.
 
     Parameters
     ----------
