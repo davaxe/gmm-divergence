@@ -83,10 +83,10 @@ def pairwise_gaussian_kl(
     )
 
 
-def logdet_from_cholesky(chol: FloatArray) -> FloatArray:
+def logdet_from_cholesky(_cholesky: FloatArray) -> FloatArray:
     """Return scalar or batched log-determinants from Cholesky factors."""
     return np.asarray(
-        2.0 * np.sum(np.log(np.diagonal(chol, axis1=-2, axis2=-1)), axis=-1), dtype=np.float64
+        2.0 * np.sum(np.log(np.diagonal(_cholesky, axis1=-2, axis2=-1)), axis=-1), dtype=np.float64
     )
 
 

@@ -22,7 +22,7 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
     from gmm_divergence.distributions._gaussian import Gaussian
     from gmm_divergence.distributions._mixture import GaussianMixture
-    from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.distributions._typing import GaussianDistribution
     from gmm_divergence.fitting._simplex import ObjectiveFn
 
 
@@ -40,7 +40,7 @@ def _sample_mean(
     return np.sum(values * expanded_weights, axis=axis)
 
 
-def logpdf_matrix(components: Sequence[GaussianLike], samples: FloatArray) -> FloatArray:
+def logpdf_matrix(components: Sequence[GaussianDistribution], samples: FloatArray) -> FloatArray:
     """Evaluate each component log-density at each sample."""
     samples = np.asarray(samples, dtype=np.float64)
     log_q = np.empty((samples.shape[0], len(components)), dtype=np.float64)
@@ -88,8 +88,8 @@ class _ForwardKL:
 
 
 def forward_kl(
-    p: GaussianLike | None,
-    q_components: Sequence[GaussianLike],
+    target: GaussianDistribution | None,
+    q_components: Sequence[GaussianDistribution],
     p_samples: FloatArray,
     *,
     p_integration_weights: FloatArray | None = None,
@@ -102,10 +102,10 @@ def forward_kl(
 
     log_p_on_p_samples = None
     if include_constant:
-        if p is None:
+        if target is None:
             msg = "p is required when include_constant=True."
             raise ValueError(msg)
-        log_p_on_p_samples = np.asarray(p.logpdf(p_samples), dtype=np.float64)
+        log_p_on_p_samples = np.asarray(target.logpdf(p_samples), dtype=np.float64)
 
     return _ForwardKL(
         log_q_on_p_samples=log_q_on_p_samples,
@@ -153,8 +153,8 @@ class _ReverseKL:
 
 
 def reverse_kl(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
+    target: GaussianDistribution,
+    q_components: Sequence[GaussianDistribution],
     q_samples: FloatArray,
     *,
     q_integration_weights: FloatArray | None = None,
@@ -164,7 +164,9 @@ def reverse_kl(
 
     Uses fixed samples from each candidate distribution.
     """
-    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(p, q_components, q_samples)
+    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(
+        target, q_components, q_samples
+    )
 
     return _ReverseKL(
         log_q_on_q_samples=log_q_on_q_samples,
@@ -219,8 +221,8 @@ class _JensenShannon:
 
 
 def jensen_shannon(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
+    target: GaussianDistribution,
+    q_components: Sequence[GaussianDistribution],
     p_samples: FloatArray,
     q_samples: FloatArray,
     *,
@@ -230,10 +232,12 @@ def jensen_shannon(
 ) -> ObjectiveFn:
     """Build a simplex objective for Jensen-Shannon divergence."""
     p_samples = np.asarray(p_samples, dtype=np.float64)
-    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(p, q_components, q_samples)
+    log_p_on_q_samples, log_q_on_q_samples = _candidate_sample_logpdfs(
+        target, q_components, q_samples
+    )
 
     log_q_on_p_samples = logpdf_matrix(q_components, p_samples)
-    log_p_on_p_samples = np.asarray(p.logpdf(p_samples), dtype=np.float64)
+    log_p_on_p_samples = np.asarray(target.logpdf(p_samples), dtype=np.float64)
 
     return _JensenShannon(
         log_q_on_p_samples=log_q_on_p_samples,
@@ -247,13 +251,15 @@ def jensen_shannon(
 
 
 def _candidate_sample_logpdfs(
-    p: GaussianLike, q_components: Sequence[GaussianLike], q_samples: FloatArray
+    target: GaussianDistribution,
+    q_components: Sequence[GaussianDistribution],
+    q_samples: FloatArray,
 ) -> tuple[FloatArray, FloatArray]:
     q_samples = np.asarray(q_samples, dtype=np.float64)
-    n_components, n_samples, dim = q_samples.shape
-    q_samples_flat = q_samples.reshape(-1, dim)
+    n_components, n_samples, n_features = q_samples.shape
+    q_samples_flat = q_samples.reshape(-1, n_features)
 
-    log_p_on_q_samples = np.asarray(p.logpdf(q_samples_flat), dtype=np.float64).reshape(
+    log_p_on_q_samples = np.asarray(target.logpdf(q_samples_flat), dtype=np.float64).reshape(
         n_components, n_samples
     )
     log_q_flat = logpdf_matrix(q_components, q_samples_flat)
@@ -272,38 +278,37 @@ class _WeightedSum:
         total_value = 0.0
         total_grad = np.zeros_like(w, dtype=np.float64)
 
-        for objective, alpha in zip(self.objectives, self.weights, strict=True):
+        for objective, forward_weight in zip(self.objectives, self.weights, strict=True):
             value, grad = objective(w)
-            total_value += float(alpha) * float(value)
-            total_grad += float(alpha) * np.asarray(grad, dtype=np.float64)
+            total_value += float(forward_weight) * float(value)
+            total_grad += float(forward_weight) * np.asarray(grad, dtype=np.float64)
 
         return float(total_value), total_grad.astype(np.float64)
 
 
 def bidirectional_kl(
-    p: GaussianLike,
-    q_components: Sequence[GaussianLike],
+    target: GaussianDistribution,
+    q_components: Sequence[GaussianDistribution],
     p_samples: FloatArray | None = None,
     q_samples: FloatArray | None = None,
     *,
     p_integration_weights: FloatArray | None = None,
     q_integration_weights: FloatArray | None = None,
-    alpha: float = 0.5,
-    include_forward_constant: bool = False,
+    forward_weight: float = 0.5,
+    include_forward_constant: bool = True,
     eps: float = 1e-300,
 ) -> ObjectiveFn:
     """Build a weighted forward/reverse KL objective over simplex weights."""
     objectives: list[ObjectiveFn] = []
     objective_weights: list[float] = []
-    forward_weight = alpha
-    reverse_weight = 1.0 - alpha
+    reverse_weight = 1.0 - forward_weight
     if forward_weight:
         if p_samples is None:
             msg = "p_samples is required when forward_weight is nonzero."
             raise ValueError(msg)
         objectives.append(
             forward_kl(
-                p=p,
+                target=target,
                 q_components=q_components,
                 p_samples=p_samples,
                 p_integration_weights=p_integration_weights,
@@ -319,7 +324,7 @@ def bidirectional_kl(
             raise ValueError(msg)
         objectives.append(
             reverse_kl(
-                p=p,
+                target=target,
                 q_components=q_components,
                 q_samples=q_samples,
                 q_integration_weights=q_integration_weights,
@@ -350,10 +355,13 @@ class _MomentMatching:
 
 
 def moment_matching(
-    p: GaussianLike, q_components: Sequence[GaussianLike], *, second_moments: bool = False
+    target: GaussianDistribution,
+    q_components: Sequence[GaussianDistribution],
+    *,
+    second_moments: bool = False,
 ) -> ObjectiveFn:
     """Build a simplex objective for moment matching."""
-    p_moments = gaussian_family_raw_moment_vector(p, second_moments=second_moments)
+    p_moments = gaussian_family_raw_moment_vector(target, second_moments=second_moments)
     q_moments = np.asarray(
         [gaussian_family_raw_moment_vector(q, second_moments=second_moments) for q in q_components],
         dtype=np.float64,
@@ -377,8 +385,8 @@ def moment_matching(
 def build_gaussian_mixture_objective(
     *,
     objective: ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching,
-    p: Gaussian | GaussianMixture,
-    q_i: Sequence[Gaussian | GaussianMixture],
+    target: Gaussian | GaussianMixture,
+    candidates: Sequence[Gaussian | GaussianMixture],
     p_samples: FloatArray | None,
     q_samples: FloatArray | None,
     p_integration_weights: FloatArray | None = None,
@@ -389,19 +397,27 @@ def build_gaussian_mixture_objective(
             if p_samples is None:
                 msg = "p_samples is required for forward KL."
                 raise ValueError(msg)
-            return forward_kl(p, q_i, p_samples, p_integration_weights=p_integration_weights)
+            return forward_kl(
+                target,
+                candidates,
+                p_samples,
+                p_integration_weights=p_integration_weights,
+                include_constant=True,
+            )
         case ReverseKL():
             if q_samples is None:
                 msg = "q_samples is required for reverse KL."
                 raise ValueError(msg)
-            return reverse_kl(p, q_i, q_samples, q_integration_weights=q_integration_weights)
-        case BidirectionalKL(alpha=alpha):
+            return reverse_kl(
+                target, candidates, q_samples, q_integration_weights=q_integration_weights
+            )
+        case BidirectionalKL(forward_weight=forward_weight):
             return bidirectional_kl(
-                p,
-                q_i,
+                target,
+                candidates,
                 p_samples=p_samples,
                 q_samples=q_samples,
-                alpha=alpha,
+                forward_weight=forward_weight,
                 p_integration_weights=p_integration_weights,
                 q_integration_weights=q_integration_weights,
             )
@@ -410,22 +426,22 @@ def build_gaussian_mixture_objective(
                 msg = "Both p_samples and q_samples are required for Jensen-Shannon."
                 raise ValueError(msg)
             return jensen_shannon(
-                p,
-                q_i,
+                target,
+                candidates,
                 p_samples=p_samples,
                 q_samples=q_samples,
                 p_integration_weights=p_integration_weights,
                 q_integration_weights=q_integration_weights,
             )
         case MomentMatching(fit_second_moments=fit_second_moments):
-            return moment_matching(p, q_i, second_moments=fit_second_moments)
+            return moment_matching(target, candidates, second_moments=fit_second_moments)
 
 
 def gaussian_family_raw_moment_vector(
-    distribution: GaussianLike, /, *, second_moments: bool = False
+    distribution: GaussianDistribution, /, *, second_moments: bool = False
 ) -> FloatArray:
     """Return the raw moment vector used by moment-matching objectives."""
-    mean, covariance = distribution.moments()
+    mean, covariance = (distribution.mean, distribution.covariance)
     if not second_moments:
         return mean
 

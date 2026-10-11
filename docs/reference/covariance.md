@@ -23,6 +23,22 @@ independent, read-only `float64` array.
         members: false
         show_root_full_path: true
 
+Input shape determines scalar versus batched behavior: `(n_features, n_features)`
+or `(n_matrices, n_features, n_features)`. `estimate_epsilon` returns a scalar or
+one value per matrix. Configure `epsilon`, heuristic `scale` and `rank`, shrinkage
+`strength`, or `max_condition_number` explicitly by keyword. Shrinkage defaults
+to `strength=1e-2` for both isotropic and diagonal targets.
+
+```python
+import gmm_divergence as gd
+
+covariance = gd.covariance.regularize_covariance(
+    [[1, 0], [0, 0]], regularizer=gd.covariance.DiagonalLoading(epsilon=0.1)
+)
+gaussian = gd.Gaussian([0, 0], covariance)
+assert gaussian.n_features == 2
+```
+
 ## Functions
 
 ::: gmm_divergence.covariance.regularize_covariance
@@ -33,7 +49,7 @@ independent, read-only `float64` array.
 
 ::: gmm_divergence.covariance.DiagonalLoading
 
-::: gmm_divergence.covariance.LinearShrinkage
+::: gmm_divergence.covariance.IsotropicShrinkage
 
 ::: gmm_divergence.covariance.DiagonalShrinkage
 
@@ -48,3 +64,10 @@ independent, read-only `float64` array.
 ::: gmm_divergence.covariance.TargetConditionNumber
 
 ::: gmm_divergence.covariance.ResidualVariance
+
+
+::: gmm_divergence.covariance.CovarianceRegularizer
+
+::: gmm_divergence.covariance.EpsilonHeuristic
+
+::: gmm_divergence.covariance.EpsilonSpec

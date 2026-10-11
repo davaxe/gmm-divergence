@@ -1,9 +1,8 @@
-from __future__ import annotations
+"""The supported Gaussian-family distribution union."""
 
-from typing import TYPE_CHECKING, TypeAlias
+from typing import TypeAlias
 
-if TYPE_CHECKING:
-    from gmm_divergence.distributions._gaussian import Gaussian
-    from gmm_divergence.distributions._mixture import GaussianMixture
+from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence.distributions._mixture import GaussianMixture
 
-GaussianLike: TypeAlias = "Gaussian | GaussianMixture"
+GaussianDistribution: TypeAlias = Gaussian | GaussianMixture

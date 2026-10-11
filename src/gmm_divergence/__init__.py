@@ -3,39 +3,46 @@
 from importlib.metadata import PackageNotFoundError, version
 
 from gmm_divergence import covariance, distributions, divergence, fitting, sampling
-from gmm_divergence.distributions import Gaussian, GaussianMixture, combine_gaussians
+from gmm_divergence.distributions import Gaussian, GaussianMixture, combine_distributions
 from gmm_divergence.divergence import (
-    aligned_component_kl,
+    aligned_joint_kl_divergence,
+    categorical_kl_divergence,
     component_kl_matrix,
     jensen_shannon_divergence,
     kl_divergence,
     symmetric_kl_divergence,
 )
-from gmm_divergence.fitting import fit_gaussian_mixture_weights, prune_mixture
+from gmm_divergence.fitting import (
+    fit_categorical_weights,
+    fit_gaussian_weights,
+    prepare_gaussian_weight_fit,
+    prune_mixture,
+)
 from gmm_divergence.results import (
-    AlignedKLResult,
+    CategoricalWeightFitResult,
     DivergenceResult,
-    GaussianMixtureFitResult,
-    MonteCarloStatistics,
+    GaussianWeightFitResult,
 )
 
 __all__ = [
-    "AlignedKLResult",
+    "CategoricalWeightFitResult",
     "DivergenceResult",
     "Gaussian",
     "GaussianMixture",
-    "GaussianMixtureFitResult",
-    "MonteCarloStatistics",
-    "aligned_component_kl",
-    "combine_gaussians",
+    "GaussianWeightFitResult",
+    "aligned_joint_kl_divergence",
+    "categorical_kl_divergence",
+    "combine_distributions",
     "component_kl_matrix",
     "covariance",
     "distributions",
     "divergence",
-    "fit_gaussian_mixture_weights",
+    "fit_categorical_weights",
+    "fit_gaussian_weights",
     "fitting",
     "jensen_shannon_divergence",
     "kl_divergence",
+    "prepare_gaussian_weight_fit",
     "prune_mixture",
     "sampling",
     "symmetric_kl_divergence",

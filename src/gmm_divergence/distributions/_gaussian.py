@@ -1,160 +1,153 @@
+"""An immutable multivariate Gaussian distribution."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
+import numpy.typing as npt
 from typing_extensions import override
 
 from gmm_divergence._core._numeric import logdet_from_cholesky
-from gmm_divergence._core._validation import as_covariance, as_points, validate_positive_int
+from gmm_divergence._core._validation import (
+    as_covariance,
+    as_points,
+    validate_positive_finite,
+    validate_positive_int,
+)
 from gmm_divergence.covariance import regularize_covariance
 
 if TYPE_CHECKING:
-    import numpy.typing as npt
-
     from gmm_divergence._core._types import Covariance, Covariances, FloatArray, Weights
     from gmm_divergence.covariance import CovarianceRegularizer
 
 
-@dataclass(frozen=True, slots=True, repr=False)
+@dataclass(frozen=True, slots=True, init=False, repr=False, eq=False)
 class Gaussian:
-    mean: FloatArray
-    """Mean array of shape (n_features,)."""
-    covariance: Covariance
-    """Covariance array of shape (n_features, n_features)."""
-    _chol: FloatArray | None = field(default=None, init=False, repr=False)
-    _log_det: float | None = field(default=None, init=False, repr=False)
+    """Gaussian with mean `(n_features,)` and positive-definite covariance.
 
-    @classmethod
-    def from_arrays(
-        cls,
+    Array-like inputs are copied into read-only float64 arrays. An optional
+    regularizer is applied before validating positive definiteness.
+    """
+
+    mean: FloatArray
+    covariance: Covariance
+    _chol: FloatArray | None = field(default=None, repr=False)
+    _log_det: float | None = field(default=None, repr=False)
+
+    def __init__(
+        self,
         mean: npt.ArrayLike,
         covariance: npt.ArrayLike,
+        *,
         regularizer: CovarianceRegularizer | None = None,
-    ) -> Gaussian:
-        """Create a Gaussian instance from array-like inputs."""
-        return cls(
-            mean=np.asarray(mean),
-            covariance=np.asarray(covariance)
-            if regularizer is None
-            else regularize_covariance(covariance, regularizer=regularizer, batched=False),
-        )
+    ) -> None:
+        mean_array = np.array(mean, dtype=np.float64, copy=True)
+        if mean_array.ndim != 1 or mean_array.size == 0:
+            msg = "mean must be a nonempty 1D array."
+            raise ValueError(msg)
+        if not np.isfinite(mean_array).all():
+            msg = "mean must contain only finite values."
+            raise ValueError(msg)
+        if regularizer is not None:
+            covariance = regularize_covariance(covariance, regularizer=regularizer)
+        covariance_array = as_covariance(covariance, n_features=mean_array.size)
+        mean_array.setflags(write=False)
+        object.__setattr__(self, "mean", mean_array)
+        object.__setattr__(self, "covariance", covariance_array)
+        object.__setattr__(self, "_chol", None)
+        object.__setattr__(self, "_log_det", None)
 
     @classmethod
     def from_samples(
-        cls, x: npt.ArrayLike, regularizer: CovarianceRegularizer | None = None
+        cls, samples: npt.ArrayLike, *, regularizer: CovarianceRegularizer | None = None
     ) -> Gaussian:
-        """Create a Gaussian instance from sample data."""
-        samples = np.asarray(x, dtype=np.float64)
-        mean = np.mean(samples, axis=0)
-        covariance = np.cov(samples, rowvar=False, bias=False)
-        return cls.from_arrays(mean=mean, covariance=covariance, regularizer=regularizer)
+        """Estimate a Gaussian from finite observations `(n_samples, n_features)`.
+
+        At least two observations are required. Covariance uses the unbiased
+        estimate (divisor `n_samples - 1`). Singular covariance requires an
+        explicit regularizer.
+        """
+        observations = np.asarray(samples, dtype=np.float64)
+        if observations.ndim != 2 or observations.shape[0] < 2 or observations.shape[1] == 0:
+            msg = "samples must have shape (n_samples >= 2, n_features >= 1)."
+            raise ValueError(msg)
+        if not np.isfinite(observations).all():
+            msg = "samples must contain only finite values."
+            raise ValueError(msg)
+        covariance = np.atleast_2d(np.cov(observations, rowvar=False, bias=False))
+        return cls(np.mean(observations, axis=0), covariance, regularizer=regularizer)
 
     @classmethod
     def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:
-        """Create a univariate Gaussian instance."""
-        return cls(
-            mean=np.array([mean], dtype=np.float64),
-            covariance=np.array([[variance]], dtype=np.float64),
-        )
+        """Create a one-feature Gaussian from mean and variance."""
+        _ = validate_positive_finite(variance, name="variance")
+        return cls([mean], [[variance]])
 
     @classmethod
-    def isotropic(cls, mean: npt.ArrayLike, variance: float = 1.0) -> Gaussian:
-        """Create an isotropic Gaussian instance."""
-        mean = np.asarray(mean, dtype=np.float64)
-        n_features = mean.shape[0]
-        covariance = np.eye(n_features) * variance
-        return cls(mean=mean, covariance=covariance)
+    def isotropic(cls, mean: npt.ArrayLike, *, variance: float = 1.0) -> Gaussian:
+        """Create a Gaussian with the same variance along every feature."""
+        _ = validate_positive_finite(variance, name="variance")
+        mean_array = np.asarray(mean, dtype=np.float64)
+        if mean_array.ndim != 1 or mean_array.size == 0:
+            msg = "mean must be a nonempty 1D array."
+            raise ValueError(msg)
+        return cls(mean_array, np.eye(mean_array.size) * variance)
 
     @classmethod
-    def standard(cls, dim: int) -> Gaussian:
-        """Create a standard Gaussian instance with zero mean and identity covariance."""
-        return cls(mean=np.zeros(dim, dtype=np.float64), covariance=np.eye(dim, dtype=np.float64))
+    def standard(cls, n_features: int) -> Gaussian:
+        """Create a zero-mean Gaussian with identity covariance."""
+        n_features = validate_positive_int(n_features, name="n_features")
+        return cls(np.zeros(n_features), np.eye(n_features))
 
-    def __post_init__(self) -> None:
-        """Validate the shapes of mean and covariance."""
-        object.__setattr__(self, "mean", np.asarray(self.mean, dtype=np.float64))
+    @property
+    def n_features(self) -> int:
+        """Number of features in one observation."""
+        return self.mean.size
 
-        if self.mean.ndim != 1 and not (self.mean.ndim == 2 and self.mean.shape[1] == 1):
-            msg = "Mean must be a 1D array."
-            raise ValueError(msg)
+    def cholesky(self) -> FloatArray:
+        if self._chol is None:
+            chol = np.linalg.cholesky(self.covariance).astype(np.float64)
+            chol.setflags(write=False)
+            object.__setattr__(self, "_chol", chol)
+            return chol
+        return self._chol
 
-        object.__setattr__(self, "mean", self.mean.flatten())
-        if not np.all(np.isfinite(self.mean)):
-            msg = "Mean must contain only finite values."
-            raise ValueError(msg)
-        n_features = self.mean.shape[0]
-        if n_features == 0:
-            msg = "Mean must contain at least one feature."
-            raise ValueError(msg)
-        object.__setattr__(
-            self, "covariance", as_covariance(self.covariance, n_features=n_features)
-        )
-        self.mean.setflags(write=False)
+    def log_determinant(self) -> float:
+        if self._log_det is None:
+            value = float(logdet_from_cholesky(self.cholesky()))
+            object.__setattr__(self, "_log_det", value)
+            return value
+        return self._log_det
 
-    def chol(self) -> FloatArray:
-        """Compute or retrieve the Cholesky factor of the covariance."""
-        if self._chol is not None:
-            return self._chol
+    def sample(self, n_samples: int, *, rng: np.random.Generator | int | None = None) -> FloatArray:
+        """Draw `(n_samples, n_features)` observations.
 
-        chol = np.linalg.cholesky(self.covariance).astype(np.float64)
-        chol.setflags(write=False)
-        object.__setattr__(self, "_chol", chol)
-        return chol
-
-    def log_det(self) -> float:
-        """Compute or retrieve the log-determinant of the covariance."""
-        if self._log_det is not None:
-            return self._log_det
-
-        chol = self.chol()
-        log_det = float(logdet_from_cholesky(chol))
-        object.__setattr__(self, "_log_det", log_det)
-        return log_det
-
-    def sample(self, n_samples: int, rng: np.random.Generator | int | None = None) -> FloatArray:
-        """Draw samples from the Gaussian."""
+        An integer seed repeats draws; a Generator advances its state.
+        """
         n_samples = validate_positive_int(n_samples, name="n_samples")
-        rng = np.random.default_rng(rng)
-        return rng.multivariate_normal(mean=self.mean, cov=self.covariance, size=n_samples)
+        return np.random.default_rng(rng).multivariate_normal(
+            mean=self.mean, cov=self.covariance, size=n_samples
+        )
 
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Evaluate the log-density of the Gaussian at given points."""
-        x = as_points(x, n_features=self.dim, name="x")
-
-        d = self.mean.shape[0]
-        chol = self.chol()
-        diff = x - self.mean
-        rhs = np.transpose(diff)
-        y = np.transpose(np.linalg.solve(chol, rhs))
-        mahalanobis = np.sum(y**2, axis=-1)
-        log_det = self.log_det()
-        return -0.5 * (d * np.log(2 * np.pi) + log_det + mahalanobis)
+        """Return log densities, shape `(n_points,)`, for one point or a point matrix."""
+        points = as_points(x, n_features=self.n_features, name="x")
+        whitened = np.linalg.solve(self.cholesky(), (points - self.mean).T).T
+        return -0.5 * (
+            self.n_features * np.log(2 * np.pi)
+            + self.log_determinant()
+            + np.sum(whitened**2, axis=-1)
+        )
 
     def pdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Evaluate the density of the Gaussian at given points."""
+        """Return densities with the same point convention as `logpdf`."""
         return np.exp(self.logpdf(x))
 
     def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
-        """Return the mean and covariance as component arrays."""
         return np.array([1.0]), self.mean[None, :], self.covariance[None, :, :]
-
-    def moments(self) -> tuple[FloatArray, Covariance]:
-        """Return the mean and covariance of the Gaussian."""
-        return self.mean, self.covariance
-
-    @property
-    def dim(self) -> int:
-        """Dimensionality of the Gaussian."""
-        return self.mean.shape[0]
 
     @override
     def __repr__(self) -> str:
-        return (
-            f"{type(self).__name__}("
-            f"dim={self.dim}, "
-            f"mean_shape={self.mean.shape}, "
-            f"covariance_shape={self.covariance.shape}"
-            f")"
-        )
+        return f"Gaussian(n_features={self.n_features})"

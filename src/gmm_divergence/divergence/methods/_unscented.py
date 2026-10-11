@@ -8,10 +8,10 @@ from gmm_divergence.results import DivergenceResult
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import Covariances, FloatArray
-    from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.distributions._typing import GaussianDistribution
 
 
-def kl_unscented(p: GaussianLike, q: GaussianLike, /) -> DivergenceResult:
+def kl_unscented(p: GaussianDistribution, q: GaussianDistribution, /) -> DivergenceResult:
     r"""Estimate KL divergence using unscented sigma points.
 
     Estimates
@@ -52,26 +52,26 @@ def kl_unscented(p: GaussianLike, q: GaussianLike, /) -> DivergenceResult:
     """
     weights, means, covariances = p.component_arrays()
     sigma_points = _sigma_points(means, covariances)
-    n_components, n_sigma, dim = sigma_points.shape
-    flat_points = sigma_points.reshape(-1, dim)
+    n_components, n_sigma, n_features = sigma_points.shape
+    flat_points = sigma_points.reshape(-1, n_features)
     log_p = p.logpdf(flat_points).reshape(n_components, n_sigma)
     log_q = q.logpdf(flat_points).reshape(n_components, n_sigma)
     log_ratio = log_p - log_q
     # log_ratio[a, k] = log(f(x_{a,k}) / g(x_{a,k}))
     value = np.sum(weights[:, None] * log_ratio) / n_sigma
     return DivergenceResult(
-        value=float(value), method="unscented", num_samples=n_components * n_sigma
+        value=float(value), divergence="kl", n_evaluations=n_components * n_sigma
     )
 
 
 def _sigma_points(means: FloatArray, covariances: Covariances, /) -> FloatArray:
     """Compute sigma points for Gaussian components."""
-    n_components, dim = means.shape
+    n_components, n_features = means.shape
     eigenvalues, eigenvectors = np.linalg.eigh(covariances)
     eigenvalues = np.maximum(eigenvalues, 0)
-    scales = np.sqrt(dim * eigenvalues)  # (K, d)
+    scales = np.sqrt(n_features * eigenvalues)  # (K, d)
     offsets = eigenvectors * scales[:, None, :]  # (K, d, d)
-    sigma_points = np.empty((n_components, 2 * dim, dim), dtype=np.float64)
-    sigma_points[:, :dim, :] = means[:, None, :] + offsets.transpose(0, 2, 1)
-    sigma_points[:, dim:, :] = means[:, None, :] - offsets.transpose(0, 2, 1)
+    sigma_points = np.empty((n_components, 2 * n_features, n_features), dtype=np.float64)
+    sigma_points[:, :n_features, :] = means[:, None, :] + offsets.transpose(0, 2, 1)
+    sigma_points[:, n_features:, :] = means[:, None, :] - offsets.transpose(0, 2, 1)
     return sigma_points

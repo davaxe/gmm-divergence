@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import isfinite
-from typing import TYPE_CHECKING, Literal, TypeAlias, overload
+from typing import TYPE_CHECKING, TypeAlias
 
 import numpy as np
 
@@ -16,27 +16,27 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class RelativeToTrace:
     r"""Scale epsilon with the covariance trace.
 
     Sets
 
     $$
-    \varepsilon = c\,\frac{\mathrm{tr}(\Sigma)}{d},
+    \varepsilon = scale\,\frac{\mathrm{tr}(\Sigma)}{d},
     $$
 
     where $d$ is the covariance dimension.
     """
 
-    c: float = 1e-6
-    r"""Multiplier $c$ in $\varepsilon = c\,\mathrm{tr}(\Sigma)/d$."""
+    scale: float = 1e-6
+    r"""Multiplier $scale$ in $\varepsilon = scale\,\mathrm{tr}(\Sigma)/d$."""
 
     def __post_init__(self) -> None:
-        _ = validate_positive_finite(self.c, name="c")
+        _ = validate_positive_finite(self.scale, name="scale")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class TargetConditionNumber:
     r"""Choose epsilon to enforce a target condition number.
 
@@ -47,68 +47,54 @@ class TargetConditionNumber:
     $$
 
     picks the smallest $\varepsilon \ge 0$ such that
-    $\kappa(\Sigma_{\mathrm{reg}}) \le \text{kappa}$.
+    $\kappa(\Sigma_{\mathrm{reg}}) \le \text{max_condition_number}$.
     """
 
-    kappa: float = 1e8
+    max_condition_number: float = 1e8
     r"""Target upper bound $\kappa(\Sigma + \varepsilon I)$."""
 
     def __post_init__(self) -> None:
-        if not isfinite(self.kappa) or self.kappa <= 1.0:
-            msg = f"kappa must be a finite value greater than 1, got {self.kappa}."
+        _ = validate_positive_finite(self.max_condition_number, name="max_condition_number")
+        if not isfinite(self.max_condition_number) or self.max_condition_number <= 1.0:
+            msg = (
+                f"max_condition_number must be a finite value greater than 1, got "
+                f"{self.max_condition_number}."
+            )
             raise ValueError(msg)
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ResidualVariance:
     r"""Scale epsilon from discarded low-rank variance.
 
-    With target rank $r$, sets
+    With target rank $rank$, sets
 
     $$
     \varepsilon
     =
-    c\,\frac{1}{d-r}\sum_{i=1}^{d-r}\lambda_i^{\mathrm{disc}},
+    scale\,\frac{1}{d-rank}\sum_{i=1}^{d-rank}\lambda_i^{\mathrm{disc}},
     $$
 
     where $\lambda_i^{\mathrm{disc}}$ are the discarded eigenvalues.
     """
 
-    c: float = 1.0
-    r"""Multiplier $c$ on the mean discarded eigenvalue."""
-    r: int | None = None
-    r"""Target rank $r$ used to define the discarded spectrum."""
+    scale: float = 1.0
+    r"""Multiplier $scale$ on the mean discarded eigenvalue."""
+    rank: int | None = None
+    r"""Target rank $rank$ used to define the discarded spectrum."""
 
     def __post_init__(self) -> None:
-        _ = validate_positive_finite(self.c, name="c")
-        if self.r is not None:
-            _ = validate_positive_int(self.r, name="r")
+        _ = validate_positive_finite(self.scale, name="scale")
+        if self.rank is not None:
+            _ = validate_positive_int(self.rank, name="rank")
 
 
 EpsilonHeuristic: TypeAlias = RelativeToTrace | TargetConditionNumber | ResidualVariance
 EpsilonSpec: TypeAlias = float | EpsilonHeuristic
 
 
-@overload
 def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[False] = False
-) -> float: ...
-
-
-@overload
-def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: Literal[True]
-) -> FloatArray: ...
-
-
-@overload
-def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: None = None
-) -> float | FloatArray: ...
-
-
-def estimate_epsilon(
-    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic, batched: bool | None = None
+    covariance: npt.ArrayLike, /, *, heuristic: EpsilonHeuristic
 ) -> float | FloatArray:
     """Estimate a diagonal-loading epsilon from covariance scale or spectrum.
 
@@ -119,9 +105,6 @@ def estimate_epsilon(
         `(n, d, d)`.
     heuristic : EpsilonHeuristic
         Explicit heuristic configuration used to estimate epsilon.
-    batched : bool or None, default=None
-        Whether to interpret the input as batched. If `None`, the shape is
-        inferred from the input rank.
 
     Returns
     -------
@@ -131,7 +114,7 @@ def estimate_epsilon(
         `(n,)` is returned with one epsilon per covariance.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
-    _ = validate_covariance_input(covariance_arr, batched=batched)
+    _ = validate_covariance_input(covariance_arr)
     covariance_arr = symmetrize(covariance_arr)
     return epsilon_from_covariance(covariance_arr, _as_epsilon_heuristic(heuristic))
 
@@ -141,41 +124,56 @@ def epsilon_from_covariance(
 ) -> float | FloatArray:
     """Evaluate an epsilon heuristic on validated, symmetric covariance input."""
     match heuristic:
-        case RelativeToTrace(c=c):
-            return _relative_trace(covariance, c=c)
-        case TargetConditionNumber(kappa=kappa):
-            return _target_condition_number(covariance, kappa=kappa)
-        case ResidualVariance(c=c, r=rank):
-            return _residual_variance(covariance, c=c, rank=rank)
+        case RelativeToTrace(scale=scale):
+            return _relative_trace(covariance, scale=scale)
+        case TargetConditionNumber(max_condition_number=max_condition_number):
+            return _target_condition_number(covariance, max_condition_number=max_condition_number)
+        case ResidualVariance(scale=scale, rank=rank):
+            return _residual_variance(covariance, scale=scale, rank=rank)
 
 
-def _relative_trace(covariance: FloatArray, *, c: float) -> float | FloatArray:
-    _ = validate_positive_finite(c, name="c")
-    scale = np.maximum(np.trace(covariance, axis1=-2, axis2=-1) / covariance.shape[-1], 0.0)
-    return _epsilon_result(c * scale)
+def _relative_trace(covariance: FloatArray, *, scale: float) -> float | FloatArray:
+    _ = validate_positive_finite(scale, name="scale")
+    average_variance = np.maximum(
+        np.trace(covariance, axis1=-2, axis2=-1) / covariance.shape[-1], 0.0
+    )
+    return _epsilon_result(scale * average_variance)
 
 
-def _target_condition_number(covariance: FloatArray, *, kappa: float) -> float | FloatArray:
-    if not np.isfinite(kappa) or kappa <= 1.0:
-        msg = f"kappa must be a finite value greater than 1, got {kappa}."
+def _target_condition_number(
+    covariance: FloatArray, *, max_condition_number: float
+) -> float | FloatArray:
+    if not np.isfinite(max_condition_number) or max_condition_number <= 1.0:
+        msg = (
+            f"max_condition_number must be a finite value greater than 1, got "
+            f"{max_condition_number}."
+        )
         raise ValueError(msg)
     eigvals = np.linalg.eigvalsh(covariance)
-    eps = np.maximum((eigvals[..., -1] - kappa * eigvals[..., 0]) / (kappa - 1.0), 0.0)
-    return _epsilon_result(eps)
+    epsilon = np.maximum(
+        (eigvals[..., -1] - max_condition_number * eigvals[..., 0]) / (max_condition_number - 1.0),
+        0.0,
+    )
+    return _epsilon_result(epsilon)
 
 
-def _residual_variance(covariance: FloatArray, *, c: float, rank: int | None) -> float | FloatArray:
-    _ = validate_positive_finite(c, name="c")
+def _residual_variance(
+    covariance: FloatArray, *, scale: float, rank: int | None
+) -> float | FloatArray:
+    _ = validate_positive_finite(scale, name="scale")
     if rank is None:
-        msg = "ResidualVariance.r must be provided when using the residual_variance heuristic."
+        msg = "ResidualVariance.rank must be provided when using the residual_variance heuristic."
         raise ValueError(msg)
     rank = validate_positive_int(rank, name="rank")
     eigvals = np.linalg.eigvalsh(covariance)
+    if rank > eigvals.shape[-1]:
+        msg = f"rank must not exceed covariance dimension {eigvals.shape[-1]}, got {rank}."
+        raise ValueError(msg)
     n_discarded = max(eigvals.shape[-1] - rank, 0)
     if n_discarded == 0:
         return _epsilon_result(np.zeros(covariance.shape[:-2], dtype=np.float64))
     discarded = np.maximum(eigvals[..., :n_discarded], 0.0)
-    return _epsilon_result(c * np.mean(discarded, axis=-1))
+    return _epsilon_result(scale * np.mean(discarded, axis=-1))
 
 
 def _epsilon_result(value: npt.ArrayLike) -> float | FloatArray:

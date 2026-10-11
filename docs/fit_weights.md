@@ -107,6 +107,10 @@ resulting in the final practical optimization problem
 \mathbf{w}^{\star} = \arg\min_{\mathbf{w} \in \Delta_N} \hat{J}(\mathbf{w}).
 \end{equation}
 
+The implementation caches the reference term and reports
+`objective_value = mean(log p(X) - log q_w(X))`, including the constant.
+It therefore estimates KL in nats while retaining the same optimizer and gradient.
+
 ## Alternative objective: _reverse_ KL divergence
 
 Alternatively, one could consider the reverse KL divergence from $q_{\mathbf{w}}$ to $p$:
@@ -194,31 +198,32 @@ p = gd.GaussianMixture.from_components(
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
-fit = gd.fit_gaussian_mixture_weights(
+fit = gd.fit_gaussian_weights(
     p,
     [q1, q2],
     objective=gd.fitting.JensenShannon(
-        p_sampling=gd.sampling.Draw(10_000, rng=102), q_sampling=gd.sampling.Draw(10_000, rng=102)
+        target_sampling=gd.sampling.Draw(n_samples=10_000, rng=102),
+        candidate_sampling=gd.sampling.Draw(n_samples=10_000, rng=102),
     ),
-    method=gd.fitting.SoftmaxLBFGSB(),
+    optimizer=gd.fitting.SoftmaxLBFGSB(),
 )
 ```
 
-For objectives that expose both options, `p_sampling` controls samples from the
-reference distribution and `q_sampling` controls one fixed batch per candidate
+For objectives that expose both options, `target_sampling` controls samples from the
+reference distribution and `candidate_sampling` controls one fixed batch per candidate
 distribution. Use `gd.sampling.Samples(...)` for precomputed reference samples and
 `gd.sampling.SampleBatches(...)` for precomputed candidate batches.
 `gd.sampling.Stratified(...)` can be used for either side; a single Gaussian is
 treated as a one-component mixture.
 
-`ReverseKL` exposes only `q_sampling`: its expectation is under the fitted
+`ReverseKL` exposes only `candidate_sampling`: its expectation is under the fitted
 candidate mixture, and `p` is evaluated at the candidate samples. It therefore
 does not require or consume samples drawn from `p`.
 
 
 ## Example
 
-The [`fit_gaussian_mixture_weights`](reference/root.md#gmm_divergence.fit_gaussian_mixture_weights) function fits the weights of a mixture of candidate
+The [`fit_gaussian_weights`](reference/root.md#gmm_divergence.fit_gaussian_weights) function fits the weights of a mixture of candidate
 distributions $q_i$ to a fixed reference mixture $p$. For example:
 
 ```python
@@ -234,11 +239,11 @@ p = gd.GaussianMixture.from_components(
 
 q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
-result = gd.fit_gaussian_mixture_weights(
+result = gd.fit_gaussian_weights(
     p,
     [q1, q2],
-    method=gd.fitting.SimplexSLSQP(),
-    objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102)),
+    optimizer=gd.fitting.SimplexSLSQP(),
+    objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Draw(n_samples=10_000, rng=102)),
 )
 
 assert result.converged
@@ -248,11 +253,12 @@ assert abs(result.weights[1] - 0.4) < 1e-2
 
 Here, the optimizer recovers the mixture weights of the reference distribution by
 combining the two candidate mixtures `q1` and `q2`. The result contains the final
-scalar objective value, the fitted mixture, and optimizer termination metadata.
+scalar objective value, the directly usable `result.mixture`, and optimizer
+termination metadata. `result.mixture.mapping` refers to original candidate indices.
 
 ## Reusing a prepared fit
 
-Use [`prepare_gaussian_mixture_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_gaussian_mixture_fit)
+Use [`prepare_gaussian_weight_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_gaussian_weight_fit)
 when fitting the same objective more than once. Preparation performs candidate
 selection, sampling, and density or moment calculations once. Solving only runs
 the optimizer, and reporting maps its active weights back to the original
@@ -265,16 +271,20 @@ p = gd.GaussianMixture.from_components(
     [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)], weights=[0.3, 0.7]
 )
 candidates = [gd.Gaussian.univariate(-1.0), gd.Gaussian.univariate(1.0)]
-prepared = gd.fitting.prepare_gaussian_mixture_fit(
-    p, candidates, objective=gd.fitting.ForwardKL(sampling=gd.sampling.Draw(10_000, rng=102))
+prepared = gd.fitting.prepare_gaussian_weight_fit(
+    p,
+    candidates,
+    objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Draw(n_samples=10_000, rng=102)),
 )
 
-solution = prepared.solve(method=gd.fitting.SimplexSLSQP())
+direct_result = prepared.fit(optimizer=gd.fitting.SimplexSLSQP())
+assert direct_result.converged
+solution = prepared.solve(optimizer=gd.fitting.SimplexSLSQP())
 result = prepared.report(solution)
 
 # Reuse the cached samples and density matrices with a warm start.
 warm_solution = prepared.solve(
-    method=gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
+    optimizer=gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
 )
 
 # Inspect the cached objective and its gradient without invoking an optimizer.
@@ -284,9 +294,9 @@ assert warm_solution.converged
 assert gradient.shape == (2,)
 ```
 
-!!! info "Alternative objectives for `fit_gaussian_mixture_weights`"
-    The `fit_gaussian_mixture_weights` function also supports reverse KL, bidirectional
+!!! info "Alternative objectives for `fit_gaussian_weights`"
+    The `fit_gaussian_weights` function also supports reverse KL, bidirectional
     KL, Jensen-Shannon, and moment-matching objectives through the `objective`
     parameter. See the [API
-    reference](reference/root.md#gmm_divergence.fit_gaussian_mixture_weights) for
+    reference](reference/root.md#gmm_divergence.fit_gaussian_weights) for
     details.

@@ -8,6 +8,29 @@ Top-level divergence helpers are documented under [Top-level API](root.md). This
 page documents estimator configuration classes and categorical KL divergence
 from `gmm_divergence.divergence`.
 
+Divergence calls accept `p` and `q` by keyword. Estimators are explicit and
+keyword-only. Unsupported configurations raise `TypeError` immediately;
+invalid shapes or values raise `ValueError`, and invalid component positions
+raise `IndexError`.
+
+`MomentMatchedGaussian()` always matches aggregate moments, including mixture
+weights. For nearest component analysis, use `component_kl_matrix(p, q).min()`;
+this is a component diagnostic, not mixture KL.
+
+Results separate `divergence` from `estimator`. `n_evaluations` counts integration
+observations, including deterministic sigma points; `n_samples` counts Monte
+Carlo observations only. Composite results retain directional `terms` and omit
+aggregate uncertainty because directional dependence is not inferred.
+
+`monte_carlo.standard_error` is `None` when the integration design cannot
+estimate uncertainty, including singleton iid draws and singleton positive
+strata. Adaptive `Draw` sampling reports `monte_carlo.target_reached`; `False`
+means the sample budget was exhausted. Monte Carlo estimates can be negative
+from sampling error and are not clipped.
+
+Symmetric KL averages both directions. Jensen-Shannon returns **divergence**
+in nats; its square root is a distance and is not returned by this API.
+
 ::: gmm_divergence.divergence
     options:
         members: false
@@ -46,7 +69,7 @@ assert smoothed.value > 0
 
 ## Aligned Component KL
 
-`aligned_component_kl` computes exact KL between the joint distributions of
+`aligned_joint_kl_divergence` computes exact KL between the joint distributions of
 component label and observation. Both mixtures must have the same number of
 components and feature dimensions, and corresponding indices must represent
 the same component. No component matching is performed.
@@ -69,9 +92,16 @@ import gmm_divergence as gd
 components = [gd.Gaussian.univariate(-1), gd.Gaussian.univariate(1)]
 p = gd.GaussianMixture.from_components(components, weights=[0.8, 0.2])
 q = gd.GaussianMixture.from_components(components, weights=[0.5, 0.5])
-result = gd.aligned_component_kl(p, q)
+result = gd.aligned_joint_kl_divergence(p, q)
 assert result.value == result.weight_kl
 assert result.weighted_component_kl == 0
 ```
 
-:::gmm_divergence.divergence.aligned_component_kl
+:::gmm_divergence.divergence.aligned_joint_kl_divergence
+
+
+::: gmm_divergence.divergence.AlignedJointKLResult
+
+::: gmm_divergence.divergence.MonteCarloStatistics
+
+::: gmm_divergence.divergence.KLEstimator

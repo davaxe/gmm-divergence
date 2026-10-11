@@ -15,7 +15,7 @@ from gmm_divergence.covariance._epsilon import (
 )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DiagonalLoading:
     r"""Diagonal loading regularization configuration.
 
@@ -29,15 +29,15 @@ class DiagonalLoading:
     $\varepsilon \ge 0$ is the diagonal loading amount.
     """
 
-    eps: EpsilonSpec = 1e-6
+    epsilon: EpsilonSpec = 1e-6
     """Diagonal loading amount or epsilon heuristic."""
 
     def __post_init__(self) -> None:
-        _validate_epsilon_spec(self.eps, name="eps")
+        _validate_epsilon_spec(self.epsilon, name="epsilon")
 
 
-@dataclass(frozen=True, slots=True)
-class LinearShrinkage:
+@dataclass(frozen=True, slots=True, kw_only=True)
+class IsotropicShrinkage:
     r"""Linear shrinkage toward an isotropic covariance target.
 
     Applies the shrinkage
@@ -54,14 +54,14 @@ class LinearShrinkage:
     with the same average marginal variance as $\Sigma$.
     """
 
-    alpha: float = 1e-2
+    strength: float = 1e-2
     """Interpolation weight between the covariance and isotropic target."""
 
     def __post_init__(self) -> None:
-        _ = _validate_unit_interval(self.alpha, name="alpha")
+        _ = _validate_unit_interval(self.strength, name="strength")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class DiagonalShrinkage:
     r"""Shrinkage toward the covariance diagonal.
 
@@ -77,14 +77,14 @@ class DiagonalShrinkage:
     marginal variances of $\Sigma$.
     """
 
-    alpha: float = 1e-2
+    strength: float = 1e-2
     """Interpolation weight between the covariance and diagonal target."""
 
     def __post_init__(self) -> None:
-        _ = _validate_unit_interval(self.alpha, name="alpha")
+        _ = _validate_unit_interval(self.strength, name="strength")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class EigenvalueClipping:
     r"""Eigenvalue-clipping regularization configuration.
 
@@ -112,7 +112,7 @@ class EigenvalueClipping:
         _ = validate_positive_finite(self.min_eigenvalue, name="min_eigenvalue")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class LowRank:
     r"""Low-rank covariance approximation with diagonal loading.
 
@@ -137,16 +137,16 @@ class LowRank:
 
     rank: int = 1
     """Target rank for the approximation."""
-    eps: EpsilonSpec = 1e-6
+    epsilon: EpsilonSpec = 1e-6
     """Diagonal loading amount or epsilon heuristic."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_int(self.rank, name="rank")
-        _validate_epsilon_spec(self.eps, name="eps")
+        _validate_epsilon_spec(self.epsilon, name="epsilon")
 
 
 CovarianceRegularizer: TypeAlias = (
-    DiagonalLoading | LinearShrinkage | DiagonalShrinkage | EigenvalueClipping | LowRank
+    DiagonalLoading | IsotropicShrinkage | DiagonalShrinkage | EigenvalueClipping | LowRank
 )
 
 

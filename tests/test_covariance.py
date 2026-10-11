@@ -8,7 +8,7 @@ from gmm_divergence.covariance import (
     DiagonalLoading,
     DiagonalShrinkage,
     EigenvalueClipping,
-    LinearShrinkage,
+    IsotropicShrinkage,
     LowRank,
     RelativeToTrace,
     ResidualVariance,
@@ -26,24 +26,23 @@ def test_regularize_covariance_requires_an_explicit_configuration() -> None:
 
 def test_epsilon_heuristics_are_explicit() -> None:
     covariance = np.diag([2.0, 8.0])
-    epsilon = estimate_epsilon(covariance, heuristic=RelativeToTrace(c=0.1))
+    epsilon = estimate_epsilon(covariance, heuristic=RelativeToTrace(scale=0.1))
     assert epsilon == pytest.approx(0.5)
 
     batched = np.array([[[1.0, 0.0], [0.0, 100.0]], [[2.0, 0.0], [0.0, 18.0]]])
-    assert estimate_epsilon(batched, heuristic=TargetConditionNumber(kappa=10.0)) == pytest.approx([
-        10.0,
-        0.0,
-    ])
+    assert estimate_epsilon(
+        batched, heuristic=TargetConditionNumber(max_condition_number=10.0)
+    ) == pytest.approx([10.0, 0.0])
 
 
 @pytest.mark.parametrize(
     "regularizer",
     [
-        DiagonalLoading(eps=RelativeToTrace(c=0.1)),
-        DiagonalShrinkage(alpha=0.1),
-        LinearShrinkage(alpha=0.1),
+        DiagonalLoading(epsilon=RelativeToTrace(scale=0.1)),
+        DiagonalShrinkage(strength=0.1),
+        IsotropicShrinkage(strength=0.1),
         EigenvalueClipping(min_eigenvalue=0.1),
-        LowRank(rank=1, eps=1e-4),
+        LowRank(rank=1, epsilon=1e-4),
     ],
 )
 def test_regularizers_accept_explicit_objects(
@@ -63,26 +62,24 @@ def test_regularizers_accept_explicit_objects(
 def test_residual_variance_uses_the_enclosing_low_rank_configuration() -> None:
     covariance = np.diag([5.0, 2.0, 0.5])
     regularized = regularize_covariance(
-        covariance, regularizer=LowRank(rank=1, eps=ResidualVariance())
+        covariance, regularizer=LowRank(rank=1, epsilon=ResidualVariance())
     )
     assert regularized == pytest.approx(np.diag([6.25, 1.25, 1.25]))
 
 
 def test_distribution_construction_with_explicit_covariance_regularization() -> None:
-    gaussian = gd.Gaussian.from_arrays(
-        [0.0], regularize_covariance([[0.0]], regularizer=DiagonalLoading(eps=1e-3))
+    gaussian = gd.Gaussian(
+        [0.0], regularize_covariance([[0.0]], regularizer=DiagonalLoading(epsilon=1e-3))
     )
-    mixture = gd.GaussianMixture.from_arrays(
-        [1.0],
-        [[0.0]],
-        regularize_covariance([[[0.0]]], regularizer=DiagonalLoading(eps=1e-3), batched=True),
+    mixture = gd.GaussianMixture(
+        [1.0], [[0.0]], regularize_covariance([[[0.0]]], regularizer=DiagonalLoading(epsilon=1e-3))
     )
     assert gaussian.covariance == pytest.approx(np.array([[1e-3]]))
     assert mixture.covariances == pytest.approx(np.array([[[1e-3]]]))
 
 
 @pytest.mark.parametrize(
-    "regularizer", [EigenvalueClipping(min_eigenvalue=0.1), LowRank(rank=1, eps=0.1)]
+    "regularizer", [EigenvalueClipping(min_eigenvalue=0.1), LowRank(rank=1, epsilon=0.1)]
 )
 def test_spectral_regularizers_reject_asymmetric_input(
     regularizer: gd.covariance.CovarianceRegularizer,
@@ -94,9 +91,9 @@ def test_spectral_regularizers_reject_asymmetric_input(
 
 def test_covariance_options_validate_epsilon_specs_and_integer_ranks() -> None:
     with pytest.raises(TypeError, match="epsilon heuristic"):
-        _ = DiagonalLoading(eps="bad")  # pyright: ignore[reportArgumentType]
-    with pytest.raises(ValueError, match="positive integer"):
-        _ = ResidualVariance(r=1.5)  # pyright: ignore[reportArgumentType]
+        _ = DiagonalLoading(epsilon="bad")  # pyright: ignore[reportArgumentType]
+    with pytest.raises(TypeError, match="positive integer"):
+        _ = ResidualVariance(rank=1.5)  # pyright: ignore[reportArgumentType]
     with pytest.raises(ValueError, match="must not exceed"):
         _ = regularize_covariance(np.eye(2), regularizer=LowRank(rank=3))
 
@@ -111,14 +108,14 @@ def test_estimate_epsilon_rejects_nonfinite_or_asymmetric_covariances() -> None:
 @pytest.mark.parametrize(
     "regularizer",
     [
-        DiagonalLoading(eps=0.3),
-        DiagonalLoading(eps=RelativeToTrace(c=0.1)),
-        DiagonalLoading(eps=TargetConditionNumber(kappa=3)),
-        LinearShrinkage(alpha=0.2),
-        DiagonalShrinkage(alpha=0.4),
+        DiagonalLoading(epsilon=0.3),
+        DiagonalLoading(epsilon=RelativeToTrace(scale=0.1)),
+        DiagonalLoading(epsilon=TargetConditionNumber(max_condition_number=3)),
+        IsotropicShrinkage(strength=0.2),
+        DiagonalShrinkage(strength=0.4),
         EigenvalueClipping(min_eigenvalue=0.8),
-        LowRank(rank=1, eps=0.2),
-        LowRank(rank=1, eps=ResidualVariance()),
+        LowRank(rank=1, epsilon=0.2),
+        LowRank(rank=1, epsilon=ResidualVariance()),
     ],
 )
 def test_batched_regularization_matches_independent_single_matrices(
@@ -127,9 +124,9 @@ def test_batched_regularization_matches_independent_single_matrices(
     matrices = np.array([[[3.0, 1.0], [1.0, 2.0]], [[1.0, 0.2], [0.2, 0.4]]])
     before = matrices.copy()
     matrices.setflags(write=False)
-    batch = regularize_covariance(matrices, regularizer=regularizer, batched=True)
+    batch = regularize_covariance(matrices, regularizer=regularizer)
     expected = np.stack([
-        regularize_covariance(matrix, regularizer=regularizer, batched=False) for matrix in matrices
+        regularize_covariance(matrix, regularizer=regularizer) for matrix in matrices
     ])
     np.testing.assert_allclose(batch, expected, rtol=1e-12, atol=1e-12)
     np.testing.assert_array_equal(matrices, before)
@@ -142,15 +139,15 @@ def test_batched_regularization_matches_independent_single_matrices(
 def test_epsilon_heuristics_keep_scalar_and_batch_return_shapes(rank: int) -> None:
     matrices = np.stack([np.diag([1.0, 2.0, 5.0]), np.diag([2.0, 4.0, 8.0])])
     for heuristic in [
-        RelativeToTrace(c=0.1),
-        TargetConditionNumber(kappa=3),
-        ResidualVariance(r=rank),
+        RelativeToTrace(scale=0.1),
+        TargetConditionNumber(max_condition_number=3),
+        ResidualVariance(rank=rank),
     ]:
-        batch = estimate_epsilon(matrices, heuristic=heuristic, batched=True)
-        singles = [
-            estimate_epsilon(matrix, heuristic=heuristic, batched=False) for matrix in matrices
-        ]
+        batch = estimate_epsilon(matrices, heuristic=heuristic)
+        singles = [estimate_epsilon(matrix, heuristic=heuristic) for matrix in matrices]
         assert all(isinstance(value, float) for value in singles)
         assert isinstance(batch, np.ndarray)
         assert batch.shape == (2,)
-        np.testing.assert_allclose(batch, singles, rtol=1e-12, atol=1e-12)
+        np.testing.assert_allclose(
+            batch, np.asarray(singles, dtype=np.float64), rtol=1e-12, atol=1e-12
+        )

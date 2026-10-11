@@ -25,18 +25,20 @@ class _CountingSamples:
     samples: npt.NDArray[np.float64]
     calls: int = 0
 
-    def sample(self, distribution: gd.distributions.GaussianLike) -> npt.NDArray[np.float64]:
-        assert distribution.dim == self.samples.shape[1]
+    def sample(
+        self, distribution: gd.distributions.GaussianDistribution
+    ) -> gd.sampling.SampleBatch:
+        assert distribution.n_features == self.samples.shape[1]
         self.calls += 1
-        return self.samples
+        return gd.sampling.SampleBatch(self.samples)
 
 
 def test_explicit_fitting_configs_and_immutable_result() -> None:
     p, candidates = _fixture()
-    result = gd.fit_gaussian_mixture_weights(
+    result = gd.fit_gaussian_weights(
         p,
         candidates,
-        method=gd.fitting.SimplexSLSQP(initial_weights=[0.5, 0.5]),
+        optimizer=gd.fitting.SimplexSLSQP(initial_weights=[0.5, 0.5]),
         objective=gd.fitting.MomentMatching(fit_second_moments=True),
     )
     assert result.weights == pytest.approx([0.3, 0.7], abs=1e-6)
@@ -61,8 +63,8 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
         return original_logpdf(self, x)
 
     monkeypatch.setattr(gd.Gaussian, "logpdf", counting_logpdf)
-    prepared = gd.fitting.prepare_gaussian_mixture_fit(
-        p, candidates, objective=gd.fitting.ForwardKL(sampling=sampling)
+    prepared = gd.fitting.prepare_gaussian_weight_fit(
+        p, candidates, objective=gd.fitting.ForwardKL(target_sampling=sampling)
     )
 
     assert prepared.n_active_candidates == 2
@@ -84,9 +86,9 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
         finite_difference[index] = (upper_value - lower_value) / (2.0 * step)
     assert gradient == pytest.approx(finite_difference, rel=1e-5)
 
-    first_solution = prepared.solve(method=gd.fitting.SimplexSLSQP())
+    first_solution = prepared.solve(optimizer=gd.fitting.SimplexSLSQP())
     warm_solution = prepared.solve(
-        method=gd.fitting.SimplexSLSQP(initial_weights=first_solution.active_weights)
+        optimizer=gd.fitting.SimplexSLSQP(initial_weights=first_solution.active_weights)
     )
     result = prepared.report(warm_solution)
 
@@ -103,17 +105,17 @@ def test_fitting_validates_bounds_and_initial_values() -> None:
     with pytest.raises(ValueError, match="min_weight"):
         _ = gd.fitting.SimplexSLSQP(min_weight=-1.0)
     with pytest.raises(ValueError, match="infeasible"):
-        _ = gd.fit_gaussian_mixture_weights(
+        _ = gd.fit_gaussian_weights(
             p,
             candidates,
-            method=gd.fitting.SimplexSLSQP(min_weight=0.6),
+            optimizer=gd.fitting.SimplexSLSQP(min_weight=0.6),
             objective=gd.fitting.MomentMatching(),
         )
     with pytest.raises(ValueError, match="length 2"):
-        _ = gd.fit_gaussian_mixture_weights(
+        _ = gd.fit_gaussian_weights(
             p,
             candidates,
-            method=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
+            optimizer=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
             objective=gd.fitting.MomentMatching(),
         )
 
@@ -122,24 +124,26 @@ def test_selectors_are_explicit_and_top_k_is_exact() -> None:
     p = gd.Gaussian.univariate()
     candidates = [gd.Gaussian.univariate(), gd.Gaussian.univariate()]
     estimator = gd.divergence.ClosedForm()
-    selection = gd.fitting.TopKSelector(k=1, estimator=estimator).select(p, candidates)
+    selection = gd.fitting.TopKSelector(
+        k=1, scorer=gd.fitting.ForwardKLScore(estimator=estimator)
+    ).select(p, candidates)
     assert len(selection.selected_indices) == 1
     assert selection.selected_indices == (0,)
     with pytest.raises(ValueError, match="mode must be"):
         _ = gd.fitting.ToleranceSelector(
             delta=1.0,
             mode="bad",  # pyright: ignore[reportArgumentType]
-            estimator=estimator,
+            scorer=gd.fitting.ForwardKLScore(estimator=estimator),
         )
 
 
 def test_relative_tolerance_selector_handles_negative_estimates() -> None:
     p = gd.Gaussian.univariate(0.0, 1.0)
     candidates = [gd.Gaussian.univariate(0.0, 0.25), gd.Gaussian.univariate(0.0, 0.5)]
-    estimator = gd.divergence.MonteCarlo(gd.sampling.Samples([[0.0]]))
+    estimator = gd.divergence.MonteCarlo(sampling=gd.sampling.Samples([[0.0]]))
 
     selection = gd.fitting.ToleranceSelector(
-        delta=0.5, mode="relative", estimator=estimator
+        delta=0.5, mode="relative", scorer=gd.fitting.ForwardKLScore(estimator=estimator)
     ).select(p, candidates)
 
     assert selection.selected_indices == (0,)
@@ -154,10 +158,10 @@ def test_reverse_kl_only_requires_candidate_samples(monkeypatch: pytest.MonkeyPa
         pytest.fail(f"ReverseKL unexpectedly sampled p with {args!r} and {kwargs!r}")
 
     monkeypatch.setattr(gd.GaussianMixture, "sample", fail_if_sampled)
-    prepared = gd.fitting.prepare_gaussian_mixture_fit(
+    prepared = gd.fitting.prepare_gaussian_weight_fit(
         p,
         candidates,
-        objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(q_samples)),
+        objective=gd.fitting.ReverseKL(candidate_sampling=gd.sampling.SampleBatches(q_samples)),
     )
 
     value, gradient = prepared.evaluate([0.5, 0.5])
@@ -170,25 +174,27 @@ def test_simplex_optimization_result_requires_simplex_weights() -> None:
 
     with pytest.raises(ValueError, match="sum to one"):
         _ = gd.fitting.SimplexOptimizationResult(
-            method=method,
+            optimizer=method,
             parameters=np.array([2.0, 3.0]),
             active_weights=np.array([2.0, 3.0]),
             objective_value=0.0,
-            iterations=0,
+            n_iterations=0,
             converged=True,
-            optimizer_message="manual",
+            message="manual",
         )
 
 
 def test_fitting_rejects_empty_sample_batches() -> None:
     p, candidates = _fixture()
-    empty_batches = np.empty((len(candidates), 0, p.dim), dtype=np.float64)
+    empty_batches = np.empty((len(candidates), 0, p.n_features), dtype=np.float64)
 
-    with pytest.raises(ValueError, match="at least one sample"):
-        _ = gd.fitting.prepare_gaussian_mixture_fit(
+    with pytest.raises(ValueError, match="samples must have shape"):
+        _ = gd.fitting.prepare_gaussian_weight_fit(
             p,
             candidates,
-            objective=gd.fitting.ReverseKL(q_sampling=gd.sampling.SampleBatches(empty_batches)),
+            objective=gd.fitting.ReverseKL(
+                candidate_sampling=gd.sampling.SampleBatches(empty_batches)
+            ),
         )
 
 
@@ -196,24 +202,27 @@ def test_fitting_rejects_empty_sample_batches() -> None:
 class _FirstOnly(CandidateSelector):
     @override
     def select(
-        self, p: gd.distributions.GaussianLike, q_i: Sequence[gd.distributions.GaussianLike]
+        self,
+        target: gd.distributions.GaussianDistribution,
+        candidates: Sequence[gd.distributions.GaussianDistribution],
     ) -> CandidateSelection:
-        assert p.dim == q_i[0].dim
+        assert target.n_features == candidates[0].n_features
         return CandidateSelection(selected_indices=(1,), rejected_indices=(0,))
 
 
 def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
     p, candidates = _fixture()
-    result = gd.fit_gaussian_mixture_weights(
+    result = gd.fit_gaussian_weights(
         p,
         candidates,
-        method=gd.fitting.SoftmaxLBFGSB(),
+        optimizer=gd.fitting.SoftmaxLBFGSB(),
         objective=gd.fitting.MomentMatching(),
         candidate_selector=_FirstOnly(),
     )
     assert result.weights == pytest.approx([0.0, 1.0])
     assert result.active_candidate_indices == (1,)
-    assert np.all(result.fitted_mixture.mapping.source_index == 1)
+    assert result.mixture.mapping is not None
+    assert np.all(result.mixture.mapping.source_index == 1)
 
 
 def test_candidate_selection_requires_a_complete_partition() -> None:
@@ -223,16 +232,18 @@ def test_candidate_selection_requires_a_complete_partition() -> None:
     class InvalidSelector(CandidateSelector):
         @override
         def select(
-            self, p: gd.distributions.GaussianLike, q_i: Sequence[gd.distributions.GaussianLike]
+            self,
+            target: gd.distributions.GaussianDistribution,
+            candidates: Sequence[gd.distributions.GaussianDistribution],
         ) -> CandidateSelection:
-            assert p.dim == q_i[0].dim
+            assert target.n_features == candidates[0].n_features
             return CandidateSelection(selected_indices=(0, 0), rejected_indices=())
 
     with pytest.raises(ValueError, match="complete non-overlapping"):
-        _ = gd.fit_gaussian_mixture_weights(
+        _ = gd.fit_gaussian_weights(
             p,
             candidates,
-            method=gd.fitting.SoftmaxLBFGSB(),
+            optimizer=gd.fitting.SoftmaxLBFGSB(),
             objective=gd.fitting.MomentMatching(),
             candidate_selector=InvalidSelector(),
         )
@@ -270,25 +281,33 @@ def test_stratified_objectives_match_component_weighted_expectations(
         np.repeat([[-2.0], [2.0]], [20, 80], axis=0),
         np.zeros((100, 1)),
     ])
-    stratified = gd.sampling.Stratified(n_samples, rng=0)
+    stratified = gd.sampling.Stratified(n_samples=n_samples, rng=0)
     empirical_p = gd.sampling.Samples(p_samples)
     empirical_q = gd.sampling.SampleBatches(q_samples)
     if objective_name == "forward":
-        objective = gd.fitting.ForwardKL(stratified)
-        expected_objective = gd.fitting.ForwardKL(empirical_p)
+        objective = gd.fitting.ForwardKL(target_sampling=stratified)
+        expected_objective = gd.fitting.ForwardKL(target_sampling=empirical_p)
     elif objective_name == "reverse":
-        objective = gd.fitting.ReverseKL(stratified)
-        expected_objective = gd.fitting.ReverseKL(empirical_q)
+        objective = gd.fitting.ReverseKL(candidate_sampling=stratified)
+        expected_objective = gd.fitting.ReverseKL(candidate_sampling=empirical_q)
     elif objective_name == "js":
-        objective = gd.fitting.JensenShannon(stratified, stratified)
-        expected_objective = gd.fitting.JensenShannon(empirical_p, empirical_q)
+        objective = gd.fitting.JensenShannon(
+            target_sampling=stratified, candidate_sampling=stratified
+        )
+        expected_objective = gd.fitting.JensenShannon(
+            target_sampling=empirical_p, candidate_sampling=empirical_q
+        )
     else:
         alpha = {"bidirectional": 0.3, "alpha0": 0.0, "alpha1": 1.0}[objective_name]
-        objective = gd.fitting.BidirectionalKL(stratified, stratified, alpha=alpha)
-        expected_objective = gd.fitting.BidirectionalKL(empirical_p, empirical_q, alpha=alpha)
+        objective = gd.fitting.BidirectionalKL(
+            target_sampling=stratified, candidate_sampling=stratified, forward_weight=alpha
+        )
+        expected_objective = gd.fitting.BidirectionalKL(
+            target_sampling=empirical_p, candidate_sampling=empirical_q, forward_weight=alpha
+        )
     with np.errstate(divide="ignore"):
-        prepared = gd.fitting.prepare_gaussian_mixture_fit(p, candidates, objective=objective)
-        expected = gd.fitting.prepare_gaussian_mixture_fit(
+        prepared = gd.fitting.prepare_gaussian_weight_fit(p, candidates, objective=objective)
+        expected = gd.fitting.prepare_gaussian_weight_fit(
             p, candidates, objective=expected_objective
         )
     weights = np.array([0.2, 0.3, 0.5])
@@ -311,11 +330,11 @@ def test_stratified_forward_fit_preserves_rare_component_mass(
     monkeypatch.setattr(gd.Gaussian, "sample", _samples_at_mean)
     candidates = [gd.Gaussian.univariate(-10), gd.Gaussian.univariate(10)]
     p = gd.GaussianMixture.from_components(candidates, weights=[0.99, 0.01])
-    result = gd.fit_gaussian_mixture_weights(
+    result = gd.fit_gaussian_weights(
         p,
         candidates,
-        objective=gd.fitting.ForwardKL(gd.sampling.Stratified(2, rng=0)),
-        method=gd.fitting.SoftmaxLBFGSB(tol=1e-10),
+        objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Stratified(n_samples=2, rng=0)),
+        optimizer=gd.fitting.SoftmaxLBFGSB(tol=1e-10),
     )
     assert result.converged
     assert result.weights == pytest.approx(p.weights, abs=1e-6)

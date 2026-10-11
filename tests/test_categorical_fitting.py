@@ -7,8 +7,8 @@ import numpy.typing as npt
 import pytest
 
 from gmm_divergence.divergence import categorical_kl_divergence
-from gmm_divergence.fitting import SimplexSLSQP, SoftmaxLBFGSB, fit_categorical_mixture_weights
-from gmm_divergence.results import CategoricalMixtureFitResult
+from gmm_divergence.fitting import SimplexSLSQP, SoftmaxLBFGSB, fit_categorical_weights
+from gmm_divergence.results import CategoricalWeightFitResult
 
 
 @pytest.fixture(params=[SimplexSLSQP(tol=1e-10), SoftmaxLBFGSB(tol=1e-10)], ids=["slsqp", "lbfgsb"])
@@ -24,38 +24,38 @@ def candidates() -> npt.NDArray[np.float64]:
 
 
 def _assert_valid_result(
-    result: CategoricalMixtureFitResult, target: npt.ArrayLike, candidates: npt.ArrayLike
+    result: CategoricalWeightFitResult, target: npt.ArrayLike, candidates: npt.ArrayLike
 ) -> None:
     """Check common result invariants."""
     target = np.asarray(target, dtype=np.float64)
     candidates = np.asarray(candidates, dtype=np.float64)
 
-    assert isinstance(result, CategoricalMixtureFitResult)
+    assert isinstance(result, CategoricalWeightFitResult)
     assert result.converged
 
     assert result.weights.shape == (len(candidates),)
-    assert result.fitted_probabilities.shape == target.shape
+    assert result.probabilities.shape == target.shape
 
     assert np.all(np.isfinite(result.weights))
     assert np.all(result.weights >= -1e-12)
 
     np.testing.assert_allclose(result.weights.sum(), 1.0, atol=1e-10)
 
-    np.testing.assert_allclose(result.fitted_probabilities, result.weights @ candidates, atol=1e-10)
+    np.testing.assert_allclose(result.probabilities, result.weights @ candidates, atol=1e-10)
 
-    np.testing.assert_allclose(result.fitted_probabilities.sum(), 1.0, atol=1e-10)
+    np.testing.assert_allclose(result.probabilities.sum(), 1.0, atol=1e-10)
 
-    assert np.all(result.fitted_probabilities >= -1e-12)
+    assert np.all(result.probabilities >= -1e-12)
 
     # The reported objective must equal the actual forward KL.
-    expected_kl = categorical_kl_divergence(target, result.fitted_probabilities).value
+    expected_kl = categorical_kl_divergence(target, result.probabilities).value
 
     np.testing.assert_allclose(result.objective_value, expected_kl, atol=1e-9, rtol=1e-7)
 
     assert result.objective_value >= -1e-9
-    assert result.iterations >= 0
-    assert isinstance(result.optimizer_message, str)
-    assert result.optimizer_message
+    assert result.n_iterations >= 0
+    assert isinstance(result.message, str)
+    assert result.message
 
 
 def test_recovers_known_mixture_weights(
@@ -65,13 +65,13 @@ def test_recovers_known_mixture_weights(
     expected_weights = np.array([0.6, 0.2, 0.2])
     target = expected_weights @ candidates
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, expected_weights, atol=1e-3)
 
-    np.testing.assert_allclose(result.fitted_probabilities, target, atol=1e-5)
+    np.testing.assert_allclose(result.probabilities, target, atol=1e-5)
 
     assert result.objective_value < 1e-8
 
@@ -81,12 +81,12 @@ def test_identical_target_and_candidate(method: SimplexSLSQP | SoftmaxLBFGSB) ->
     target = np.array([0.2, 0.5, 0.3])
     candidates = target[None, :]
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, [1.0])
-    np.testing.assert_allclose(result.fitted_probabilities, target)
+    np.testing.assert_allclose(result.probabilities, target)
 
     assert abs(result.objective_value) < 1e-10
 
@@ -97,14 +97,14 @@ def test_single_candidate_matches_categorical_kl(method: SimplexSLSQP | SoftmaxL
     candidate = np.array([0.4, 0.3, 0.3])
     candidates = candidate[None, :]
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     expected_kl = categorical_kl_divergence(target, candidate).value
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, [1.0])
-    np.testing.assert_allclose(result.fitted_probabilities, candidate)
+    np.testing.assert_allclose(result.probabilities, candidate)
 
     np.testing.assert_allclose(result.objective_value, expected_kl, atol=1e-10)
 
@@ -116,11 +116,11 @@ def test_identical_candidates(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
 
     candidates = np.stack([candidate, candidate, candidate])
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
-    np.testing.assert_allclose(result.fitted_probabilities, candidate, atol=1e-10)
+    np.testing.assert_allclose(result.probabilities, candidate, atol=1e-10)
 
     # The individual candidate weights are not identifiable.
     # Only their sum and the fitted distribution are meaningful.
@@ -133,7 +133,7 @@ def test_target_outside_candidate_convex_hull(method: SimplexSLSQP | SoftmaxLBFG
 
     candidates = np.array([[0.5, 0.3, 0.2], [0.2, 0.5, 0.3]])
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
@@ -141,7 +141,7 @@ def test_target_outside_candidate_convex_hull(method: SimplexSLSQP | SoftmaxLBFG
     # achievable mass on the target's dominant category.
     np.testing.assert_allclose(result.weights, [1.0, 0.0], atol=1e-3)
 
-    np.testing.assert_allclose(result.fitted_probabilities, candidates[0], atol=1e-3)
+    np.testing.assert_allclose(result.probabilities, candidates[0], atol=1e-3)
 
     assert result.objective_value > 0.0
 
@@ -152,11 +152,11 @@ def test_zero_target_probability(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
 
     candidates = np.array([[0.7, 0.3, 0.0], [0.2, 0.3, 0.5]])
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
-    np.testing.assert_allclose(result.fitted_probabilities, target, atol=1e-5)
+    np.testing.assert_allclose(result.probabilities, target, atol=1e-5)
 
     assert result.objective_value < 1e-8
 
@@ -167,13 +167,13 @@ def test_zero_candidate_probability(method: SimplexSLSQP | SoftmaxLBFGSB) -> Non
 
     candidates = np.array([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, [0.5, 0.5], atol=1e-4)
 
-    np.testing.assert_allclose(result.fitted_probabilities, target, atol=1e-5)
+    np.testing.assert_allclose(result.probabilities, target, atol=1e-5)
 
     assert result.objective_value < 1e-8
 
@@ -185,7 +185,7 @@ def test_unsupported_target_category() -> None:
     candidates = np.array([[0.5, 0.5, 0.0], [0.2, 0.8, 0.0]])
 
     with pytest.raises(ValueError):  # ruff: ignore[pytest-raises-too-broad]
-        _ = fit_categorical_mixture_weights(target, candidates, method=SimplexSLSQP())
+        _ = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP())
 
 
 def test_does_not_modify_inputs(
@@ -197,7 +197,7 @@ def test_does_not_modify_inputs(
     original_target = target.copy()
     original_candidates = candidates.copy()
 
-    _ = fit_categorical_mixture_weights(target, candidates, method=method)
+    _ = fit_categorical_weights(target, candidates, optimizer=method)
 
     np.testing.assert_array_equal(target, original_target)
     np.testing.assert_array_equal(candidates, original_candidates)
@@ -209,11 +209,11 @@ def test_accepts_python_lists() -> None:
 
     candidates = [[0.8, 0.2], [0.2, 0.8]]
 
-    result = fit_categorical_mixture_weights(target, candidates, method=SimplexSLSQP())
+    result = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP())
 
     np.testing.assert_allclose(result.weights, [0.5, 0.5], atol=1e-4)
 
-    np.testing.assert_allclose(result.fitted_probabilities, target, atol=1e-5)
+    np.testing.assert_allclose(result.probabilities, target, atol=1e-5)
 
 
 @pytest.mark.parametrize(
@@ -225,7 +225,7 @@ def test_invalid_target_rejected(target: npt.ArrayLike) -> None:
     candidates = np.array([[0.5, 0.5], [0.2, 0.8]])
 
     with pytest.raises(ValueError):  # ruff: ignore[pytest-raises-too-broad]
-        _ = fit_categorical_mixture_weights(target, candidates, method=SimplexSLSQP())
+        _ = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP())
 
 
 @pytest.mark.parametrize(
@@ -248,7 +248,7 @@ def test_invalid_candidates_rejected(candidates: npt.ArrayLike) -> None:
     target = np.array([0.5, 0.5])
 
     with pytest.raises(ValueError):  # ruff: ignore[pytest-raises-too-broad]
-        _ = fit_categorical_mixture_weights(target, candidates, method=SimplexSLSQP())
+        _ = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP())
 
 
 def test_custom_slsqp_initial_weights(candidates: npt.NDArray[np.float64]) -> None:
@@ -257,13 +257,13 @@ def test_custom_slsqp_initial_weights(candidates: npt.NDArray[np.float64]) -> No
 
     method = SimplexSLSQP(tol=1e-10, initial_weights=np.array([0.2, 0.3, 0.5]))
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, [0.6, 0.2, 0.2], atol=1e-3)
 
-    assert result.fit_method is method
+    assert result.optimizer is method
 
 
 def test_custom_lbfgsb_initial_logits(candidates: npt.NDArray[np.float64]) -> None:
@@ -272,27 +272,27 @@ def test_custom_lbfgsb_initial_logits(candidates: npt.NDArray[np.float64]) -> No
 
     method = SoftmaxLBFGSB(tol=1e-10, initial_logits=np.array([-1.0, 0.0, 1.0]))
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
     _assert_valid_result(result, target, candidates)
 
     np.testing.assert_allclose(result.weights, [0.6, 0.2, 0.2], atol=1e-3)
 
-    assert result.fit_method is method
+    assert result.optimizer is method
 
 
 def test_both_optimizers_agree(candidates: npt.NDArray[np.float64]) -> None:
     """Both optimizers should converge to the same fitted distribution."""
     target = np.array([0.2, 0.5, 0.3])
 
-    slsqp = fit_categorical_mixture_weights(target, candidates, method=SimplexSLSQP(tol=1e-10))
+    slsqp = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP(tol=1e-10))
 
-    lbfgsb = fit_categorical_mixture_weights(target, candidates, method=SoftmaxLBFGSB(tol=1e-10))
+    lbfgsb = fit_categorical_weights(target, candidates, optimizer=SoftmaxLBFGSB(tol=1e-10))
 
     assert slsqp.converged
     assert lbfgsb.converged
 
-    np.testing.assert_allclose(slsqp.fitted_probabilities, lbfgsb.fitted_probabilities, atol=1e-5)
+    np.testing.assert_allclose(slsqp.probabilities, lbfgsb.probabilities, atol=1e-5)
 
     np.testing.assert_allclose(slsqp.objective_value, lbfgsb.objective_value, atol=1e-8)
 
@@ -302,11 +302,11 @@ def test_optimizer_metadata(candidates: npt.NDArray[np.float64]) -> None:
     target = np.array([0.2, 0.5, 0.3])
     method = SimplexSLSQP(tol=1e-10)
 
-    result = fit_categorical_mixture_weights(target, candidates, method=method)
+    result = fit_categorical_weights(target, candidates, optimizer=method)
 
-    assert result.fit_method is method
+    assert result.optimizer is method
     assert result.converged is True
-    assert isinstance(result.iterations, int)
-    assert result.iterations >= 0
-    assert isinstance(result.optimizer_message, str)
-    assert len(result.optimizer_message) > 0
+    assert isinstance(result.n_iterations, int)
+    assert result.n_iterations >= 0
+    assert isinstance(result.message, str)
+    assert len(result.message) > 0

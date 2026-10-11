@@ -88,7 +88,7 @@ q = gd.GaussianMixture.from_components(
 )
 
 kl_estimate = gd.kl_divergence(
-    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+    p, q, estimator=gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(n_samples=10_000, rng=9126))
 )
 assert abs(kl_estimate.value - 0.32286) < 1e-5
 ```
@@ -104,7 +104,7 @@ assert abs(kl_estimate.value - 0.32286) < 1e-5
         together with `Gaussian.univariate` is usually the clearest way to define
         Gaussian mixtures.
     
-        The `GaussianMixture.from_arrays` constructor remains useful when you
+        The `GaussianMixture` constructor remains useful when you
         already have weight, mean, and covariance arrays.
 
     
@@ -124,9 +124,9 @@ p = gd.GaussianMixture.from_components([
     gd.Gaussian.univariate(mean=1.0, variance=1.0),
 ])
 
-drawn = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(10_000, rng=9126))
+drawn = gd.divergence.MonteCarlo(sampling=gd.sampling.Draw(n_samples=10_000, rng=9126))
 reused = gd.divergence.MonteCarlo(sampling=gd.sampling.Samples(p.sample(10_000, rng=9126)))
-stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(10_000, rng=9126))
+stratified = gd.divergence.MonteCarlo(sampling=gd.sampling.Stratified(n_samples=10_000, rng=9126))
 ```
 
 `gd.sampling.Draw` is the default and works for any sampleable distribution.
@@ -137,8 +137,9 @@ single Gaussian is treated as a one-component mixture.
 
 Stratified standard errors require at least two observations from every
 positive-weight component. When a component has only one observation, the KL
-estimate is still returned but its sample variance and standard error are
-reported as `nan` rather than as a misleading zero.
+estimate is still returned, while `result.monte_carlo.standard_error` is
+`None`. Precomputed `SampleBatch` records retain the integration design and
+produce the same estimate and uncertainty when reused with `Samples`.
 
 [^hershey2007approximating]:
     Hershey, John R., and Peder A. Olsen. "Approximating the Kullback Leibler divergence between Gaussian mixture models." 2007 IEEE International Conference on Acoustics, Speech and Signal Processing-ICASSP'07. Vol. 4. IEEE, 2007.

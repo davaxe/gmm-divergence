@@ -1,4 +1,4 @@
-"""Public covariance regularization API."""
+"""Public covariance regularizers and epsilon heuristics."""
 
 from gmm_divergence.covariance._api import regularize_covariance
 from gmm_divergence.covariance._epsilon import (
@@ -14,15 +14,8 @@ from gmm_divergence.covariance._options import (
     DiagonalLoading,
     DiagonalShrinkage,
     EigenvalueClipping,
-    LinearShrinkage,
+    IsotropicShrinkage,
     LowRank,
-)
-from gmm_divergence.covariance._regularize import (
-    diagonal_loading,
-    diagonal_shrinkage,
-    eigenvalue_clipping,
-    linear_shrinkage,
-    lowrank,
 )
 
 __all__ = [
@@ -32,16 +25,11 @@ __all__ = [
     "EigenvalueClipping",
     "EpsilonHeuristic",
     "EpsilonSpec",
-    "LinearShrinkage",
+    "IsotropicShrinkage",
     "LowRank",
     "RelativeToTrace",
     "ResidualVariance",
     "TargetConditionNumber",
-    "diagonal_loading",
-    "diagonal_shrinkage",
-    "eigenvalue_clipping",
     "estimate_epsilon",
-    "linear_shrinkage",
-    "lowrank",
     "regularize_covariance",
 ]

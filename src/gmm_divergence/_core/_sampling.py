@@ -1,256 +1,268 @@
+"""Sampling records, protocols, and validated integration helpers."""
+
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
+from itertools import starmap
 from typing import TYPE_CHECKING, Protocol
 
 import numpy as np
-from typing_extensions import override
+import numpy.typing as npt
 
-from gmm_divergence._core._validation import (
-    as_points,
-    as_sample_batches,
-    as_weights,
-    validate_positive_int,
-)
+from gmm_divergence._core._arrays import readonly_copy
+from gmm_divergence._core._validation import as_points, as_weights, validate_positive_int
 from gmm_divergence.distributions._gaussian import Gaussian
 from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
-    from collections.abc import Callable, Sequence
-
-    import numpy.typing as npt
-
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._typing import GaussianLike
+    from gmm_divergence.distributions._typing import GaussianDistribution
+
+
+@dataclass(frozen=True, slots=True, init=False, eq=False)
+class SampleBatch:
+    """Owned observations (N, D), optional normalized integration weights and strata."""
+
+    samples: FloatArray
+    integration_weights: FloatArray | None
+    component_ids: npt.NDArray[np.intp] | None
+
+    def __init__(
+        self,
+        samples: npt.ArrayLike,
+        *,
+        integration_weights: npt.ArrayLike | None = None,
+        component_ids: npt.ArrayLike | None = None,
+    ) -> None:
+        points = readonly_copy(samples, dtype=np.float64)
+        if points.ndim != 2 or 0 in points.shape or not np.all(np.isfinite(points)):
+            msg = "samples must be a nonempty finite array of shape (n_samples, n_features)."
+            raise ValueError(msg)
+        weights = None
+        if integration_weights is not None:
+            weights = as_weights(
+                integration_weights,
+                expected_length=len(points),
+                normalize=False,
+                name="integration_weights",
+            )
+            if not np.isclose(weights.sum(), 1.0, rtol=1e-7, atol=1e-8):
+                msg = "integration_weights must sum to one."
+                raise ValueError(msg)
+        ids = None
+        if component_ids is not None:
+            array = np.asarray(component_ids)
+            if array.ndim != 1 or len(array) != len(points):
+                msg = "component_ids must have one entry per sample."
+                raise ValueError(msg)
+            if array.dtype.kind not in "iu":
+                msg = "component_ids must contain integers."
+                raise TypeError(msg)
+            if np.any(array < 0) or np.any(array > np.iinfo(np.intp).max):
+                msg = "component_ids must contain nonnegative component positions."
+                raise IndexError(msg)
+            ids = readonly_copy(array, dtype=np.intp)
+        object.__setattr__(self, "samples", points)
+        object.__setattr__(self, "integration_weights", weights)
+        object.__setattr__(self, "component_ids", ids)
 
 
 class SampleSpec(Protocol):
-    """Protocol for sampling specifications."""
-
-    def sample(self, distribution: GaussianLike) -> FloatArray:
-        """Return samples described by the specification."""
+    def sample(self, distribution: GaussianDistribution) -> SampleBatch:
+        """Return a batch originating from distribution."""
         ...
 
 
 class BatchSampleSpec(Protocol):
-    """Protocol for sample specifications that can sample distribution sequences."""
-
-    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
-        """Return sample batches described by the specification."""
+    def sample_batches(
+        self, distributions: Sequence[GaussianDistribution]
+    ) -> tuple[SampleBatch, ...]:
+        """Return one batch per distribution, preserving input order."""
         ...
 
 
-@dataclass(frozen=True, slots=True)
-class Draw(SampleSpec, BatchSampleSpec):
-    """Draw fresh samples from the Gaussian-family distribution being estimated.
-
-    Use this when the estimator or fitting objective should own sampling.
-    Passing a seed or generator through `rng` makes repeated calls
-    reproducible.
-    """
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Draw:
+    """Fresh iid samples. Seeds restart streams; generator objects advance them."""
 
     n_samples: int = 10_000
-    """Number of samples to draw."""
     rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_int(self.n_samples, name="n_samples")
 
-    @override
-    def sample(self, distribution: GaussianLike) -> FloatArray:
-        """Return the batch of samples corresponding to the given distribution."""
-        return distribution.sample(n_samples=self.n_samples, rng=self.rng)
+    def sample(self, distribution: GaussianDistribution) -> SampleBatch:
+        """Return observations (n_samples, n_features) with their integration design."""
+        _validate_distribution(distribution)
+        return SampleBatch(distribution.sample(self.n_samples, rng=self.rng))
 
-    @override
-    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
-        """Return one independently drawn sample batch per distribution."""
+    def sample_batches(
+        self, distributions: Sequence[GaussianDistribution]
+    ) -> tuple[SampleBatch, ...]:
+        """Return one immutable batch per source, consuming a shared generator."""
+        _validate_distributions(distributions)
         rng = np.random.default_rng(self.rng)
-        return _sample_each_distribution(
-            distributions,
-            lambda distribution: distribution.sample(n_samples=self.n_samples, rng=rng),
-        )
+        return tuple(SampleBatch(d.sample(self.n_samples, rng=rng)) for d in distributions)
 
 
-@dataclass(frozen=True, slots=True)
-class Stratified(SampleSpec, BatchSampleSpec):
-    """Draw stratified samples from a Gaussian-family distribution.
-
-    For a Gaussian mixture, component sample counts are allocated
-    deterministically from the mixture weights, then samples are drawn from each
-    component. Every positive-weight component receives at least one sample, so
-    `n_samples` must be at least the number of positive-weight components. A
-    single Gaussian is treated as a one-component mixture.
-    """
+@dataclass(frozen=True, slots=True, kw_only=True)
+class Stratified:
+    """Fixed component allocations with integration mass preserved in the batch."""
 
     n_samples: int = 10_000
-    """Total number of samples to draw."""
     rng: np.random.Generator | int | None = None
-    """Random generator or seed used when drawing samples."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_int(self.n_samples, name="n_samples")
 
-    @override
-    def sample(self, distribution: GaussianLike) -> FloatArray:
-        """Return the batch of samples corresponding to the given distribution."""
-        return stratified_mixture_samples(distribution, self).samples
+    def sample(self, distribution: GaussianDistribution) -> SampleBatch:
+        """Return observations (n_samples, n_features) with their integration design."""
+        _validate_distribution(distribution)
+        return stratified_mixture_samples(distribution, self)
 
-    @override
-    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
-        """Return one stratified sample batch per distribution."""
-        return _stratified_sample_batches(distributions, self)[0]
-
-
-@dataclass(frozen=True, slots=True)
-class Samples(SampleSpec):
-    """Use precomputed samples from a single Gaussian-family reference distribution."""
-
-    samples: npt.ArrayLike
-    """Sample array with shape `(n_samples, n_features)`."""
-
-    @override
-    def sample(self, distribution: GaussianLike) -> FloatArray:
-        """Return the batch of samples corresponding to the given distribution."""
-        return as_points(
-            self.samples, n_features=distribution.dim, name="samples", require_nonempty=True
-        )
+    def sample_batches(
+        self, distributions: Sequence[GaussianDistribution]
+    ) -> tuple[SampleBatch, ...]:
+        """Return one immutable batch per source, consuming a shared generator."""
+        _validate_distributions(distributions)
+        rng = np.random.default_rng(self.rng)
+        return tuple(stratified_mixture_samples(d, self, rng=rng) for d in distributions)
 
 
-@dataclass(frozen=True, slots=True)
-class SampleBatches(BatchSampleSpec):
-    """Use precomputed sample batches for a sequence of candidate distributions."""
+@dataclass(frozen=True, slots=True, init=False)
+class Samples:
+    """Precomputed observations or a batch retaining its integration design."""
 
-    samples: npt.ArrayLike
-    """Sample array with shape `(n_distributions, n_samples, n_features)`."""
+    samples: SampleBatch
 
-    @override
-    def sample_batches(self, distributions: Sequence[GaussianLike]) -> FloatArray:
-        """Return precomputed sample batches for the given distributions."""
-        expected_dim = distributions[0].dim if distributions else 0
-        return as_sample_batches(
-            self.samples,
-            n_distributions=len(distributions),
-            n_features=expected_dim,
-            name="samples",
-        )
+    def __init__(self, samples: SampleBatch | npt.ArrayLike) -> None:
+        batch = samples if isinstance(samples, SampleBatch) else SampleBatch(samples)
+        object.__setattr__(self, "samples", batch)
+
+    def sample(self, distribution: GaussianDistribution) -> SampleBatch:
+        """Return observations (n_samples, n_features) with their integration design."""
+        batch = self.samples
+        return validate_sample_batch(distribution, batch)
 
 
-def _sample_each_distribution(
-    distributions: Sequence[GaussianLike], sampler: Callable[[GaussianLike], FloatArray]
-) -> FloatArray:
-    if len(distributions) == 0:
-        msg = "distributions must contain at least one distribution."
-        raise ValueError(msg)
+@dataclass(frozen=True, slots=True, init=False)
+class SampleBatches:
+    """One precomputed batch per original candidate, before filtering or reordering."""
 
-    validated: list[FloatArray] = []
-    n_samples: int | None = None
-    for index, distribution in enumerate(distributions):
-        batch = sampler(distribution)
-        batch_arr = as_points(
-            batch, n_features=distribution.dim, name=f"samples[{index}]", require_nonempty=True
-        )
-        if n_samples is None:
-            n_samples = batch_arr.shape[0]
-        elif batch_arr.shape[0] != n_samples:
-            msg = (
-                "All sample batches must have the same number of samples, "
-                f"got {n_samples} and {batch_arr.shape[0]}."
-            )
+    samples: tuple[SampleBatch, ...]
+
+    def __init__(self, samples: Sequence[SampleBatch] | npt.ArrayLike) -> None:
+        values = samples
+        if isinstance(values, Sequence) and all(isinstance(batch, SampleBatch) for batch in values):
+            batches = tuple(values)
+        else:
+            array = np.asarray(values, dtype=np.float64)
+            if array.ndim != 3 or 0 in array.shape:
+                msg = "samples must have shape (n_distributions, n_samples, n_features)."
+                raise ValueError(msg)
+            batches = tuple(SampleBatch(batch) for batch in array)
+        if not batches:
+            msg = "samples must contain at least one batch."
             raise ValueError(msg)
-        validated.append(batch_arr)
+        object.__setattr__(self, "samples", batches)
 
-    return np.stack(validated).astype(np.float64, copy=False)
+    def sample_batches(
+        self, distributions: Sequence[GaussianDistribution]
+    ) -> tuple[SampleBatch, ...]:
+        """Return one immutable batch per source, consuming a shared generator."""
+        _validate_distributions(distributions)
+        batches = self.samples
+        if len(batches) != len(distributions):
+            msg = "samples must contain one batch per original candidate distribution."
+            raise ValueError(msg)
+        return tuple(starmap(validate_sample_batch, zip(distributions, batches, strict=True)))
 
 
-@dataclass(frozen=True, slots=True)
-class StratifiedSampleResult:
-    """Samples and component metadata produced by stratified mixture sampling."""
-
-    samples: FloatArray
-    """Stacked sample array with shape `(n_samples, n_features)`."""
-    component_ids: npt.NDArray[np.intp]
-    """Component index for each sample."""
-    counts: npt.NDArray[np.intp]
-    """Number of samples drawn from each component."""
-    integration_weights: FloatArray
-    """Mixture mass represented by each draw: component weight divided by count."""
+def validate_sample_batch(distribution: GaussianDistribution, batch: object) -> SampleBatch:
+    _validate_distribution(distribution)
+    if not isinstance(batch, SampleBatch):
+        msg = "sampling specifications must return SampleBatch records."
+        raise TypeError(msg)
+    _ = as_points(
+        batch.samples, n_features=distribution.n_features, name="samples", require_nonempty=True
+    )
+    if batch.component_ids is not None:
+        weights, _, _ = distribution.component_arrays()
+        ids = batch.component_ids
+        if np.any(ids >= len(weights)):
+            msg = "component_ids must reference components of the source distribution."
+            raise IndexError(msg)
+        if batch.integration_weights is None:
+            return batch
+        counts = np.bincount(ids, minlength=len(weights))
+        if np.any(counts[weights > 0] == 0):
+            msg = "component_ids must cover every positive-weight source component."
+            raise ValueError(msg)
+        if not np.allclose(batch.integration_weights, weights[ids] / counts[ids]):
+            msg = "integration_weights must match source component mass divided by stratum count."
+            raise ValueError(msg)
+    return batch
 
 
 def stratified_mixture_samples(
-    distribution: GaussianLike, spec: Stratified, *, rng: np.random.Generator | None = None
-) -> StratifiedSampleResult:
-    """Draw stratified samples from a Gaussian mixture."""
+    distribution: GaussianDistribution, spec: Stratified, *, rng: np.random.Generator | None = None
+) -> SampleBatch:
     if isinstance(distribution, Gaussian):
-        distribution = GaussianMixture.from_components([distribution], weights=[1.0])
-
+        distribution = GaussianMixture.from_components([distribution])
     counts = stratified_component_counts(distribution.weights, spec.n_samples)
     rng = np.random.default_rng(spec.rng) if rng is None else rng
     samples: list[FloatArray] = []
-    component_ids: list[npt.NDArray[np.intp]] = []
-
-    for component_index, count in enumerate(counts):
-        if count == 0:
-            continue
-        component = distribution.get_component(int(component_index))
-        samples.append(component.sample(int(count), rng=rng))
-        component_ids.append(np.full(int(count), component_index, dtype=np.intp))
-
-    ids = np.concatenate(component_ids).astype(np.intp, copy=False)
-    return StratifiedSampleResult(
-        samples=np.vstack(samples).astype(np.float64, copy=False),
-        component_ids=ids,
-        counts=counts,
-        integration_weights=distribution.weights[ids] / counts[ids],
+    ids: list[npt.NDArray[np.intp]] = []
+    for index, count in enumerate(counts):
+        if count:
+            samples.append(distribution.get_component(index).sample(int(count), rng=rng))
+            ids.append(np.full(int(count), index, dtype=np.intp))
+    component_ids = np.concatenate(ids)
+    return SampleBatch(
+        np.vstack(samples),
+        component_ids=component_ids,
+        integration_weights=distribution.weights[component_ids] / counts[component_ids],
     )
 
 
 def sample_with_weights(
-    distribution: GaussianLike, sampling: SampleSpec
+    distribution: GaussianDistribution, sampling: SampleSpec
 ) -> tuple[FloatArray, FloatArray | None]:
-    """Resolve validated observations and optional stratified integration weights."""
-    if isinstance(sampling, Stratified):
-        result = stratified_mixture_samples(distribution, sampling)
-        return as_points(
-            result.samples, n_features=distribution.dim, name="samples", require_nonempty=True
-        ), result.integration_weights
-    samples = sampling.sample(distribution)
-    if type(sampling) is not Samples:
-        samples = as_points(
-            samples, n_features=distribution.dim, name="samples", require_nonempty=True
-        )
-    return samples, None
+    if not callable(getattr(sampling, "sample", None)):
+        msg = "sampling must implement sample(distribution) -> SampleBatch."
+        raise TypeError(msg)
+    batch = validate_sample_batch(distribution, sampling.sample(distribution))
+    return batch.samples, batch.integration_weights
 
 
 def sample_batches_with_weights(
-    distributions: Sequence[GaussianLike], sampling: BatchSampleSpec
+    distributions: Sequence[GaussianDistribution], sampling: BatchSampleSpec
 ) -> tuple[FloatArray, FloatArray | None]:
-    """Resolve candidate batches while retaining independent integration weights."""
-    if isinstance(sampling, Stratified):
-        return _stratified_sample_batches(distributions, sampling)
+    if not distributions:
+        msg = "distributions must contain at least one distribution."
+        raise ValueError(msg)
+    if not callable(getattr(sampling, "sample_batches", None)):
+        msg = "candidate_sampling must implement sample_batches(distributions)."
+        raise TypeError(msg)
     batches = sampling.sample_batches(distributions)
-    if type(sampling) not in {Draw, SampleBatches}:
-        batches = as_sample_batches(
-            batches,
-            n_distributions=len(distributions),
-            n_features=distributions[0].dim,
-            name="samples",
-        )
-    return batches, None
-
-
-def _stratified_sample_batches(
-    distributions: Sequence[GaussianLike], sampling: Stratified
-) -> tuple[FloatArray, FloatArray]:
-    rng = np.random.default_rng(sampling.rng)
-    weights: list[FloatArray] = []
-
-    def sample(distribution: GaussianLike) -> FloatArray:
-        result = stratified_mixture_samples(distribution, sampling, rng=rng)
-        weights.append(result.integration_weights)
-        return result.samples
-
-    return _sample_each_distribution(distributions, sample), np.stack(weights)
+    if len(batches) != len(distributions):
+        msg = "candidate_sampling must return one batch per distribution."
+        raise ValueError(msg)
+    batches = tuple(starmap(validate_sample_batch, zip(distributions, batches, strict=True)))
+    if len({b.samples.shape[0] for b in batches}) != 1:
+        msg = "All sample batches must have the same number of samples."
+        raise ValueError(msg)
+    samples = np.stack([b.samples for b in batches])
+    if all(b.integration_weights is None for b in batches):
+        return samples, None
+    weights = np.stack([
+        b.integration_weights
+        if b.integration_weights is not None
+        else np.full(len(b.samples), 1 / len(b.samples))
+        for b in batches
+    ])
+    return samples, weights
 
 
 def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.NDArray[np.intp]:
@@ -279,3 +291,17 @@ def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.N
         residual = expected[candidates] - counts[candidates]
         counts[candidates[int(np.argmax(residual))]] += 1
     return counts
+
+
+def _validate_distribution(distribution: object) -> None:
+    if not isinstance(distribution, (Gaussian, GaussianMixture)):
+        msg = "distribution must be a Gaussian or GaussianMixture."
+        raise TypeError(msg)
+
+
+def _validate_distributions(distributions: Sequence[GaussianDistribution]) -> None:
+    if not distributions:
+        msg = "distributions must contain at least one distribution."
+        raise ValueError(msg)
+    for distribution in distributions:
+        _validate_distribution(distribution)

@@ -38,12 +38,12 @@ class ComponentStatistics:
 
         Singular empirical covariances require regularization for conversion.
         """
-        return GaussianMixture.from_arrays(
+        return GaussianMixture(
             weights=self.weights,
             means=self.means,
             covariances=self.covariances
             if regularizer is None
-            else regularize_covariance(self.covariances, regularizer=regularizer, batched=True),
+            else regularize_covariance(self.covariances, regularizer=regularizer),
         )
 
 
@@ -135,6 +135,8 @@ def _validate_component_statistics_inputs(
         msg = "Exactly one of 'responsibilities' or 'mixture' must be provided."
         raise ValueError(msg)
 
+    _validate_mixture(mixture)
+
     x = np.asarray(x, dtype=np.float64)
     if x.ndim != 2 or 0 in x.shape or not np.isfinite(x).all():
         msg_0 = "x must be a nonempty, finite 2D array."
@@ -156,3 +158,9 @@ def _validate_component_statistics_inputs(
         raise ValueError(msg_4)
 
     return x, r
+
+
+def _validate_mixture(mixture: object) -> None:
+    if mixture is not None and not isinstance(mixture, GaussianMixture):
+        msg = "mixture must be a GaussianMixture."
+        raise TypeError(msg)

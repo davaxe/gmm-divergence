@@ -8,15 +8,9 @@ if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
 
 
-def check_covariance_shape(
-    covariance: FloatArray, *, batched: bool | None = None
-) -> Literal["single", "batched"]:
+def check_covariance_shape(covariance: FloatArray) -> Literal["single", "batched"]:
     """Return whether covariance input is single or batched after shape validation."""
     if covariance.ndim == 2:
-        if batched is True:
-            msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
         if covariance.shape[0] != covariance.shape[1]:
             msg = f"Expected covariance with shape (d, d), got {covariance.shape}."
             raise ValueError(msg)
@@ -24,10 +18,6 @@ def check_covariance_shape(
         return "single"
 
     if covariance.ndim == 3:
-        if batched is False:
-            msg = f"Expected single covariance with shape (d, d), got {covariance.shape}."
-            raise ValueError(msg)
-
         if covariance.shape[1] != covariance.shape[2]:
             msg = f"Expected batched covariance with shape (n, d, d), got {covariance.shape}."
             raise ValueError(msg)
@@ -38,11 +28,9 @@ def check_covariance_shape(
     raise ValueError(msg)
 
 
-def validate_covariance_input(
-    covariance: FloatArray, *, batched: bool | None = None
-) -> Literal["single", "batched"]:
+def validate_covariance_input(covariance: FloatArray) -> Literal["single", "batched"]:
     """Validate the shape and values of covariance regularizer input."""
-    shape_kind = check_covariance_shape(covariance, batched=batched)
+    shape_kind = check_covariance_shape(covariance)
     if covariance.shape[-1] == 0 or (shape_kind == "batched" and covariance.shape[0] == 0):
         msg = "covariance must contain at least one nonempty matrix."
         raise ValueError(msg)

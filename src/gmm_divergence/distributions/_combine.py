@@ -1,171 +1,67 @@
+"""Combine Gaussian-family distributions and preserve component provenance."""
+
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import TYPE_CHECKING, Literal, overload
+from typing import TYPE_CHECKING
 
 import numpy as np
-import numpy.typing as npt
 
-from gmm_divergence._core._arrays import readonly_copy
-from gmm_divergence._core._validation import as_weights
-from gmm_divergence.distributions._gaussian import Gaussian
+from gmm_divergence._core._validation import as_weights, validate_nonnegative_finite
+from gmm_divergence.distributions._mapping import MixtureMapping
 from gmm_divergence.distributions._mixture import GaussianMixture
 
 if TYPE_CHECKING:
     from collections.abc import Sequence
 
+    import numpy.typing as npt
 
-@dataclass(frozen=True, slots=True)
-class MixtureMapping:
-    source_index: npt.NDArray[np.intp]
-    """Index of the original input distribution for each flattened output component."""
-    local_component_index: npt.NDArray[np.intp]
-    """Component index within the original input mixture for each flattened output component."""
-
-    def __post_init__(self) -> None:
-        source_index = readonly_copy(self.source_index, dtype=np.intp)
-        local_component_index = readonly_copy(self.local_component_index, dtype=np.intp)
-        if (
-            source_index.ndim != 1
-            or local_component_index.ndim != 1
-            or source_index.shape != local_component_index.shape
-        ):
-            msg = "MixtureMapping indices must be one-dimensional arrays with matching shapes."
-            raise ValueError(msg)
-        object.__setattr__(self, "source_index", source_index)
-        object.__setattr__(self, "local_component_index", local_component_index)
-
-    def source_of(self, component_index: int) -> tuple[int, int]:
-        """Return source input and local component index for flattened component.
-
-        Returns
-        -------
-        tuple[int, int]
-            `(input_index, local_component_index)`.
-        """
-        return (
-            int(self.source_index[component_index]),
-            int(self.local_component_index[component_index]),
-        )
-
-    def component_of(self, input_index: int, local_component_index: int) -> int:
-        """Return the flattened component of given source input and local component.
-
-        Returns
-        -------
-        int
-            The flattened component index corresponding to the specified source
-            input and local component.
-        """
-        mask = (self.source_index == input_index) & (
-            self.local_component_index == local_component_index
-        )
-        if not np.any(mask):
-            msg = (
-                f"No component found for input_index={input_index},"
-                f" local_component_index={local_component_index}"
-            )
-            raise ValueError(msg)
-        return int(np.where(mask)[0][0])
+    from gmm_divergence.distributions._typing import GaussianDistribution
 
 
-@dataclass(frozen=True, slots=True)
-class CombinedGaussianMixture:
-    """Wrapper dataclass for a combined GaussianMixture."""
+def combine_distributions(
+    sources: Sequence[GaussianDistribution], *, weights: npt.ArrayLike | None = None
+) -> GaussianMixture:
+    """Combine fixed distributions with nonnegative source weights.
 
-    mixture: GaussianMixture
-    mapping: MixtureMapping
-
-
-@overload
-def combine_gaussians(
-    sources: Sequence[Gaussian | GaussianMixture],
-    weights: npt.ArrayLike | None = None,
-    *,
-    include_mapping: Literal[False] = False,
-) -> GaussianMixture: ...
-
-
-@overload
-def combine_gaussians(
-    sources: Sequence[Gaussian | GaussianMixture],
-    weights: npt.ArrayLike | None = None,
-    *,
-    include_mapping: Literal[True],
-) -> CombinedGaussianMixture: ...
-
-
-def combine_gaussians(
-    sources: Sequence[Gaussian | GaussianMixture],
-    weights: npt.ArrayLike | None = None,
-    *,
-    include_mapping: bool = False,
-) -> GaussianMixture | CombinedGaussianMixture:
-    """Combine Gaussian mixtures and/or Gaussians into a single GaussianMixture.
-
-    A single Gaussian is internally converted to a GaussianMixture with one
-    component. The resulting GaussianMixture has a number of components equal to
-    the sum of the number of components in the input.
-
-    Parameters
-    ----------
-    sources : Sequence[Gaussian | GaussianMixture]
-        The input distributions to combine.
-    weights : ArrayLike, optional
-        Weights for each input distribution. If None, equal weights are used.
-    include_mapping : bool, default=False
-        Whether to return a CombinedMixture with mapping information. If False,
-        only the combined GaussianMixture is returned. The mapping information
-        includes the index of the original input distribution and the local
-        component index within that distribution for each component in the
-        combined mixture.
-
-    Returns
-    -------
-    GaussianMixture or CombinedGaussianMixture
-        The combined GaussianMixture. If `include_mapping` is `True`, a
-        CombinedGaussianMixture containing the mixture and component mapping is
-        returned.
-
+    Coefficients are normalized; omitted weights give equal source mass.
+    The returned mixture works directly with divergence and fitting APIs.
+    Its mapping identifies immediate source indices and local component indices,
+    even when an input source already carries provenance.
     """
-    if len(sources) == 0:
-        msg = "components must contain at least one distribution"
+    if not sources:
+        msg = "sources must contain at least one distribution."
         raise ValueError(msg)
-
-    weights_: list[float]
-    if weights is None:
-        weights_ = [1 / len(sources)] * len(sources)
-    else:
-        weights_arr = as_weights(weights, expected_length=len(sources), name="weights")
-        weights_ = weights_arr.tolist()
-
-    mixtures = [as_mixture(component) for component in sources]
-    mixture = GaussianMixture(
-        weights=np.concatenate([w * m.weights for w, m in zip(weights_, mixtures, strict=True)]),
-        means=np.concatenate([m.means for m in mixtures], axis=0),
-        covariances=np.concatenate([m.covariances for m in mixtures], axis=0),
+    if len({source.n_features for source in sources}) != 1:
+        msg = "sources must have the same n_features."
+        raise ValueError(msg)
+    source_weights = as_weights(
+        np.ones(len(sources)) if weights is None else weights,
+        expected_length=len(sources),
+        name="weights",
+    )
+    arrays = [source.component_arrays() for source in sources]
+    return GaussianMixture(
+        weights=np.concatenate([
+            weight * parts[0] for weight, parts in zip(source_weights, arrays, strict=True)
+        ]),
+        means=np.concatenate([parts[1] for parts in arrays]),
+        covariances=np.concatenate([parts[2] for parts in arrays]),
+        mapping=MixtureMapping(
+            source_index=np.concatenate([
+                np.full(len(parts[0]), index, dtype=np.intp) for index, parts in enumerate(arrays)
+            ]),
+            local_component_index=np.concatenate([
+                np.arange(len(parts[0]), dtype=np.intp) for parts in arrays
+            ]),
+        ),
     )
 
-    if not include_mapping:
-        return mixture
 
-    mapping = MixtureMapping(
-        source_index=np.concatenate([
-            np.full(len(m.weights), i, dtype=np.intp) for i, m in enumerate(mixtures)
-        ]),
-        local_component_index=np.concatenate([
-            np.arange(len(m.weights), dtype=np.intp) for m in mixtures
-        ]),
-    )
-    return CombinedGaussianMixture(mixture=mixture, mapping=mapping)
-
-
-def as_mixture(distribution: Gaussian | GaussianMixture) -> GaussianMixture:
-    """Convert a Gaussian or GaussianMixture to a GaussianMixture."""
-    if isinstance(distribution, Gaussian):
-        return GaussianMixture(
-            weights=np.ones(1, dtype=np.float64),
-            means=distribution.mean[None, :],
-            covariances=distribution.covariance[None, :, :],
-        )
-    return distribution
+def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
+    """Remove components below a threshold, preserving provenance and normalizing weights."""
+    _ = validate_nonnegative_finite(min_weight, name="min_weight")
+    indices = np.flatnonzero(mixture.weights >= min_weight)
+    if indices.size == 0:
+        msg = "All components were pruned; decrease min_weight."
+        raise ValueError(msg)
+    return mixture.select_components(indices)

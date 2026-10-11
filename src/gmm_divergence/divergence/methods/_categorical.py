@@ -63,8 +63,8 @@ def kl_categorical(
             q_w = (q_w / epsilon + 1) / (1 / epsilon + len(q_w))
 
     if np.any((p_w > 0) & (q_w == 0)):
-        return DivergenceResult(value=np.inf, method="categorical_kl")
+        return DivergenceResult(value=np.inf, divergence="categorical_kl")
 
     mask = p_w > 0
     kl = np.sum(p_w[mask] * (np.log(p_w[mask]) - np.log(q_w[mask])))
-    return DivergenceResult(value=float(max(0.0, kl)), method="categorical_kl")
+    return DivergenceResult(value=float(max(0.0, kl)), divergence="categorical_kl")

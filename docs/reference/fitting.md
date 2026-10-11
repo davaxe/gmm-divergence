@@ -18,7 +18,7 @@ candidate-selection helpers from `gmm_divergence.fitting`.
 ## Fitting From Samples
 
 Fit mixture parameters from observations directly with scikit-learn, then
-convert the fitted estimator using `GaussianMixture.from_sklearn_gmm`.
+convert the fitted estimator using `GaussianMixture.from_sklearn`.
 The constructor supports all four sklearn covariance types and expands them
 into full covariance matrices.
 
@@ -33,7 +33,7 @@ samples = np.concatenate([rng.normal(-2, 1, size=(100, 1)), rng.normal(2, 0.5, s
 estimator = GaussianMixture(n_components=2, covariance_type="diag", n_init=3, random_state=0).fit(
     samples
 )
-gmm = gd.GaussianMixture.from_sklearn_gmm(estimator)
+gmm = gd.GaussianMixture.from_sklearn(estimator)
 assert gmm.n_components == 2
 ```
 
@@ -76,8 +76,9 @@ Sampled objectives accept `sampling.Stratified` on either side. Each observation
 from component $k$ receives integration weight $\pi_k/n_k$, where $n_k$ is the
 number of draws allocated to that component. Objective values and gradients
 therefore preserve the mixture weights even when rounded sample counts differ
-from the component proportions. `Draw`, `Samples`, and `SampleBatches` use
-ordinary sample means.
+from the component proportions. Raw `Draw`, `Samples`, and `SampleBatches`
+observations use ordinary sample means. Precomputed `SampleBatch` records retain
+their integration weights and component IDs.
 
 ::: gmm_divergence.fitting.ForwardKL
 
@@ -95,15 +96,33 @@ ordinary sample means.
 
 ::: gmm_divergence.fitting.SimplexSLSQP
 
-## Prepared Gaussian-Mixture Fits
+## Prepared Gaussian Weight Fits
 
-::: gmm_divergence.fitting.prepare_gaussian_mixture_fit
+`prepared.fit(optimizer=...)` is the direct route to a complete result.
+`evaluate`, `solve`, and `report` support gradient inspection and warm starts.
+`report` accepts only solutions produced by the same prepared object.
+Forward and bidirectional KL values include the cached target log-density
+constant, so `objective_value` estimates the mathematical objective in nats.
 
-::: gmm_divergence.fitting.PreparedGaussianMixtureFit
+Gaussian results expose `mixture` directly. Its mapping refers to original
+candidate indices, including after filtering or reordering. Result `weights`
+include zero entries for rejected candidates. Categorical results expose
+read-only `probabilities` and use the fixed `objective="forward_kl"`.
+Both result types provide `optimizer`, `objective_value`, `converged`,
+`n_iterations`, and `message`.
+
+Precomputed candidate batches must contain one batch per **original** candidate.
+Preparation validates the full sequence, then selects batches alongside the
+retained candidates. Generated samples are drawn only from retained candidates.
+
+
+::: gmm_divergence.fitting.prepare_gaussian_weight_fit
+
+::: gmm_divergence.fitting.PreparedGaussianWeightFit
 
 ## Shared Simplex Optimization
 
-`PreparedGaussianMixtureFit.solve` returns a `SimplexOptimizationResult` with
+`PreparedGaussianWeightFit.solve` returns a `SimplexOptimizationResult` with
 optimizer coordinates, active weights, and termination metadata. The shared
 optimizer works with an objective and gradient over simplex weights; Gaussian
 preparation and reporting remain separate.
@@ -112,11 +131,62 @@ preparation and reporting remain separate.
 
 ## Fitting Results
 
-::: gmm_divergence.results.GaussianMixtureFitResult
+::: gmm_divergence.results.GaussianWeightFitResult
 
-::: gmm_divergence.results.CategoricalMixtureFitResult
+::: gmm_divergence.results.CategoricalWeightFitResult
 
-## Candidate Selectors
+## Candidate Scoring and Selection
+
+Choose an explicit `scorer`. `ForwardKLScore` samples from the target;
+`ReverseKLScore` samples from each candidate. Reverse scoring accepts a reusable
+generated estimator or one estimator per original candidate. Precomputed
+reverse observations require the per-candidate form, preventing accidental
+reuse of target samples. `BidirectionalKLScore` configures both directions and
+their `forward_weight`. Ranking preserves input order for tied scores.
+
+```python
+import gmm_divergence as gd
+
+target = gd.Gaussian.univariate()
+candidates = [gd.Gaussian.univariate(10), gd.Gaussian.univariate(-4)]
+scorer = gd.fitting.ReverseKLScore(
+    estimators=[
+        gd.divergence.MonteCarlo(sampling=gd.sampling.Samples([[10]])),
+        gd.divergence.MonteCarlo(sampling=gd.sampling.Samples([[-4]])),
+    ]
+)
+assert gd.fitting.score_candidates(target, candidates, scorer=scorer).tolist() == [50, 8]
+selector = gd.fitting.TopKSelector(k=1, scorer=scorer)
+fit = gd.fit_gaussian_weights(
+    target,
+    candidates,
+    objective=gd.fitting.MomentMatching(),
+    optimizer=gd.fitting.SimplexSLSQP(),
+    candidate_selector=selector,
+)
+assert fit.active_candidate_indices == (1,)
+```
+
+Custom scorers implement `CandidateScorer.score(target, candidates)` and custom
+selectors implement `CandidateSelector.select(target, candidates)`, returning a
+complete selected/rejected partition of the original indices.
+
+::: gmm_divergence.fitting.ForwardKLScore
+
+::: gmm_divergence.fitting.ReverseKLScore
+
+::: gmm_divergence.fitting.BidirectionalKLScore
+
+::: gmm_divergence.fitting.CandidateScorer
+
+::: gmm_divergence.fitting.CandidateSelector
+
+::: gmm_divergence.fitting.CandidateSelection
+
+::: gmm_divergence.fitting.Optimizer
+
+::: gmm_divergence.fitting.FitObjective
+
 
 ::: gmm_divergence.fitting.score_candidates
 

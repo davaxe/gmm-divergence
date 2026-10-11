@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Literal, Protocol
 
@@ -11,15 +12,18 @@ import numpy.typing as npt
 from typing_extensions import override
 
 from gmm_divergence._core._arrays import readonly_copy
-from gmm_divergence._core._validation import validate_nonnegative_finite
+from gmm_divergence._core._sampling import Samples
+from gmm_divergence._core._validation import (
+    validate_nonnegative_finite,
+    validate_positive_int,
+    validate_unit_interval,
+)
 from gmm_divergence.divergence._api import kl_divergence
+from gmm_divergence.divergence._options import KLEstimator, MonteCarlo
 
 if TYPE_CHECKING:
-    from collections.abc import Sequence
-
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.distributions._typing import GaussianLike
-    from gmm_divergence.divergence._options import KLEstimator
+    from gmm_divergence.distributions._typing import GaussianDistribution
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,7 +43,9 @@ class CandidateSelection:
 class CandidateSelector(Protocol):
     """Protocol for filtering candidate distributions during fitting."""
 
-    def select(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> CandidateSelection:
+    def select(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> CandidateSelection:
         """Filter candidate distributions based on the target distribution."""
         ...
 
@@ -48,60 +54,149 @@ def _freeze_indices(indices: tuple[int, ...]) -> tuple[int, ...]:
     return tuple(int(index) if isinstance(index, np.integer) else index for index in indices)
 
 
+class CandidateScorer(Protocol):
+    """Custom scoring over the entire original candidate sequence."""
+
+    def score(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> FloatArray: ...
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ForwardKLScore:
+    """Score KL(target || candidate); samples belong to target."""
+
+    estimator: KLEstimator
+
+    def score(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> FloatArray:
+        return np.array([
+            kl_divergence(target, candidate, estimator=self.estimator).value
+            for candidate in candidates
+        ])
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class ReverseKLScore:
+    """Score KL(candidate || target), with generated or per-candidate estimators."""
+
+    estimators: KLEstimator | Sequence[KLEstimator]
+
+    def __post_init__(self) -> None:
+        if isinstance(self.estimators, Sequence):
+            estimators = tuple(self.estimators)
+            if not estimators:
+                msg = "estimators must contain one estimator per original candidate."
+                raise ValueError(msg)
+            object.__setattr__(self, "estimators", estimators)
+        elif isinstance(self.estimators, MonteCarlo) and isinstance(
+            self.estimators.sampling, Samples
+        ):
+            msg = "precomputed reverse samples require one estimator per original candidate."
+            raise ValueError(msg)  # ruff: ignore[type-check-without-type-error]
+
+    def score(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> FloatArray:
+        estimators = self.estimators
+        if isinstance(estimators, Sequence):
+            if len(estimators) != len(candidates):
+                msg = "estimators must contain one estimator per original candidate."
+                raise ValueError(msg)
+        else:
+            estimators = (estimators,) * len(candidates)
+        return np.array([
+            kl_divergence(candidate, target, estimator=estimator).value
+            for candidate, estimator in zip(candidates, estimators, strict=True)
+        ])
+
+
+@dataclass(frozen=True, slots=True, kw_only=True)
+class BidirectionalKLScore:
+    """Weighted forward and reverse scores with independently configured sources."""
+
+    forward: CandidateScorer
+    reverse: CandidateScorer
+    forward_weight: float = 0.5
+
+    def __post_init__(self) -> None:
+        _ = validate_unit_interval(self.forward_weight, name="forward_weight")
+        _validate_scorer(self.forward)
+        _validate_scorer(self.reverse)
+
+    def score(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> FloatArray:
+        if self.forward_weight == 1:
+            return score_candidates(target, candidates, scorer=self.forward)
+        if self.forward_weight == 0:
+            return score_candidates(target, candidates, scorer=self.reverse)
+        return self.forward_weight * score_candidates(target, candidates, scorer=self.forward) + (
+            1 - self.forward_weight
+        ) * score_candidates(target, candidates, scorer=self.reverse)
+
+
+def _validate_scorer(scorer: CandidateScorer) -> None:
+    if not callable(getattr(scorer, "score", None)):
+        msg = "scorer must implement score(target, candidates)."
+        raise TypeError(msg)
+
+
 def score_candidates(
-    p: GaussianLike,
-    q_i: Sequence[GaussianLike],
-    /,
+    target: GaussianDistribution,
+    candidates: Sequence[GaussianDistribution],
     *,
-    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
-    alpha: float = 0.5,
-    estimator: KLEstimator,
+    scorer: CandidateScorer,
 ) -> FloatArray:
-    """Return KL-based scores for candidate distributions."""
-    _validate_candidate_sequence(q_i)
-    _validate_kl_selector_base(direction=direction, alpha=alpha)
-    return _compute_kl_values(p, q_i, direction=direction, alpha=alpha, estimator=estimator)
+    """Return one finite or infinite score per original candidate."""
+    if not candidates:
+        msg = "candidates must contain at least one distribution."
+        raise ValueError(msg)
+    if any(candidate.n_features != target.n_features for candidate in candidates):
+        msg = "candidates must have the same n_features as target."
+        raise ValueError(msg)
+    _validate_scorer(scorer)
+    scores = readonly_copy(scorer.score(target, candidates), dtype=np.float64)
+    if scores.shape != (len(candidates),) or np.any(np.isnan(scores)):
+        msg = "scorer must return one non-NaN score per candidate."
+        raise ValueError(msg)
+    return scores
 
 
 def rank_candidates(
-    p: GaussianLike,
-    q_i: Sequence[GaussianLike],
-    /,
+    target: GaussianDistribution,
+    candidates: Sequence[GaussianDistribution],
     *,
-    direction: Literal["forward", "reverse", "bidirectional"] = "forward",
-    alpha: float = 0.5,
-    estimator: KLEstimator,
+    scorer: CandidateScorer,
     limit: int | None = None,
 ) -> list[tuple[int, float]]:
-    """Return candidate indices and scores sorted from best to worst."""
-    scores = score_candidates(p, q_i, direction=direction, alpha=alpha, estimator=estimator)
-    if limit is not None and (isinstance(limit, bool) or limit <= 0):
-        msg = f"limit must be a positive integer when provided, got {limit}."
-        raise ValueError(msg)
-    ranked_indices = np.argsort(scores)
-    if limit is None:
-        return [(int(index), float(scores[index])) for index in ranked_indices]
-    return [(int(index), float(scores[index])) for index in ranked_indices[:limit]]
+    """Rank from lowest score to highest, retaining input order for ties."""
+    if limit is not None:
+        limit = validate_positive_int(limit, name="limit")
+    scores = score_candidates(target, candidates, scorer=scorer)
+    indices = np.argsort(scores, kind="stable")
+    return [(int(index), float(scores[index])) for index in indices[:limit]]
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class _KLSelectorBase(CandidateSelector, ABC):
-    direction: Literal["forward", "reverse", "bidirectional"] = "forward"
-    alpha: float = 0.5
-    estimator: KLEstimator
+    scorer: CandidateScorer
 
     def __post_init__(self) -> None:
-        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        _validate_scorer(self.scorer)
 
-    def _compute_kl_values(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> FloatArray:
+    def _compute_kl_values(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> FloatArray:
         """Compute pairwise KL divergence values between p and each q_i."""
-        return _compute_kl_values(
-            p, q_i, direction=self.direction, alpha=self.alpha, estimator=self.estimator
-        )
+        return score_candidates(target, candidates, scorer=self.scorer)
 
     @override
-    def select(self, p: GaussianLike, q_i: Sequence[GaussianLike]) -> CandidateSelection:
-        kl_values = self._compute_kl_values(p, q_i)
+    def select(
+        self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
+    ) -> CandidateSelection:
+        kl_values = self._compute_kl_values(target, candidates)
         mask = self._select_mask(kl_values)
         return CandidateSelection(
             selected_indices=tuple(int(index) for index in np.flatnonzero(mask)),
@@ -113,14 +208,14 @@ class _KLSelectorBase(CandidateSelector, ABC):
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]: ...
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ThresholdSelector(_KLSelectorBase):
     """Select candidates whose KL score is at or below a fixed threshold."""
 
     threshold: float
 
     def __post_init__(self) -> None:
-        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        _validate_scorer(self.scorer)
         _ = validate_nonnegative_finite(self.threshold, name="threshold")
 
     @override
@@ -129,7 +224,7 @@ class ThresholdSelector(_KLSelectorBase):
         return kl_values <= self.threshold
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ToleranceSelector(_KLSelectorBase):
     """Select candidates within a tolerance of the best KL score.
 
@@ -143,7 +238,7 @@ class ToleranceSelector(_KLSelectorBase):
     mode: Literal["absolute", "relative"] = "absolute"
 
     def __post_init__(self) -> None:
-        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        _validate_scorer(self.scorer)
         _ = validate_nonnegative_finite(self.delta, name="delta")
         if self.mode not in {"absolute", "relative"}:
             msg = "mode must be 'absolute' or 'relative'."
@@ -160,15 +255,13 @@ class ToleranceSelector(_KLSelectorBase):
         )
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class TopKSelector(_KLSelectorBase):
     k: int
 
     def __post_init__(self) -> None:
-        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
-        if type(self.k) is not int or self.k <= 0:
-            msg = f"k must be positive, got {self.k}."
-            raise ValueError(msg)
+        _validate_scorer(self.scorer)
+        _ = validate_positive_int(self.k, name="k")
 
     @override
     def _select_mask(self, kl_values: FloatArray) -> npt.NDArray[np.bool_]:
@@ -181,12 +274,13 @@ class TopKSelector(_KLSelectorBase):
         return mask
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class QuantileSelector(_KLSelectorBase):
     quantile: float
 
     def __post_init__(self) -> None:
-        _validate_kl_selector_base(direction=self.direction, alpha=self.alpha)
+        _validate_scorer(self.scorer)
+        _ = validate_unit_interval(self.quantile, name="quantile")
         if not 0 < self.quantile < 1:
             msg = f"quantile must be in (0, 1), got {self.quantile}."
             raise ValueError(msg)
@@ -196,43 +290,3 @@ class QuantileSelector(_KLSelectorBase):
         """Predicate to filter candidates based on KL divergence quantile."""
         threshold = np.quantile(kl_values, self.quantile)
         return kl_values <= threshold
-
-
-def _validate_kl_selector_base(
-    *, direction: Literal["forward", "reverse", "bidirectional"], alpha: float
-) -> None:
-    if direction not in {"forward", "reverse", "bidirectional"}:
-        msg = f"direction must be 'forward', 'reverse', or 'bidirectional', got {direction!r}."
-        raise ValueError(msg)
-    if direction == "bidirectional" and not 0 <= alpha <= 1:
-        msg = f"alpha must be in [0, 1] for bidirectional KL, got {alpha}."
-        raise ValueError(msg)
-
-
-def _validate_candidate_sequence(q_i: Sequence[GaussianLike]) -> None:
-    if len(q_i) == 0:
-        msg = "q_i must contain at least one candidate distribution."
-        raise ValueError(msg)
-
-
-def _compute_kl_values(
-    p: GaussianLike,
-    q_i: Sequence[GaussianLike],
-    /,
-    *,
-    direction: Literal["forward", "reverse", "bidirectional"],
-    alpha: float,
-    estimator: KLEstimator,
-) -> FloatArray:
-    def kl(p: GaussianLike, q: GaussianLike) -> float:
-        return kl_divergence(p, q, estimator=estimator).value
-
-    match direction:
-        case "forward":
-            return np.array([kl(p, q) for q in q_i], dtype=np.float64)
-        case "reverse":
-            return np.array([kl(q, p) for q in q_i], dtype=np.float64)
-        case "bidirectional":
-            forward = np.array([kl(p, q) for q in q_i], dtype=np.float64)
-            reverse = np.array([kl(q, p) for q in q_i], dtype=np.float64)
-            return alpha * forward + (1 - alpha) * reverse

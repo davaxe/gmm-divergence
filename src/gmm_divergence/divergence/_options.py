@@ -3,15 +3,13 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Literal, TypeAlias
+from typing import TypeAlias
 
 from gmm_divergence._core._sampling import Draw, SampleSpec
 from gmm_divergence._core._validation import validate_positive_finite, validate_positive_int
 
-Approximation: TypeAlias = Literal["nearest", "moment_matching"]
 
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MonteCarlo:
     """Estimate KL with an explicit sample source.
 
@@ -25,6 +23,9 @@ class MonteCarlo:
     batch_size: int | None = None
 
     def __post_init__(self) -> None:
+        if not callable(getattr(self.sampling, "sample", None)):
+            msg = "sampling must implement sample(distribution) -> SampleBatch."
+            raise TypeError(msg)
         if self.target_standard_error is None:
             if self.max_samples is not None or self.batch_size is not None:
                 msg = "max_samples and batch_size require target_standard_error."
@@ -45,29 +46,22 @@ class MonteCarlo:
             _ = validate_positive_int(self.batch_size, name="batch_size")
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Unscented:
     """Estimate KL using deterministic sigma points."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class MomentMatchedGaussian:
     """Estimate KL from moment-matched Gaussian approximations."""
 
-    approximation: Approximation = "moment_matching"
 
-    def __post_init__(self) -> None:
-        if self.approximation not in {"nearest", "moment_matching"}:
-            msg = "approximation must be 'nearest' or 'moment_matching'."
-            raise ValueError(msg)
-
-
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class Variational:
     """Estimate KL with the Hershey--Olsen variational approximation."""
 
 
-@dataclass(frozen=True, slots=True)
+@dataclass(frozen=True, slots=True, kw_only=True)
 class ClosedForm:
     """Compute exact KL for two single Gaussian distributions."""
 
