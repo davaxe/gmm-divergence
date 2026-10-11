@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -68,8 +68,6 @@ class SimplexOptimizationResult:
     message: str
     """Optimizer termination message."""
 
-    _problem_token: object | None = field(default=None, repr=False, compare=False)
-
     def __post_init__(self) -> None:
         parameters = readonly_copy(self.parameters, dtype=np.float64)
         if parameters.ndim != 1 or parameters.size == 0 or not np.isfinite(parameters).all():
@@ -96,12 +94,6 @@ class SimplexOptimizationResult:
             raise ValueError(msg)
         object.__setattr__(self, "parameters", parameters)
         object.__setattr__(self, "active_weights", normalized_weights)
-
-    def check_problem_token(self, token: object) -> None:
-        """Raise an error if the result was not produced by the given problem."""
-        if self._problem_token is not token:
-            msg = "This result was not produced by the given problem."
-            raise ValueError(msg)
 
 
 def optimize_simplex(

@@ -13,6 +13,7 @@ if TYPE_CHECKING:
 
 import gmm_divergence as gd
 from gmm_divergence.fitting import CandidateSelection, CandidateSelector
+from gmm_divergence.fitting._simplex import SimplexOptimizationResult
 
 
 def _fixture() -> tuple[gd.GaussianMixture, list[gd.Gaussian]]:
@@ -70,7 +71,6 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
     assert prepared.n_active_candidates == 2
     assert sampling.calls == 1
     assert logpdf_calls == 2
-    assert sampling.calls == 1
 
     weights = np.array([0.4, 0.6], dtype=np.float64)
     _, gradient = prepared.evaluate(weights)
@@ -86,18 +86,17 @@ def test_prepared_fit_reuses_density_data_and_supports_warm_starts(
         finite_difference[index] = (upper_value - lower_value) / (2.0 * step)
     assert gradient == pytest.approx(finite_difference, rel=1e-5)
 
-    first_solution = prepared.solve(optimizer=gd.fitting.SimplexSLSQP())
-    warm_solution = prepared.solve(
-        optimizer=gd.fitting.SimplexSLSQP(initial_weights=first_solution.active_weights)
+    first_result = prepared.fit(optimizer=gd.fitting.SimplexSLSQP())
+    warm_result = prepared.fit(
+        optimizer=gd.fitting.SimplexSLSQP(initial_weights=first_result.weights)
     )
-    result = prepared.report(warm_solution)
 
     assert logpdf_calls == 2
-    assert first_solution.converged
-    assert warm_solution.converged
-    assert not first_solution.parameters.flags.writeable
-    assert not first_solution.active_weights.flags.writeable
-    assert result.weights == pytest.approx(warm_solution.active_weights)
+    assert sampling.calls == 1
+    assert first_result.converged
+    assert warm_result.converged
+    assert not first_result.weights.flags.writeable
+    assert warm_result.weights == pytest.approx(first_result.weights)
 
 
 def test_fitting_validates_bounds_and_initial_values() -> None:
@@ -173,7 +172,7 @@ def test_simplex_optimization_result_requires_simplex_weights() -> None:
     method = gd.fitting.SimplexSLSQP()
 
     with pytest.raises(ValueError, match="sum to one"):
-        _ = gd.fitting.SimplexOptimizationResult(
+        _ = SimplexOptimizationResult(
             optimizer=method,
             parameters=np.array([2.0, 3.0]),
             active_weights=np.array([2.0, 3.0]),
@@ -212,17 +211,26 @@ class _FirstOnly(CandidateSelector):
 
 def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
     p, candidates = _fixture()
-    result = gd.fit_gaussian_weights(
+    prepared = gd.fitting.prepare_gaussian_weight_fit(
         p,
         candidates,
-        optimizer=gd.fitting.SoftmaxLBFGSB(),
         objective=gd.fitting.MomentMatching(),
         candidate_selector=_FirstOnly(),
     )
+    result = prepared.fit(optimizer=gd.fitting.SoftmaxLBFGSB())
     assert result.weights == pytest.approx([0.0, 1.0])
     assert result.active_candidate_indices == (1,)
     assert result.mixture.mapping is not None
     assert np.all(result.mixture.mapping.source_index == 1)
+    warm_result = prepared.fit(
+        optimizer=gd.fitting.SimplexSLSQP(
+            initial_weights=result.weights[list(prepared.active_candidate_indices)]
+        )
+    )
+    assert warm_result.converged
+    assert warm_result.weights == pytest.approx(result.weights)
+    assert warm_result.mixture.mapping is not None
+    assert np.all(warm_result.mixture.mapping.source_index == 1)
 
 
 def test_candidate_selection_requires_a_complete_partition() -> None:

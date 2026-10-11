@@ -1,8 +1,8 @@
-"""Prepare, solve, and report Gaussian-mixture weight fits."""
+"""Reusable Gaussian-mixture weight fitting."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -45,9 +45,9 @@ class PreparedGaussianWeightFit:
     """Reusable data and objective for fitting mixture weights.
 
     Preparation performs candidate selection, sampling, and all log-density or
-    moment calculations required by the objective. Call :meth:`solve` any
-    number of times without repeating that work, then pass a solution to
-    :meth:`report` to construct the full :class:`~gmm_divergence.GaussianWeightFitResult`.
+    moment calculations required by the objective. Call :meth:`fit` any
+    number of times without repeating that work, or inspect the objective
+    and gradient with :meth:`evaluate`.
     """
 
     objective: FitObjective
@@ -61,11 +61,16 @@ class PreparedGaussianWeightFit:
     _objective_fn: ObjectiveFn = field(repr=False)
     """Cached objective callable over active candidate weights."""
 
-    _problem_token: object = field(default_factory=object, init=False, repr=False)
-
     def fit(self, *, optimizer: Optimizer) -> GaussianWeightFitResult:
-        """Solve this cached problem and construct a complete immutable result."""
-        return self.report(self.solve(optimizer=optimizer))
+        """Optimize this cached problem and return a complete immutable result.
+
+        For a warm start, pass the previous result's weights at
+        `active_candidate_indices` as `SimplexSLSQP.initial_weights`.
+        """
+        solution = optimize_simplex(
+            self._objective_fn, n_weights=self.n_active_candidates, optimizer=optimizer
+        )
+        return _build_fit_result(self, solution)
 
     @property
     def n_active_candidates(self) -> int:
@@ -84,18 +89,6 @@ class PreparedGaussianWeightFit:
         )
         value, gradient = self._objective_fn(weights_arr)
         return float(value), np.asarray(gradient, dtype=np.float64)
-
-    def solve(self, *, optimizer: Optimizer) -> SimplexOptimizationResult:
-        """Optimize the prepared objective without rebuilding cached data."""
-        solution = optimize_simplex(
-            self._objective_fn, n_weights=self.n_active_candidates, optimizer=optimizer
-        )
-        return replace(solution, _problem_token=self._problem_token)
-
-    def report(self, solution: SimplexOptimizationResult, /) -> GaussianWeightFitResult:
-        """Construct a full fit result from an optimizer solution."""
-        solution.check_problem_token(self._problem_token)
-        return build_gaussian_mixture_fit_result(self, solution)
 
 
 def _validate_q_i(candidates: Sequence[Gaussian | GaussianMixture], p_dim: int) -> None:
@@ -202,7 +195,7 @@ def prepare_gaussian_weight_fit(
     )
 
 
-def build_gaussian_mixture_fit_result(
+def _build_fit_result(
     prepared: PreparedGaussianWeightFit, solution: SimplexOptimizationResult, /
 ) -> GaussianWeightFitResult:
     """Map a prepared-fit solution back to the original candidates."""

@@ -56,7 +56,7 @@ def prepare_gaussian_weight_fit(
     Returns
     -------
     PreparedGaussianWeightFit
-        Cached objective data with separate `solve` and `report` stages.
+        Cached objective data with `fit` and `evaluate` methods.
     """
     return gaussian.prepare_gaussian_weight_fit(
         target=target,

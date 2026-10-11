@@ -5,7 +5,7 @@ icon: lucide/chart-no-axes-combined
 # Fitting API
 
 Top-level fitting helpers are documented under [Top-level API](root.md). This
-page documents prepared Gaussian-mixture fits, shared simplex optimization,
+page documents prepared Gaussian-mixture fits,
 optimizer and objective configurations, and
 candidate-selection helpers from `gmm_divergence.fitting`.
 
@@ -99,8 +99,9 @@ their integration weights and component IDs.
 ## Prepared Gaussian Weight Fits
 
 `prepared.fit(optimizer=...)` is the direct route to a complete result.
-`evaluate`, `solve`, and `report` support gradient inspection and warm starts.
-`report` accepts only solutions produced by the same prepared object.
+`prepared.evaluate(weights)` returns the cached objective value and gradient.
+For an SLSQP warm start, use the previous result's weights at
+`prepared.active_candidate_indices` as `initial_weights`.
 Forward and bidirectional KL values include the cached target log-density
 constant, so `objective_value` estimates the mathematical objective in nats.
 
@@ -119,15 +120,6 @@ retained candidates. Generated samples are drawn only from retained candidates.
 ::: gmm_divergence.fitting.prepare_gaussian_weight_fit
 
 ::: gmm_divergence.fitting.PreparedGaussianWeightFit
-
-## Shared Simplex Optimization
-
-`PreparedGaussianWeightFit.solve` returns a `SimplexOptimizationResult` with
-optimizer coordinates, active weights, and termination metadata. The shared
-optimizer works with an objective and gradient over simplex weights; Gaussian
-preparation and reporting remain separate.
-
-::: gmm_divergence.fitting.SimplexOptimizationResult
 
 ## Fitting Results
 

@@ -260,9 +260,9 @@ termination metadata. `result.mixture.mapping` refers to original candidate indi
 
 Use [`prepare_gaussian_weight_fit`](reference/fitting.md#gmm_divergence.fitting.prepare_gaussian_weight_fit)
 when fitting the same objective more than once. Preparation performs candidate
-selection, sampling, and density or moment calculations once. Solving only runs
-the optimizer, and reporting maps its active weights back to the original
-candidate sequence.
+selection, sampling, and density or moment calculations once. Each call to
+`prepared.fit(optimizer=...)` runs the optimizer and returns a complete result,
+mapping weights back to the original candidate sequence.
 
 ```python
 import gmm_divergence as gd
@@ -277,20 +277,19 @@ prepared = gd.fitting.prepare_gaussian_weight_fit(
     objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Draw(n_samples=10_000, rng=102)),
 )
 
-direct_result = prepared.fit(optimizer=gd.fitting.SimplexSLSQP())
-assert direct_result.converged
-solution = prepared.solve(optimizer=gd.fitting.SimplexSLSQP())
-result = prepared.report(solution)
+result = prepared.fit(optimizer=gd.fitting.SimplexSLSQP())
 
 # Reuse the cached samples and density matrices with a warm start.
-warm_solution = prepared.solve(
-    optimizer=gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
+warm_result = prepared.fit(
+    optimizer=gd.fitting.SimplexSLSQP(
+        initial_weights=result.weights[list(prepared.active_candidate_indices)]
+    )
 )
 
 # Inspect the cached objective and its gradient without invoking an optimizer.
 value, gradient = prepared.evaluate([0.5, 0.5])
 assert result.converged
-assert warm_solution.converged
+assert warm_result.converged
 assert gradient.shape == (2,)
 ```
 
