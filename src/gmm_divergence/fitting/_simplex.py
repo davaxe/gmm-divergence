@@ -23,7 +23,11 @@ ObjectiveFn = Callable[[FloatArray], tuple[float, FloatArray]]
 
 
 def softmax(theta: FloatArray) -> Weights:
-    """Numerically stable softmax."""
+    """Map a finite, nonempty logit vector theta to normalized float64 weights.
+
+    Subtracts the maximum logit for stability. Input validation is the caller's
+    responsibility; returns a newly allocated vector with the same shape.
+    """
     theta = np.asarray(theta, dtype=np.float64)
     z = theta - np.max(theta)
     exp_z = np.exp(z)
@@ -31,7 +35,12 @@ def softmax(theta: FloatArray) -> Weights:
 
 
 def with_softmax(simplex_objective: ObjectiveFn) -> ObjectiveFn:
-    """Wrap a simplex objective as an objective over softmax logits."""
+    """Wrap simplex_objective as a callable over unconstrained softmax logits.
+
+    The input callable returns a scalar value and weight gradient. The returned
+    callable maps logits to weights and applies the chain rule to produce the
+    scalar value and gradient with respect to the logits.
+    """
 
     def objective(theta: FloatArray) -> tuple[float, FloatArray]:
         weights = softmax(theta)
@@ -62,7 +71,7 @@ class SimplexOptimizationResult:
     objective_value: float
     """Final scalar objective value."""
     n_iterations: int
-    """Number of optimizer n_iterations."""
+    """Number of optimizer iterations."""
     converged: bool
     """Whether the optimizer reported convergence."""
     message: str
@@ -103,6 +112,24 @@ def optimize_simplex(
 
     The callable receives a weight vector and returns its scalar objective
     value and gradient. No distributions or prepared-fit data are required.
+
+    Parameters
+    ----------
+    objective : callable
+        Receives a vector of n_weights simplex weights and returns the scalar
+        objective and its gradient with respect to those weights.
+    n_weights : int
+        Positive number of retained candidates represented by the objective.
+    optimizer : Optimizer
+        SoftmaxLBFGSB or SimplexSLSQP configuration with optional initial values
+        matching n_weights.
+
+    Returns
+    -------
+    SimplexOptimizationResult
+        Internal result with final coordinates, read-only normalized weights,
+        objective value, and optimizer termination metadata. Iteration-limit
+        termination can return converged=False rather than raising an exception.
     """
     _ = validate_positive_int(n_weights, name="n_weights")
     _ = validate_optimizer(optimizer)

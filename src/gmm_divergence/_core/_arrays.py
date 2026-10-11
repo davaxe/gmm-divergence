@@ -13,7 +13,10 @@ _Scalar = TypeVar("_Scalar", bound=np.generic)
 
 
 def readonly_copy(values: npt.ArrayLike, *, dtype: type[_Scalar]) -> npt.NDArray[_Scalar]:
-    """Return an independent array without changing the input's writeability."""
+    """Copy values into an independent, read-only array of the requested dtype.
+
+    Preserves shape and the input's writeability. Performs no value validation.
+    """
     array = np.array(values, dtype=dtype, copy=True)
     array.setflags(write=False)
     return array

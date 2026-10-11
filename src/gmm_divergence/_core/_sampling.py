@@ -22,7 +22,25 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True, init=False, eq=False)
 class SampleBatch:
-    """Owned observations (N, D), optional normalized integration weights and strata."""
+    """Immutable observations with optional integration weights and strata.
+
+    Parameters
+    ----------
+    samples : array-like, shape (n_samples, n_features)
+        Nonempty, finite observations, copied into a read-only float64 array.
+    integration_weights : array-like, shape (n_samples,), or None, default=None
+        Finite, nonnegative weights summing to one within rtol=1e-7, atol=1e-8.
+        Values are copied without normalization. None requests an ordinary mean.
+    component_ids : array-like, shape (n_samples,), or None, default=None
+        Nonnegative integer component positions, copied into a read-only intp
+        array. Source bounds are checked when the batch is used.
+
+    Notes
+    -----
+    When both weights and component IDs are provided, reuse validates that each
+    positive-weight source component is represented and each observation's weight
+    equals its component mass divided by the number of observations in its stratum.
+    """
 
     samples: FloatArray
     integration_weights: FloatArray | None
@@ -69,22 +87,60 @@ class SampleBatch:
 
 
 class SampleSpec(Protocol):
+    """Protocol for a sample source returning observations and integration metadata."""
+
     def sample(self, distribution: GaussianDistribution) -> SampleBatch:
-        """Return a batch originating from distribution."""
+        """Return a batch originating from the supplied distribution.
+
+        Parameters
+        ----------
+        distribution : Gaussian or GaussianMixture
+            Source distribution; any precomputed observations must come from it.
+
+        Returns
+        -------
+        SampleBatch
+            Finite observations with matching feature dimensions and optional
+            integration weights and source component IDs.
+        """
         ...
 
 
 class BatchSampleSpec(Protocol):
+    """Protocol for one sample batch per source distribution."""
+
     def sample_batches(
         self, distributions: Sequence[GaussianDistribution]
     ) -> tuple[SampleBatch, ...]:
-        """Return one batch per distribution, preserving input order."""
+        """Return one batch per distribution, preserving input order.
+
+        Parameters
+        ----------
+        distributions : sequence of Gaussian or GaussianMixture
+            Nonempty sequence of source distributions.
+
+        Returns
+        -------
+        tuple of SampleBatch
+            One batch per source. Fitting requires equal sample counts and
+            feature dimensions across batches.
+        """
         ...
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Draw:
-    """Fresh iid samples. Seeds restart streams; generator objects advance them."""
+    """Draw fresh, independent observations from each source distribution.
+
+    Parameters
+    ----------
+    n_samples : int, default=10000
+        Positive number of observations per distribution.
+    rng : numpy.random.Generator, int, or None, default=None
+        Random source. Integer seeds restart the stream on each method call;
+        generators advance their state. None uses fresh entropy. Batch sampling
+        uses one shared stream across sources within each call.
+    """
 
     n_samples: int = 10_000
     rng: np.random.Generator | int | None = None
@@ -93,14 +149,37 @@ class Draw:
         _ = validate_positive_int(self.n_samples, name="n_samples")
 
     def sample(self, distribution: GaussianDistribution) -> SampleBatch:
-        """Return observations (n_samples, n_features) with their integration design."""
+        """Draw an independent, equally weighted batch from the source.
+
+        Parameters
+        ----------
+        distribution : Gaussian or GaussianMixture
+            Source distribution with the required feature dimensions.
+
+        Returns
+        -------
+        SampleBatch
+            New float64 observations with no integration weights or component IDs.
+        """
         _validate_distribution(distribution)
         return SampleBatch(distribution.sample(self.n_samples, rng=self.rng))
 
     def sample_batches(
         self, distributions: Sequence[GaussianDistribution]
     ) -> tuple[SampleBatch, ...]:
-        """Return one immutable batch per source, consuming a shared generator."""
+        """Draw independent batches using one shared random stream.
+
+        Parameters
+        ----------
+        distributions : sequence of Gaussian or GaussianMixture
+            Nonempty sequence of source distributions in the desired batch order.
+
+        Returns
+        -------
+        tuple of SampleBatch
+            One batch per source in input order, each containing n_samples observations.
+            A shared generator advances across sources within this call.
+        """
         _validate_distributions(distributions)
         rng = np.random.default_rng(self.rng)
         return tuple(SampleBatch(d.sample(self.n_samples, rng=rng)) for d in distributions)
@@ -108,7 +187,24 @@ class Draw:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class Stratified:
-    """Fixed component allocations with integration mass preserved in the batch."""
+    """Draw fixed component allocations while preserving mixture integration mass.
+
+    Parameters
+    ----------
+    n_samples : int, default=10000
+        Positive number of observations per distribution. Must allow at least
+        one draw for every positive-weight component of each source.
+    rng : numpy.random.Generator, int, or None, default=None
+        Random source. Integer seeds restart the stream on each method call;
+        generators advance their state. Batch sampling shares one stream.
+
+    Notes
+    -----
+    Each observation from component k has integration weight `weights[k] / n_k`,
+    where n_k is its allocated count. Batches also carry component IDs. Counts
+    sum to n_samples; zero-weight components receive no draws. A Gaussian is
+    treated as a one-component mixture. Observations are grouped by component.
+    """
 
     n_samples: int = 10_000
     rng: np.random.Generator | int | None = None
@@ -117,14 +213,37 @@ class Stratified:
         _ = validate_positive_int(self.n_samples, name="n_samples")
 
     def sample(self, distribution: GaussianDistribution) -> SampleBatch:
-        """Return observations (n_samples, n_features) with their integration design."""
+        """Draw a component-stratified batch from the source.
+
+        Parameters
+        ----------
+        distribution : Gaussian or GaussianMixture
+            Source distribution with the required feature dimensions.
+
+        Returns
+        -------
+        SampleBatch
+            New observations with normalized integration weights and component IDs.
+        """
         _validate_distribution(distribution)
         return stratified_mixture_samples(distribution, self)
 
     def sample_batches(
         self, distributions: Sequence[GaussianDistribution]
     ) -> tuple[SampleBatch, ...]:
-        """Return one immutable batch per source, consuming a shared generator."""
+        """Draw stratified batches using one shared random stream.
+
+        Parameters
+        ----------
+        distributions : sequence of Gaussian or GaussianMixture
+            Nonempty sequence of source distributions in the desired batch order.
+
+        Returns
+        -------
+        tuple of SampleBatch
+            One batch per source in input order, each containing n_samples observations.
+            A shared generator advances across sources within this call.
+        """
         _validate_distributions(distributions)
         rng = np.random.default_rng(self.rng)
         return tuple(stratified_mixture_samples(d, self, rng=rng) for d in distributions)
@@ -132,7 +251,21 @@ class Stratified:
 
 @dataclass(frozen=True, slots=True, init=False)
 class Samples:
-    """Precomputed observations or a batch retaining its integration design."""
+    """Reuse observations from a single source distribution without drawing again.
+
+    Parameters
+    ----------
+    samples : SampleBatch or array-like, shape (n_samples, n_features)
+        Nonempty, finite source observations. Arrays are copied into an immutable
+        batch and treated as equally weighted observations. A SampleBatch is
+        reused with its integration weights and component IDs intact.
+
+    Notes
+    -----
+    Feature dimensions and component metadata are checked against the source
+    when sampling. The caller must ensure observations originate from that
+    source; this cannot be inferred from their values.
+    """
 
     samples: SampleBatch
 
@@ -141,14 +274,39 @@ class Samples:
         object.__setattr__(self, "samples", batch)
 
     def sample(self, distribution: GaussianDistribution) -> SampleBatch:
-        """Return observations (n_samples, n_features) with their integration design."""
+        """Validate and return the stored batch without drawing samples.
+
+        Parameters
+        ----------
+        distribution : Gaussian or GaussianMixture
+            Source distribution with the required feature dimensions.
+
+        Returns
+        -------
+        SampleBatch
+            Stored batch with its integration weights and component IDs unchanged.
+        """
         batch = self.samples
         return validate_sample_batch(distribution, batch)
 
 
 @dataclass(frozen=True, slots=True, init=False)
 class SampleBatches:
-    """One precomputed batch per original candidate, before filtering or reordering."""
+    """Reuse one precomputed batch per source distribution.
+
+    Parameters
+    ----------
+    samples : sequence of SampleBatch or array-like
+        Nonempty sequence of immutable batches, or finite observations with
+        shape `(n_distributions, n_samples, n_features)`. Arrays are copied;
+        records preserve their integration weights and component IDs.
+
+    Notes
+    -----
+    For fitting, supply one batch per original candidate before filtering or
+    reordering. Batches must have equal sample counts and matching feature
+    dimensions. The caller is responsible for sampling from the correct sources.
+    """
 
     samples: tuple[SampleBatch, ...]
 
@@ -170,7 +328,18 @@ class SampleBatches:
     def sample_batches(
         self, distributions: Sequence[GaussianDistribution]
     ) -> tuple[SampleBatch, ...]:
-        """Return one immutable batch per source, consuming a shared generator."""
+        """Validate and return precomputed batches without drawing new samples.
+
+        Parameters
+        ----------
+        distributions : sequence of Gaussian or GaussianMixture
+            Original sources in the same order as the stored batches.
+
+        Returns
+        -------
+        tuple of SampleBatch
+            Stored batches with source dimensions and component metadata checked.
+        """
         _validate_distributions(distributions)
         batches = self.samples
         if len(batches) != len(distributions):
@@ -180,6 +349,12 @@ class SampleBatches:
 
 
 def validate_sample_batch(distribution: GaussianDistribution, batch: object) -> SampleBatch:
+    """Check a SampleBatch against its source and return the same record.
+
+    distribution determines feature count, component bounds, and stratified
+    integration mass. An unsupported batch raises TypeError; invalid shapes or
+    integration mass raise ValueError, and invalid component IDs raise IndexError.
+    """
     _validate_distribution(distribution)
     if not isinstance(batch, SampleBatch):
         msg = "sampling specifications must return SampleBatch records."
@@ -208,6 +383,12 @@ def validate_sample_batch(distribution: GaussianDistribution, batch: object) -> 
 def stratified_mixture_samples(
     distribution: GaussianDistribution, spec: Stratified, *, rng: np.random.Generator | None = None
 ) -> SampleBatch:
+    """Draw spec.n_samples observations with fixed source component allocations.
+
+    rng overrides spec.rng when provided, allowing a shared stream across
+    sources. Returns observations grouped by component with IDs and weights
+    equal to component mass divided by allocated count.
+    """
     if isinstance(distribution, Gaussian):
         distribution = GaussianMixture.from_components([distribution])
     counts = stratified_component_counts(distribution.weights, spec.n_samples)
@@ -229,6 +410,11 @@ def stratified_mixture_samples(
 def sample_with_weights(
     distribution: GaussianDistribution, sampling: SampleSpec
 ) -> tuple[FloatArray, FloatArray | None]:
+    """Resolve and validate sampling for one distribution.
+
+    Returns samples with shape (n_samples, n_features) and optional normalized
+    integration weights with shape (n_samples,). Both are read-only batch arrays.
+    """
     if not callable(getattr(sampling, "sample", None)):
         msg = "sampling must implement sample(distribution) -> SampleBatch."
         raise TypeError(msg)
@@ -239,6 +425,13 @@ def sample_with_weights(
 def sample_batches_with_weights(
     distributions: Sequence[GaussianDistribution], sampling: BatchSampleSpec
 ) -> tuple[FloatArray, FloatArray | None]:
+    """Resolve sampling and stack equal-length batches in source order.
+
+    distributions must be nonempty; sampling must supply one valid batch per
+    source. Returns observations of shape (n_distributions, n_samples, n_features)
+    and optional weights of shape (n_distributions, n_samples). If some batches
+    have weights and others do not, unweighted batches receive uniform weights.
+    """
     if not distributions:
         msg = "distributions must contain at least one distribution."
         raise ValueError(msg)
@@ -266,7 +459,13 @@ def sample_batches_with_weights(
 
 
 def stratified_component_counts(weights: npt.ArrayLike, n_samples: int) -> npt.NDArray[np.intp]:
-    """Allocate exact stratified sample counts from mixture weights."""
+    """Allocate a total of n_samples draws among nonnegative mixture weights.
+
+    weights are normalized. Each positive-weight component receives at least
+    one draw, requiring n_samples to be at least their count. Remaining draws
+    favor the largest allocation deficits, with earlier positions breaking ties.
+    Returns integer counts in component order; zero-weight components get zero.
+    """
     n_samples = validate_positive_int(n_samples, name="n_samples")
     weights_arr = as_weights(weights, name="weights", normalize=True)
     positive = weights_arr > 0.0

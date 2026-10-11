@@ -27,18 +27,20 @@ def kl_categorical(
 
     Parameters
     ----------
-    p_w : array-like
-        Weights of the reference distribution.
-    q_w : array-like
-        Weights of the approximating distribution.
-    epsilon : float, optional
-        Finite, nonnegative additive smoothing amount, by default 0.0.
-        Smoothing changes the distributions being compared.
+    p_w, q_w : array-like, shape (n_categories,)
+        Nonempty, finite, nonnegative reference and comparison probabilities,
+        summing to one within rtol=1e-7, atol=1e-8. Category order must align.
+        Probabilities are not normalized or clipped during validation.
+    epsilon : float, default=0.0
+        Finite, nonnegative additive smoothing amount. Each vector becomes
+        (probabilities + epsilon) / (1 + n_categories * epsilon).
 
     Returns
     -------
     DivergenceResult
-        Result object containing categorical KL in nats.
+        Exact categorical KL in nats. Without smoothing, a positive reference
+        mass with zero comparison mass gives infinity. Tiny negative roundoff
+        in the finite result is clipped to zero.
     """
     p_w = np.asarray(p_w, dtype=np.float64)
     q_w = np.asarray(q_w, dtype=np.float64)

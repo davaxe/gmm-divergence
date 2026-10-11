@@ -27,6 +27,12 @@ class DiagonalLoading:
 
     where $\Sigma$ is the input covariance, $I$ is the identity matrix, and
     $\varepsilon \ge 0$ is the diagonal loading amount.
+
+    Parameters
+    ----------
+    epsilon : float or EpsilonHeuristic, default=1e-6
+        Finite, nonnegative loading amount, or a heuristic evaluated per matrix.
+        Zero is allowed but does not repair a singular covariance.
     """
 
     epsilon: EpsilonSpec = 1e-6
@@ -52,6 +58,12 @@ class IsotropicShrinkage:
 
     where $d$ is the dimensionality and $\tau I$ is an isotropic covariance
     with the same average marginal variance as $\Sigma$.
+
+    Parameters
+    ----------
+    strength : float, default=1e-2
+        Finite interpolation weight in [0, 1]. Zero leaves the covariance
+        unchanged; one replaces it with its isotropic trace-matched target.
     """
 
     strength: float = 1e-2
@@ -75,6 +87,12 @@ class DiagonalShrinkage:
 
     where $\mathrm{diag}(\Sigma)$ is the diagonal matrix containing the
     marginal variances of $\Sigma$.
+
+    Parameters
+    ----------
+    strength : float, default=1e-2
+        Finite interpolation weight in [0, 1]. Zero leaves the covariance
+        unchanged; one removes all off-diagonal covariance entries.
     """
 
     strength: float = 1e-2
@@ -103,6 +121,11 @@ class EigenvalueClipping:
     $$
 
     where $\lambda_{\min} > 0$ is the eigenvalue floor.
+
+    Parameters
+    ----------
+    min_eigenvalue : float, default=1e-6
+        Finite, strictly positive eigenvalue floor.
     """
 
     min_eigenvalue: float = 1e-6
@@ -133,6 +156,20 @@ class LowRank:
     where $U_r$ contains the leading eigenvectors, $\Lambda_r$ the
     corresponding eigenvalues, and $\varepsilon \ge 0$ is the diagonal loading
     applied after truncation.
+
+    Parameters
+    ----------
+    rank : int, default=1
+        Positive number of leading eigenpairs, at most the covariance dimension.
+    epsilon : float or EpsilonHeuristic, default=1e-6
+        Finite, nonnegative diagonal loading after truncation, or a heuristic
+        evaluated on the input covariance. ResidualVariance inherits this rank
+        when its rank is None; an explicit residual rank must match.
+
+    Notes
+    -----
+    A truncated covariance needs sufficient positive loading to be positive
+    definite. The public regularization operation rejects singular results.
     """
 
     rank: int = 1

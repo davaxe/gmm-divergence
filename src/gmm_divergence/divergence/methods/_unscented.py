@@ -26,9 +26,8 @@ def kl_unscented(p: GaussianDistribution, q: GaussianDistribution, /) -> Diverge
     $$
 
     by evaluating the log-density ratio at deterministic sigma points generated
-    from the Gaussian components of `p`. This is similar to monte carlo, but
-    with deterministic points chosen to capture the mean and covariance
-    structure of `p` more effectively.
+    from the Gaussian components of `p`. Each component contributes twice its
+    feature dimension in points with equal within-component integration weights.
 
     Parameters
     ----------
@@ -41,7 +40,8 @@ def kl_unscented(p: GaussianDistribution, q: GaussianDistribution, /) -> Diverge
     -------
     DivergenceResult
         Result object containing the unscented estimate of the KL divergence.
-        The reported number of samples equals the total number of sigma points.
+        n_evaluations counts sigma points. n_samples and monte_carlo are None
+        because the method draws no random observations.
 
     References
     ----------

@@ -106,8 +106,13 @@ def kl_divergence(
     Returns
     -------
     DivergenceResult
-        Estimated value, estimator name, and—when applicable—sample count and
-        Monte Carlo uncertainty statistics.
+        KL estimate in nats with the supplied estimator configuration.
+        `n_evaluations` counts integration points when applicable;
+        `monte_carlo` contains sampling counts and supported uncertainty estimates.
+
+    Notes
+    -----
+    Approximate or finite-sample estimates may be negative and are not clipped.
 
     """
     _validate_same_dimension(p, q)
@@ -180,8 +185,9 @@ def symmetric_kl_divergence(
     Returns
     -------
     DivergenceResult
-        Average of the directed estimates. `n_evaluations` is the total only
-        when both estimates report a sample count.
+        Average of the directed estimates in nats. `terms` holds forward then
+        reverse results. `n_evaluations` is summed only when both directions
+        report evaluation counts; uncertainty remains on the directional terms.
 
     """
     forward_result = kl_divergence(p, q, estimator=forward)
@@ -230,8 +236,16 @@ def jensen_shannon_divergence(
     Returns
     -------
     DivergenceResult
-        Jensen--Shannon estimate. `n_evaluations` is the total only when both
-        directed estimators report a sample count.
+        Jensen--Shannon divergence in nats, without taking its square root.
+        `terms` holds the p-to-midpoint then q-to-midpoint results.
+        `n_evaluations` is summed only when both terms report evaluation counts;
+        uncertainty remains on the directional terms.
+
+    Notes
+    -----
+    ClosedForm is unsuitable because the midpoint is a GaussianMixture.
+    The exact divergence is bounded by log(2); approximations need not preserve
+    this bound and are not clipped.
 
     """
     _validate_same_dimension(p, q)

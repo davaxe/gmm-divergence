@@ -20,7 +20,24 @@ if TYPE_CHECKING:
 def fit_categorical_weights(
     target: npt.ArrayLike, candidates: npt.ArrayLike, /, *, optimizer: Optimizer
 ) -> CategoricalWeightFitResult:
-    """Fit a convex combination of categorical distributions using forward KL."""
+    """Fit a convex combination of categorical distributions using exact forward KL.
+
+    Parameters
+    ----------
+    target : array-like, shape (n_categories,)
+        Finite, nonnegative probabilities summing to one.
+    candidates : array-like, shape (n_candidates, n_categories)
+        Nonempty candidate probability rows with the same categories as target.
+        Each positive target category must have support in at least one row.
+    optimizer : Optimizer
+        Explicit simplex optimizer configuration.
+
+    Returns
+    -------
+    CategoricalWeightFitResult
+        Read-only candidate weights and fitted category probabilities, the exact
+        forward KL value in nats, and optimizer termination diagnostics.
+    """
     target, candidates = _validate_categorical_fit_inputs(target, candidates)
 
     objective = _categorical_kl_objective(target, candidates)

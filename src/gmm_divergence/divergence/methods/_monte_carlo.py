@@ -18,7 +18,29 @@ if TYPE_CHECKING:
 def kl_monte_carlo(
     p: GaussianDistribution, q: GaussianDistribution, /, *, estimator: MonteCarlo
 ) -> DivergenceResult:
-    """Estimate KL using observations from p and retain sampling diagnostics."""
+    """Estimate directed KL using source observations and their integration design.
+
+    Parameters
+    ----------
+    p : Gaussian or GaussianMixture
+        Reference distribution supplying observations.
+    q : Gaussian or GaussianMixture
+        Comparison distribution with the same feature dimension.
+    estimator : MonteCarlo
+        Explicit sample source and optional adaptive stopping configuration.
+
+    Returns
+    -------
+    DivergenceResult
+        Weighted or ordinary mean log-density ratio in nats. Includes evaluation
+        counts, sample counts, supported standard error, and adaptive target status.
+
+    Notes
+    -----
+    Equally weighted observations are assumed iid. Stratified variance requires
+    at least two observations in every positive-weight component. Arbitrarily
+    weighted batches without component IDs do not support standard errors.
+    """
     if estimator.target_standard_error is not None:
         return _adaptive(p, q, estimator)
     batch = validate_sample_batch(p, estimator.sampling.sample(p))

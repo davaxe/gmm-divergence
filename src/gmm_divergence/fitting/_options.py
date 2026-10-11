@@ -28,6 +28,16 @@ class SoftmaxLBFGSB:
 
     This avoids explicit simplex constraints in the optimizer while still
     ensuring that all fitted weights are non-negative and sum to one.
+
+    Parameters
+    ----------
+    tol : float, default=1e-8
+        Finite, positive convergence tolerance passed to scipy.optimize.minimize.
+    max_iterations : int, default=1000
+        Positive iteration budget.
+    initial_logits : array-like or None, default=None
+        Finite 1D logits with one entry per retained candidate. None starts from
+        zero logits, giving uniform weights. Inputs are copied and made read-only.
     """
 
     tol: float = 1e-8
@@ -60,6 +70,20 @@ class SimplexSLSQP:
 
     This keeps the optimization variables interpretable but requires the
     optimizer to enforce the simplex equality and bound constraints.
+
+    Parameters
+    ----------
+    tol : float, default=1e-8
+        Finite, positive convergence tolerance passed to scipy.optimize.minimize.
+    max_iterations : int, default=1000
+        Positive iteration budget.
+    min_weight : float, default=1e-12
+        Finite, nonnegative lower bound per retained candidate. The product of
+        min_weight and the number of retained candidates must not exceed one.
+    initial_weights : array-like or None, default=None
+        Finite, nonnegative 1D coefficients with positive total mass and one
+        entry per retained candidate. Normalized at fitting time. None starts
+        uniformly. Inputs are copied and made read-only.
     """
 
     tol: float = 1e-8
@@ -102,6 +126,12 @@ class ForwardKL:
     weighted combination of the candidate mixtures. Since $\log p(X)$ does
     not depend on $\mathbf{w}$, its contribution is cached. Reported values
     include this constant and estimate KL in nats.
+
+    Parameters
+    ----------
+    target_sampling : SampleSpec, default=Draw()
+        Source of fixed target observations. Draw defaults to 10000 samples;
+        Samples reuses target observations; Stratified retains integration mass.
     """
 
     target_sampling: SampleSpec = field(default_factory=Draw)
@@ -134,6 +164,13 @@ class ReverseKL:
     The implementation evaluates a fixed-sample estimator using samples from
     each candidate mixture $q_i$. The reference density $p$ is evaluated at
     those samples, so no samples from $p$ are required.
+
+    Parameters
+    ----------
+    candidate_sampling : BatchSampleSpec, default=Draw()
+        Fixed batch per candidate. Draw defaults to 10000 observations per
+        retained candidate. SampleBatches must cover every original candidate;
+        filtering and reordering are applied to those batches during preparation.
     """
 
     candidate_sampling: BatchSampleSpec = field(default_factory=Draw)
@@ -167,6 +204,18 @@ class BidirectionalKL:
     Values of $\alpha$ closer to one emphasize coverage of $p$ by
     $q_{\mathbf{w}}$, while values closer to zero emphasize the reverse-KL
     objective.
+
+    Parameters
+    ----------
+    target_sampling : SampleSpec, default=Draw()
+        Fixed observations from the target for the forward term. Not consumed
+        when forward_weight is zero.
+    candidate_sampling : BatchSampleSpec, default=Draw()
+        Fixed batch per candidate for the reverse term. Precomputed batches
+        cover original candidates. Not consumed when forward_weight is one.
+    forward_weight : float, default=0.5
+        Finite weight in [0, 1], represented by alpha in the formula. The
+        reverse term receives 1 - forward_weight.
     """
 
     target_sampling: SampleSpec = field(default_factory=Draw)
@@ -211,6 +260,19 @@ class JensenShannon:
 
     This objective is symmetric and bounded, while still using fixed samples
     from `p` and each candidate mixture `q_i` during optimization.
+
+    Parameters
+    ----------
+    target_sampling : SampleSpec, default=Draw()
+        Fixed observations from the target for its midpoint-divergence term.
+    candidate_sampling : BatchSampleSpec, default=Draw()
+        Fixed batch per candidate for the fitted mixture's midpoint term.
+        Precomputed batches cover every original candidate.
+
+    Notes
+    -----
+    Values estimate divergence in nats, not its square-root distance. Finite
+    samples may produce estimates outside the exact [0, log(2)] range.
     """
 
     target_sampling: SampleSpec = field(default_factory=Draw)
@@ -243,10 +305,22 @@ class MomentMatching:
     $$
 
     and can optionally include second-moment information as well.
+
+    Parameters
+    ----------
+    fit_second_moments : bool, default=False
+        Include the flattened raw second moment `covariance + outer(mean, mean)`
+        alongside the mean. These are raw moments, not covariances alone.
+
+    Notes
+    -----
+    No samples are drawn. The value is the squared Euclidean residual of the
+    concatenated raw moments; it is not a divergence in nats and depends on
+    feature scale.
     """
 
     fit_second_moments: bool = False
-    """Whether to include covariance information in the objective."""
+    """Whether to include raw second moments alongside the feature means."""
 
 
 Optimizer: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP

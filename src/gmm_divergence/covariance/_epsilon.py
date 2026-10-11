@@ -27,6 +27,12 @@ class RelativeToTrace:
     $$
 
     where $d$ is the covariance dimension.
+
+    Parameters
+    ----------
+    scale : float, default=1e-6
+        Finite, strictly positive multiplier of the average marginal variance.
+        A nonpositive trace gives an epsilon of zero.
     """
 
     scale: float = 1e-6
@@ -48,6 +54,12 @@ class TargetConditionNumber:
 
     picks the smallest $\varepsilon \ge 0$ such that
     $\kappa(\Sigma_{\mathrm{reg}}) \le \text{max_condition_number}$.
+
+    Parameters
+    ----------
+    max_condition_number : float, default=1e8
+        Finite condition-number target greater than one. The heuristic uses
+        the smallest and largest eigenvalues of the symmetric covariance.
     """
 
     max_condition_number: float = 1e8
@@ -76,6 +88,20 @@ class ResidualVariance:
     $$
 
     where $\lambda_i^{\mathrm{disc}}$ are the discarded eigenvalues.
+
+    Parameters
+    ----------
+    scale : float, default=1.0
+        Finite, strictly positive multiplier of the average discarded variance.
+    rank : int or None, default=None
+        Number of leading eigenvalues retained, between one and the covariance
+        dimension. Required by estimate_epsilon and DiagonalLoading; None
+        inherits the enclosing LowRank.rank when used with that regularizer.
+
+    Notes
+    -----
+    Negative discarded eigenvalues contribute zero. Retaining the full rank
+    produces zero epsilon because no variance is discarded.
     """
 
     scale: float = 1.0
@@ -102,9 +128,12 @@ def estimate_epsilon(
     ----------
     covariance : array-like
         Covariance matrix with shape `(d, d)` or batch of matrices with shape
-        `(n, d, d)`.
+        `(n, d, d)`. Dimensions must be nonempty and values finite. Symmetry is
+        checked with NumPy's default allclose tolerance before averaging out
+        roundoff asymmetry. Positive definiteness is not required.
     heuristic : EpsilonHeuristic
         Explicit heuristic configuration used to estimate epsilon.
+        ResidualVariance requires an explicit rank for this operation.
 
     Returns
     -------
@@ -112,6 +141,12 @@ def estimate_epsilon(
         Estimated epsilon value(s). If the input is a single covariance, a float
         is returned. If the input is a batch of covariances, an array of shape
         `(n,)` is returned with one epsilon per covariance.
+
+    Notes
+    -----
+    Validation raises TypeError for an unsupported heuristic, and ValueError for
+    invalid covariance values or shapes, missing residual rank, or a rank above
+    the covariance dimension.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
     _ = validate_covariance_input(covariance_arr)

@@ -57,6 +57,29 @@ class MixtureDiagnostics:
 
 @dataclass(frozen=True, slots=True, repr=False, init=False, eq=False)
 class GaussianMixture:
+    """Immutable mixture of full-covariance Gaussian components.
+
+    Parameters
+    ----------
+    weights : array-like, shape (n_components,)
+        Finite, nonnegative coefficients with positive total mass. Normalized
+        to sum to one; zero-weight components are retained.
+    means : array-like, shape (n_components, n_features)
+        Finite component means, with at least one component and feature.
+    covariances : array-like, shape (n_components, n_features, n_features)
+        Finite, symmetric component covariances. Each must be positive definite
+        after any regularization.
+    regularizer : CovarianceRegularizer or None, default=None
+        Optional regularization applied to component covariances.
+    mapping : MixtureMapping or None, default=None
+        Optional provenance with one row per component.
+
+    Notes
+    -----
+    Parameter arrays are copied and made read-only. `means` and `covariances`
+    describe components; `mean` and `covariance` describe the full mixture.
+    """
+
     weights: Weights
     """Weight array of shape (n_components,)."""
     means: FloatArray
@@ -105,7 +128,23 @@ class GaussianMixture:
 
     @classmethod
     def from_sklearn(cls, gmm: SklearnGaussianMixture) -> GaussianMixture:
-        """Convert a fitted sklearn mixture, expanding covariances to full matrices."""
+        """Convert a fitted scikit-learn mixture to full covariance matrices.
+
+        Parameters
+        ----------
+        gmm : sklearn.mixture.GaussianMixture
+            Fitted estimator using full, tied, diagonal, or spherical covariance.
+
+        Returns
+        -------
+        GaussianMixture
+            Independent distribution with the same component order and weights.
+
+        Raises
+        ------
+        ValueError
+            If the estimator is unfitted or its covariance type is unsupported.
+        """
         if not all(hasattr(gmm, name) for name in ("means_", "weights_", "covariances_")):
             msg = "gmm must be fitted before conversion with from_sklearn."
             raise ValueError(msg)
@@ -133,6 +172,12 @@ class GaussianMixture:
 
         Parameters are copied without fitting data. Optimization history and
         convergence diagnostics are unavailable because no fitting is performed.
+
+        Returns
+        -------
+        sklearn.mixture.GaussianMixture
+            Estimator with independent parameter arrays and full covariances.
+            Mixture provenance is not transferred.
         """
         mixture = SklearnGaussianMixture(n_components=self.n_components, covariance_type="full")
         mixture.weights_ = self.weights.copy()
@@ -152,7 +197,21 @@ class GaussianMixture:
     def from_components(
         cls, components: Sequence[Gaussian], *, weights: npt.ArrayLike | None = None
     ) -> GaussianMixture:
-        """Create a Gaussian mixture from a sequence of Gaussian components and optional weights."""
+        """Create a mixture from fixed Gaussian components.
+
+        Parameters
+        ----------
+        components : sequence of Gaussian
+            Nonempty sequence of components with equal feature dimensions.
+        weights : array-like, shape (n_components,), or None, default=None
+            Finite, nonnegative coefficients with positive total mass. They
+            are normalized; None assigns equal component weights.
+
+        Returns
+        -------
+        GaussianMixture
+            Independent mixture preserving the supplied component order.
+        """
         if not components:
             msg = "components must contain at least one Gaussian."
             raise ValueError(msg)
@@ -170,11 +229,22 @@ class GaussianMixture:
         return self.weights.shape[0]
 
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Evaluate the log-density of the Gaussian mixture at given points."""
+        """Evaluate natural-log mixture densities at one or more points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_features,) or (n_points, n_features)
+            Finite observations. A 1D input represents one observation.
+
+        Returns
+        -------
+        ndarray, shape (n_points,)
+            Log densities, including a length-one array for a single point.
+        """
         return gmm_logpdf(x=x, gmm=self)
 
     def cholesky(self) -> FloatArray:
-        """Compute or retrieve the cached Cholesky factors."""
+        """Return cached, read-only lower factors, shape (n_components, d, d)."""
         if self._chol is not None:
             return self._chol
 
@@ -184,7 +254,10 @@ class GaussianMixture:
         return cholesky
 
     def log_determinants(self) -> FloatArray:
-        """Compute or retrieve the cached log-determinants of the covariances."""
+        """Return cached covariance log-determinants, shape (n_components,).
+
+        The returned float64 array is read-only and uses natural logarithms.
+        """
         if self._log_dets is not None:
             return self._log_dets
 
@@ -195,21 +268,86 @@ class GaussianMixture:
         return log_determinants
 
     def sample(self, n_samples: int, *, rng: np.random.Generator | int | None = None) -> FloatArray:
-        """Draw samples from the Gaussian mixture."""
+        """Draw independent observations from the mixture.
+
+        Parameters
+        ----------
+        n_samples : int
+            Positive number of observations to draw.
+        rng : numpy.random.Generator, int, or None, default=None
+            Random source. An integer restarts a reproducible stream on each
+            call; a generator advances its state. None uses fresh entropy.
+
+        Returns
+        -------
+        ndarray, shape (n_samples, n_features)
+            Newly allocated float64 observations in random component order.
+        """
         return sample_gmm(self, n_samples=n_samples, rng=rng)
 
     def pdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Evaluate the density of the Gaussian mixture at given points."""
+        """Evaluate mixture densities at one or more points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_features,) or (n_points, n_features)
+            Finite observations. A 1D input represents one observation.
+
+        Returns
+        -------
+        ndarray, shape (n_points,)
+            Densities, including a length-one array for a single point.
+        """
         return np.exp(self.logpdf(x))
 
     def get_component(self, index: int) -> Gaussian:
-        """Return the Gaussian component at the specified index."""
+        """Return a Gaussian component independently of the mixture.
+
+        Parameters
+        ----------
+        index : int
+            Component position in `[0, n_components)`. Negative indices and
+            booleans are not accepted.
+
+        Returns
+        -------
+        Gaussian
+            Gaussian with copied parameters from the requested component.
+
+        Notes
+        -----
+        Index validation raises TypeError for noninteger positions and
+        IndexError for positions outside the component range.
+        """
         validate_index(index, self.n_components)
 
         return Gaussian(mean=self.means[index], covariance=self.covariances[index])
 
     def select_components(self, indices: npt.ArrayLike) -> GaussianMixture:
-        """Return a new Gaussian mixture containing only the specified components."""
+        """Select components in the requested order and normalize their weights.
+
+        Parameters
+        ----------
+        indices : array-like, shape (n_selected,)
+            Nonempty vector of integer positions in `[0, n_components)`.
+            Repeated positions are allowed. Selected weights must have positive
+            total mass.
+
+        Returns
+        -------
+        GaussianMixture
+            Independent mixture in the requested order, retaining mapping rows.
+
+        Raises
+        ------
+        IndexError
+            If a component position is out of range.
+
+        Notes
+        -----
+        Input validation raises TypeError for a noninteger dtype and ValueError
+        for an invalid index shape or zero selected mass.
+        """
         indices = index_array(indices, name="indices")
         if np.any(indices < 0) or np.any(indices >= self.n_components):
             msg = f"Component indices must be in the range [0, {self.n_components})."
@@ -232,8 +370,9 @@ class GaussianMixture:
 
         Parameters
         ----------
-        x : array-like, shape (n_samples, n_features)
-            Points at which to compute responsibilities.
+        x : array-like, shape (n_features,) or (n_samples, n_features)
+            Finite points at which to compute responsibilities. A 1D input
+            represents one observation.
 
         Returns
         -------
@@ -263,7 +402,19 @@ class GaussianMixture:
         )
 
     def as_gaussian(self) -> Gaussian:
-        """Convert an exactly single-component mixture to a Gaussian."""
+        """Convert an exactly single-component mixture to a Gaussian.
+
+        Returns
+        -------
+        Gaussian
+            Exact distribution with copied component parameters.
+
+        Raises
+        ------
+        ValueError
+            If the mixture has multiple components. Use `moment_match` for an
+            approximation in that case.
+        """
         if self.n_components != 1:
             msg = (
                 "as_gaussian requires exactly one component; use moment_match for an approximation."
@@ -272,11 +423,23 @@ class GaussianMixture:
         return self.get_component(0)
 
     def moment_match(self) -> Gaussian:
-        """Approximate the mixture with a Gaussian sharing its aggregate moments."""
+        """Approximate the mixture with a Gaussian sharing its aggregate moments.
+
+        Returns
+        -------
+        Gaussian
+            Gaussian with the mixture mean and covariance, including the
+            covariance contributed by differences between component means.
+        """
         return Gaussian(self.mean, self.covariance)
 
     def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
-        """Return the weights, means, and covariances as arrays."""
+        """Return read-only weight, mean, and covariance parameter arrays.
+
+        Shapes are `(n_components,)`, `(n_components, n_features)`, and
+        `(n_components, n_features, n_features)`. These are the stored arrays,
+        not copies or aggregate moments.
+        """
         return self.weights, self.means, self.covariances
 
     @property
@@ -285,12 +448,19 @@ class GaussianMixture:
         return self.means.shape[1]
 
     def __iter__(self) -> Iterator[tuple[float, Gaussian]]:
-        """Iterate over the Gaussian components of the mixture."""
+        """Yield `(weight, Gaussian)` pairs in stored component order."""
         for k in range(self.n_components):
             yield self.weights[k], self.get_component(k)
 
     def diagnostics(self) -> MixtureDiagnostics:
-        """Return diagnostics for the Gaussian mixture."""
+        """Summarize component weights and covariance conditioning.
+
+        Returns
+        -------
+        MixtureDiagnostics
+            Component and feature counts, weight sum and extrema, weight entropy
+            in nats, and independent read-only per-component condition numbers.
+        """
         weight_sum = float(np.sum(self.weights))
         max_weight = float(np.max(self.weights))
         min_weight = float(np.min(self.weights))
@@ -342,7 +512,12 @@ class GaussianMixture:
 def sample_gmm(
     gmm: GaussianMixture, /, n_samples: int, *, rng: np.random.Generator | int | None = None
 ) -> FloatArray:
-    """Draw samples from a Gaussian mixture."""
+    """Draw n_samples independent observations from gmm, with shape (N, D).
+
+    n_samples must be positive. rng accepts a generator, integer seed, or None;
+    integer seeds restart a stream, generators advance, and None uses fresh
+    entropy. Returns a newly allocated float64 observation matrix.
+    """
     n_samples = validate_positive_int(n_samples, name="n_samples")
     rng = np.random.default_rng(rng)
 
@@ -354,7 +529,11 @@ def sample_gmm(
 
 
 def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
-    """Evaluate the log-density of a Gaussian mixture without an explicit Python loop."""
+    """Evaluate mixture log densities without a Python loop over components.
+
+    x is a finite point (D,) or point matrix (N, D) matching gmm.n_features.
+    Returns an (N,) float64 array, including length one for a single point.
+    """
     x = as_points(x, n_features=gmm.n_features, name="x")
 
     with np.errstate(divide="ignore"):
@@ -363,7 +542,11 @@ def gmm_logpdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
 
 
 def _component_logpdf(gmm: GaussianMixture, x: FloatArray) -> FloatArray:
-    """Evaluate component densities at validated points using cached factors."""
+    """Evaluate component log densities at validated points using cached factors.
+
+    x has shape (n_points, n_features). Returns float64 log densities with shape
+    (n_points, n_components), excluding component weights.
+    """
     diff = x[None, :, :] - gmm.means[:, None, :]
     rhs = np.swapaxes(diff, 1, 2)
     whitened = np.linalg.solve(gmm.cholesky(), rhs)
@@ -373,5 +556,9 @@ def _component_logpdf(gmm: GaussianMixture, x: FloatArray) -> FloatArray:
 
 
 def gmm_pdf(x: npt.ArrayLike, gmm: GaussianMixture) -> FloatArray:
-    """Evaluate the density of a Gaussian mixture."""
+    """Evaluate mixture densities at finite points matching gmm.n_features.
+
+    x has shape (D,) or (N, D). Returns float64 densities with shape (N,),
+    including a length-one array for a single point.
+    """
     return np.exp(gmm_logpdf(x, gmm))

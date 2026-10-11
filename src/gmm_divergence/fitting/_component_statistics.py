@@ -18,7 +18,22 @@ from gmm_divergence.covariance import CovarianceRegularizer
 
 @dataclass(frozen=True, slots=True)
 class ComponentStatistics:
-    """Responsibility-weighted empirical component statistics."""
+    """Responsibility-weighted empirical statistics with read-only arrays.
+
+    Attributes
+    ----------
+    weights : ndarray, shape (n_components,)
+        Soft counts divided by the number of observations.
+    means : ndarray, shape (n_components, n_features)
+        Responsibility-weighted empirical means.
+    covariances : ndarray, shape (n_components, n_features, n_features)
+        Weighted maximum-likelihood covariances, which may be singular.
+    soft_counts : ndarray, shape (n_components,)
+        Sum of responsibilities for each component.
+    effective_sample_sizes : ndarray, shape (n_components,)
+        Kish concentration measure, soft_counts squared divided by the sum of
+        squared responsibilities; not a count of independent observations.
+    """
 
     weights: FloatArray
     means: FloatArray
@@ -37,6 +52,21 @@ class ComponentStatistics:
         """Convert statistics, optionally regularizing covariances without modifying them.
 
         Singular empirical covariances require regularization for conversion.
+
+        Parameters
+        ----------
+        regularizer : CovarianceRegularizer or None, default=None
+            Optional configuration applied to each empirical covariance.
+
+        Returns
+        -------
+        GaussianMixture
+            Independent mixture preserving empirical component order.
+
+        Notes
+        -----
+        Construction raises ValueError if a covariance is not positive definite
+        after any regularization.
         """
         return GaussianMixture(
             weights=self.weights,

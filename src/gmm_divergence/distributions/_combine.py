@@ -27,6 +27,21 @@ def combine_distributions(
     The returned mixture works directly with divergence and fitting APIs.
     Its mapping identifies immediate source indices and local component indices,
     even when an input source already carries provenance.
+
+    Parameters
+    ----------
+    sources : sequence of Gaussian or GaussianMixture
+        Nonempty sequence of distributions with the same number of features.
+        Components are flattened in source order, then local component order.
+    weights : array-like, shape (n_sources,), or None, default=None
+        Finite, nonnegative source coefficients with positive total mass.
+        Coefficients are normalized; None assigns equal mass to each source.
+
+    Returns
+    -------
+    GaussianMixture
+        Combined distribution with independent, read-only parameter arrays
+        and a mapping to the immediate sources. Zero-weight components remain.
     """
     if not sources:
         msg = "sources must contain at least one distribution."
@@ -58,7 +73,27 @@ def combine_distributions(
 
 
 def prune_mixture(mixture: GaussianMixture, *, min_weight: float = 1e-4) -> GaussianMixture:
-    """Remove components below a threshold, preserving provenance and normalizing weights."""
+    """Remove components below a threshold and normalize retained weights.
+
+    Parameters
+    ----------
+    mixture : GaussianMixture
+        Distribution to prune without modifying it.
+    min_weight : float, default=1e-4
+        Finite, nonnegative threshold. Components with weights equal to the
+        threshold are retained.
+
+    Returns
+    -------
+    GaussianMixture
+        Retained components in their original order, with normalized weights
+        and retained provenance rows.
+
+    Raises
+    ------
+    ValueError
+        If the threshold is invalid or no positive mass remains.
+    """
     _ = validate_nonnegative_finite(min_weight, name="min_weight")
     indices = np.flatnonzero(mixture.weights >= min_weight)
     if indices.size == 0:

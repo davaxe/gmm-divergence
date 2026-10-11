@@ -47,11 +47,12 @@ def prepare_gaussian_weight_fit(
     target : Gaussian or GaussianMixture
         Reference distribution.
     candidates : sequence of Gaussian or GaussianMixture
-        Candidate distributions whose weights will be fitted.
+        Nonempty candidate sequence with the same feature dimension as target.
     objective : FitObjective
         Explicit fitting-objective configuration.
     candidate_selector : CandidateSelector or None, default=None
-        Optional candidate-selection strategy applied before preparation.
+        Optional strategy applied once before sampling and caching densities.
+        Precomputed candidate batches must cover all original candidates.
 
     Returns
     -------
@@ -90,17 +91,24 @@ def fit_gaussian_weights(
     target : Gaussian or GaussianMixture
         Reference distribution.
     candidates : sequence of Gaussian or GaussianMixture
-        Candidate distributions whose weights are fitted.
+        Nonempty candidate sequence with the same feature dimension as target.
     optimizer : Optimizer
         Explicit optimizer configuration.
     objective : FitObjective
         Explicit fitting-objective configuration.
+    candidate_selector : CandidateSelector or None, default=None
+        Optional candidate selection before preparation. Initial optimizer
+        vectors refer to retained candidates in selected order. Precomputed
+        sampling batches refer to all original candidates.
 
     Returns
     -------
     GaussianWeightFitResult
         Result containing the fitted weights, combined mixture, final objective
         value, objective and optimizer configurations, and termination metadata.
+        Weights remain aligned to the original candidates, with zeros for those
+        rejected by selection. KL and Jensen-Shannon values are in nats;
+        MomentMatching reports a squared raw-moment residual.
 
     """
     _ = validate_optimizer(optimizer)
@@ -132,7 +140,8 @@ def fit_categorical_weights(
     candidates : array-like, shape (n_candidates, n_categories)
         Candidate probability distributions, one per row.
     optimizer : Optimizer
-        Simplex optimization method.
+        Explicit optimizer configuration. Initial vectors have one entry per
+        candidate row.
 
     Returns
     -------
@@ -145,6 +154,10 @@ def fit_categorical_weights(
     Probabilities must be finite and strictly nonnegative. Target and candidate
     rows must sum to one within `rtol=1e-7`, `atol=1e-8`. Inputs are not
     normalized or clipped.
+
+    Every category with positive target mass must have positive mass in at
+    least one candidate. The objective is evaluated exactly over categories;
+    it uses no sampling or approximation. Only forward KL fitting is supported.
     """
     _ = validate_optimizer(optimizer)
     return categorical.fit_categorical_weights(target, candidates, optimizer=optimizer)

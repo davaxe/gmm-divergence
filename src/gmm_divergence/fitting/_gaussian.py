@@ -48,6 +48,13 @@ class PreparedGaussianWeightFit:
     moment calculations required by the objective. Call :meth:`fit` any
     number of times without repeating that work, or inspect the objective
     and gradient with :meth:`evaluate`.
+
+    Notes
+    -----
+    Obtain this object with fitting.prepare_gaussian_weight_fit. The target,
+    objective configuration, selected candidates, and sample batches are fixed
+    for its lifetime. Changing them requires a new preparation. Optimizer
+    choices and initial conditions can change between fit calls.
     """
 
     objective: FitObjective
@@ -66,6 +73,19 @@ class PreparedGaussianWeightFit:
 
         For a warm start, pass the previous result's weights at
         `active_candidate_indices` as `SimplexSLSQP.initial_weights`.
+
+        Parameters
+        ----------
+        optimizer : Optimizer
+            Explicit optimizer configuration. Initial vectors refer to retained
+            candidates in active_candidate_indices order, not all candidates.
+
+        Returns
+        -------
+        GaussianWeightFitResult
+            Complete result with weights for the original candidate sequence,
+            a combined mixture with provenance, and termination diagnostics.
+            Rejected candidates receive zero weight.
         """
         solution = optimize_simplex(
             self._objective_fn, n_weights=self.n_active_candidates, optimizer=optimizer
@@ -83,6 +103,20 @@ class PreparedGaussianWeightFit:
         The weights must be nonnegative and have a positive sum. They are not
         normalized, which permits finite-difference gradient checks around a
         simplex point.
+
+        Parameters
+        ----------
+        weights : array-like, shape (n_active_candidates,)
+            Finite, nonnegative weights with positive total mass in retained
+            candidate order. Use unit total mass for the fitting objective.
+
+        Returns
+        -------
+        value : float
+            Cached objective value. KL and Jensen-Shannon objectives use nats;
+            MomentMatching returns a squared raw-moment residual.
+        gradient : ndarray, shape (n_active_candidates,)
+            Derivatives with respect to the supplied weights.
         """
         weights_arr = as_weights(
             weights, expected_length=self.n_active_candidates, name="weights", normalize=False
@@ -154,7 +188,26 @@ def prepare_gaussian_weight_fit(
     objective: FitObjective,
     candidate_selection: CandidateSelector | None = None,
 ) -> PreparedGaussianWeightFit:
-    """Prepare and cache all objective data required for fitting."""
+    """Prepare candidate selection, sampling, and cached objective data.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Fixed reference distribution.
+    candidates : sequence of Gaussian or GaussianMixture
+        Nonempty candidate sequence sharing the target's feature dimension.
+    objective : FitObjective
+        Explicit objective and sampling configuration.
+    candidate_selection : CandidateSelector or None, default=None
+        Optional selection applied once before generating samples. Precomputed
+        candidate batches remain indexed by the original candidate sequence.
+
+    Returns
+    -------
+    PreparedGaussianWeightFit
+        Reusable objective with retained candidate indices and cached densities
+        or moments. Changing inputs requires preparing another problem.
+    """
     if candidate_selection is not None and not callable(
         getattr(candidate_selection, "select", None)
     ):
