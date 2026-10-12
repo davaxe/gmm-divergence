@@ -207,7 +207,7 @@ fit = gd.fit_gaussian_weights(
         target_sampling=gd.sampling.Draw(n_samples=10_000, rng=102),
         candidate_sampling=gd.sampling.Draw(n_samples=10_000, rng=102),
     ),
-    optimizer=gd.fitting.SoftmaxLBFGSB(),
+    optimizer=gd.fitting.SimplexSLSQP(),
 )
 ```
 

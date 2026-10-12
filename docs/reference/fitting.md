@@ -97,9 +97,11 @@ their integration weights and component IDs.
 
 ::: gmm_divergence.fitting.MomentMatching
 
-## Optimizers
+## Optimizer
 
-::: gmm_divergence.fitting.SoftmaxLBFGSB
+Gaussian and categorical weight fitting use SLSQP directly on simplex-constrained
+weights. Use `initial_weights` to supply a warm start and `min_weight` to control
+the lower bound for each candidate weight.
 
 ::: gmm_divergence.fitting.SimplexSLSQP
 

@@ -7,14 +7,14 @@ import numpy.typing as npt
 import pytest
 
 from gmm_divergence.divergence import categorical_kl_divergence
-from gmm_divergence.fitting import SimplexSLSQP, SoftmaxLBFGSB, fit_categorical_weights
+from gmm_divergence.fitting import SimplexSLSQP, fit_categorical_weights
 from gmm_divergence.results import CategoricalWeightFitResult
 
 
-@pytest.fixture(params=[SimplexSLSQP(tol=1e-10), SoftmaxLBFGSB(tol=1e-10)], ids=["slsqp", "lbfgsb"])
-def method(request: pytest.FixtureRequest) -> SimplexSLSQP | SoftmaxLBFGSB:
-    """Run fitting tests with both supported optimizers."""
-    return request.param
+@pytest.fixture
+def method() -> SimplexSLSQP:
+    """Use the supported simplex optimizer."""
+    return SimplexSLSQP(tol=1e-10)
 
 
 @pytest.fixture
@@ -59,7 +59,7 @@ def _assert_valid_result(
 
 
 def test_recovers_known_mixture_weights(
-    method: SimplexSLSQP | SoftmaxLBFGSB, candidates: npt.NDArray[np.float64]
+    method: SimplexSLSQP, candidates: npt.NDArray[np.float64]
 ) -> None:
     """Recover known weights when the target is an exact candidate mixture."""
     expected_weights = np.array([0.6, 0.2, 0.2])
@@ -76,7 +76,7 @@ def test_recovers_known_mixture_weights(
     assert result.objective_value < 1e-8
 
 
-def test_identical_target_and_candidate(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_identical_target_and_candidate(method: SimplexSLSQP) -> None:
     """Fitting an identical candidate should give zero KL."""
     target = np.array([0.2, 0.5, 0.3])
     candidates = target[None, :]
@@ -91,7 +91,7 @@ def test_identical_target_and_candidate(method: SimplexSLSQP | SoftmaxLBFGSB) ->
     assert abs(result.objective_value) < 1e-10
 
 
-def test_single_candidate_matches_categorical_kl(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_single_candidate_matches_categorical_kl(method: SimplexSLSQP) -> None:
     """With one candidate, the optimized weight must be one."""
     target = np.array([0.2, 0.5, 0.3])
     candidate = np.array([0.4, 0.3, 0.3])
@@ -109,7 +109,7 @@ def test_single_candidate_matches_categorical_kl(method: SimplexSLSQP | SoftmaxL
     np.testing.assert_allclose(result.objective_value, expected_kl, atol=1e-10)
 
 
-def test_identical_candidates(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_identical_candidates(method: SimplexSLSQP) -> None:
     """Identical candidates should produce the same fitted distribution."""
     target = np.array([0.2, 0.5, 0.3])
     candidate = np.array([0.4, 0.3, 0.3])
@@ -127,7 +127,7 @@ def test_identical_candidates(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
     np.testing.assert_allclose(result.weights.sum(), 1.0)
 
 
-def test_target_outside_candidate_convex_hull(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_target_outside_candidate_convex_hull(method: SimplexSLSQP) -> None:
     """Find the best approximation when exact recovery is impossible."""
     target = np.array([0.8, 0.1, 0.1])
 
@@ -146,7 +146,7 @@ def test_target_outside_candidate_convex_hull(method: SimplexSLSQP | SoftmaxLBFG
     assert result.objective_value > 0.0
 
 
-def test_zero_target_probability(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_zero_target_probability(method: SimplexSLSQP) -> None:
     """Zero target probabilities must contribute zero to forward KL."""
     target = np.array([0.7, 0.3, 0.0])
 
@@ -161,7 +161,7 @@ def test_zero_target_probability(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
     assert result.objective_value < 1e-8
 
 
-def test_zero_candidate_probability(method: SimplexSLSQP | SoftmaxLBFGSB) -> None:
+def test_zero_candidate_probability(method: SimplexSLSQP) -> None:
     """Individual candidates may have zero mass on target categories."""
     target = np.array([0.5, 0.5, 0.0])
 
@@ -188,9 +188,7 @@ def test_unsupported_target_category() -> None:
         _ = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP())
 
 
-def test_does_not_modify_inputs(
-    method: SimplexSLSQP | SoftmaxLBFGSB, candidates: npt.NDArray[np.float64]
-) -> None:
+def test_does_not_modify_inputs(method: SimplexSLSQP, candidates: npt.NDArray[np.float64]) -> None:
     """Fitting must not modify caller-owned arrays."""
     target = np.array([0.2, 0.5, 0.3])
 
@@ -264,37 +262,6 @@ def test_custom_slsqp_initial_weights(candidates: npt.NDArray[np.float64]) -> No
     np.testing.assert_allclose(result.weights, [0.6, 0.2, 0.2], atol=1e-3)
 
     assert result.optimizer is method
-
-
-def test_custom_lbfgsb_initial_logits(candidates: npt.NDArray[np.float64]) -> None:
-    """Custom initial softmax logits should be supported."""
-    target = np.array([0.2, 0.5, 0.3])
-
-    method = SoftmaxLBFGSB(tol=1e-10, initial_logits=np.array([-1.0, 0.0, 1.0]))
-
-    result = fit_categorical_weights(target, candidates, optimizer=method)
-
-    _assert_valid_result(result, target, candidates)
-
-    np.testing.assert_allclose(result.weights, [0.6, 0.2, 0.2], atol=1e-3)
-
-    assert result.optimizer is method
-
-
-def test_both_optimizers_agree(candidates: npt.NDArray[np.float64]) -> None:
-    """Both optimizers should converge to the same fitted distribution."""
-    target = np.array([0.2, 0.5, 0.3])
-
-    slsqp = fit_categorical_weights(target, candidates, optimizer=SimplexSLSQP(tol=1e-10))
-
-    lbfgsb = fit_categorical_weights(target, candidates, optimizer=SoftmaxLBFGSB(tol=1e-10))
-
-    assert slsqp.converged
-    assert lbfgsb.converged
-
-    np.testing.assert_allclose(slsqp.probabilities, lbfgsb.probabilities, atol=1e-5)
-
-    np.testing.assert_allclose(slsqp.objective_value, lbfgsb.objective_value, atol=1e-8)
 
 
 def test_optimizer_metadata(candidates: npt.NDArray[np.float64]) -> None:

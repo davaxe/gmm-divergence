@@ -105,11 +105,11 @@ def test_probability_policy_is_shared_across_divergence_fitting_and_statistics(
         _ = gd.divergence.categorical_kl_divergence(probabilities, [0.5, 0.5])
     with pytest.raises(ValueError, match=r"nonnegative|sum to one"):
         _ = gd.fitting.fit_categorical_weights(
-            probabilities, [[0.5, 0.5]], optimizer=gd.fitting.SoftmaxLBFGSB()
+            probabilities, [[0.5, 0.5]], optimizer=gd.fitting.SimplexSLSQP()
         )
     with pytest.raises(ValueError, match=r"nonnegative|sum to one"):
         _ = gd.fitting.fit_categorical_weights(
-            [0.5, 0.5], rows, optimizer=gd.fitting.SoftmaxLBFGSB()
+            [0.5, 0.5], rows, optimizer=gd.fitting.SimplexSLSQP()
         )
     with pytest.raises(ValueError, match=r"nonnegative|sum to one"):
         _ = gd.fitting.component_statistics([[0]], responsibilities=rows)
@@ -120,7 +120,7 @@ def test_probability_sum_tolerance_and_input_ownership_are_consistent() -> None:
     before = probabilities.copy()
     assert np.isfinite(gd.divergence.categorical_kl_divergence(probabilities, [0.5, 0.5]).value)
     fit = gd.fitting.fit_categorical_weights(
-        probabilities, [[0.5, 0.5]], optimizer=gd.fitting.SoftmaxLBFGSB()
+        probabilities, [[0.5, 0.5]], optimizer=gd.fitting.SimplexSLSQP()
     )
     assert fit.converged
     stats = gd.fitting.component_statistics([[0]], responsibilities=probabilities[None, :])

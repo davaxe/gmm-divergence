@@ -17,7 +17,6 @@ from gmm_divergence.fitting._options import (
     Optimizer,
     ReverseKL,
     SimplexSLSQP,
-    SoftmaxLBFGSB,
 )
 from gmm_divergence.fitting._selector import (
     BidirectionalKLScore,
@@ -55,7 +54,6 @@ __all__ = [
     "ReverseKL",
     "ReverseKLScore",
     "SimplexSLSQP",
-    "SoftmaxLBFGSB",
     "ThresholdSelector",
     "ToleranceSelector",
     "TopKSelector",

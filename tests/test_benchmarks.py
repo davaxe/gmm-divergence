@@ -72,7 +72,7 @@ def test_benchmark_moment_matching_fit(benchmark: BenchmarkFixture) -> None:
             fit_gaussian_weights,
             p,
             candidates,
-            optimizer=gd.fitting.SoftmaxLBFGSB(),
+            optimizer=gd.fitting.SimplexSLSQP(),
             objective=gd.fitting.MomentMatching(),
         ),
     )

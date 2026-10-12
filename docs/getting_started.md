@@ -111,7 +111,7 @@ q1 = gd.Gaussian.univariate(mean=0.0, variance=0.5)
 q2 = gd.Gaussian.univariate(mean=2.0, variance=0.5)
 
 fit = gd.fit_gaussian_weights(
-    p, [q1, q2], optimizer=gd.fitting.SoftmaxLBFGSB(), objective=gd.fitting.MomentMatching()
+    p, [q1, q2], optimizer=gd.fitting.SimplexSLSQP(), objective=gd.fitting.MomentMatching()
 )
 print(fit.weights)  # [~0.6, ~0.4]
 ```
