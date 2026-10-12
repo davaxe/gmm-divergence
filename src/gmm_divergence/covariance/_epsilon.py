@@ -23,14 +23,21 @@ class RelativeToTrace:
     Sets
 
     $$
-    \varepsilon = scale\,\frac{\mathrm{tr}(\Sigma)}{d},
+    \varepsilon = s\,\max\!\left(\frac{\mathrm{tr}(\Sigma)}{d},0\right),
     $$
 
-    where $d$ is the covariance dimension.
+    where $\Sigma$ is a symmetric $d\times d$ covariance input and $s>0$ is
+    `scale`. This clips a nonpositive average marginal variance to zero.
+
+    Parameters
+    ----------
+    scale : float, default=1e-6
+        Finite, strictly positive multiplier of the average marginal variance.
+        A nonpositive trace gives an epsilon of zero.
     """
 
     scale: float = 1e-6
-    r"""Multiplier $scale$ in $\varepsilon = scale\,\mathrm{tr}(\Sigma)/d$."""
+    r"""Multiplier $s>0$ of the nonnegative average marginal variance."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_finite(self.scale, name="scale")
@@ -38,20 +45,32 @@ class RelativeToTrace:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TargetConditionNumber:
-    r"""Choose epsilon to enforce a target condition number.
+    r"""Estimate loading from a requested covariance condition number.
 
-    For
+    For ordered eigenvalues $\lambda_1\leq\cdots\leq\lambda_d$ of the
+    symmetric input covariance $\Sigma$, set
 
     $$
-    \Sigma_{\mathrm{reg}} = \Sigma + \varepsilon I,
+    \varepsilon=\max\!\left(
+    \frac{\lambda_d-\kappa_{\max}\lambda_1}{\kappa_{\max}-1},0\right),
+    \qquad \Sigma_{\mathrm{reg}}=\Sigma+\varepsilon I_d.
     $$
 
-    picks the smallest $\varepsilon \ge 0$ such that
-    $\kappa(\Sigma_{\mathrm{reg}}) \le \text{max_condition_number}$.
+    Here $\kappa_{\max}>1$ is `max_condition_number` and $I_d$ is the identity.
+    When $\Sigma_{\mathrm{reg}}$ is positive definite, this enforces the spectral
+    condition number $\kappa(\Sigma_{\mathrm{reg}})\leq\kappa_{\max}$.
+    Degenerate inputs can yield a singular result, such as zero loading for
+    an all-zero covariance; regularization still validates positive definiteness.
+
+    Parameters
+    ----------
+    max_condition_number : float, default=1e8
+        Finite condition-number target greater than one. The heuristic uses
+        the smallest and largest eigenvalues of the symmetric covariance.
     """
 
     max_condition_number: float = 1e8
-    r"""Target upper bound $\kappa(\Sigma + \varepsilon I)$."""
+    r"""Requested bound $\kappa_{\max}>1$ on $\kappa(\Sigma+\varepsilon I_d)$."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_finite(self.max_condition_number, name="max_condition_number")
@@ -67,21 +86,40 @@ class TargetConditionNumber:
 class ResidualVariance:
     r"""Scale epsilon from discarded low-rank variance.
 
-    With target rank $rank$, sets
+    For ordered covariance eigenvalues $\lambda_1\leq\cdots\leq\lambda_d$,
+    retained rank $r$ (`rank`), and multiplier $s>0$ (`scale`), set
 
     $$
     \varepsilon
     =
-    scale\,\frac{1}{d-rank}\sum_{i=1}^{d-rank}\lambda_i^{\mathrm{disc}},
+    \begin{cases}
+    \displaystyle\frac{s}{d-r}\sum_{j=1}^{d-r}\max(\lambda_j,0), & 1\leq r<d,\\
+    0, & r=d.
+    \end{cases}
     $$
 
-    where $\lambda_i^{\mathrm{disc}}$ are the discarded eigenvalues.
+    The smallest $d-r$ eigenvalues are discarded. Negative discarded
+    eigenvalues contribute zero; retaining full rank discards no variance.
+
+    Parameters
+    ----------
+    scale : float, default=1.0
+        Finite, strictly positive multiplier of the average discarded variance.
+    rank : int or None, default=None
+        Number of leading eigenvalues retained, between one and the covariance
+        dimension. Required by estimate_epsilon and DiagonalLoading; None
+        inherits the enclosing LowRank.rank when used with that regularizer.
+
+    Notes
+    -----
+    Negative discarded eigenvalues contribute zero. Retaining the full rank
+    produces zero epsilon because no variance is discarded.
     """
 
     scale: float = 1.0
-    r"""Multiplier $scale$ on the mean discarded eigenvalue."""
+    r"""Multiplier $s>0$ of the mean nonnegative discarded eigenvalue."""
     rank: int | None = None
-    r"""Target rank $rank$ used to define the discarded spectrum."""
+    r"""Retained rank $r$ defining the discarded covariance spectrum."""
 
     def __post_init__(self) -> None:
         _ = validate_positive_finite(self.scale, name="scale")
@@ -101,17 +139,27 @@ def estimate_epsilon(
     Parameters
     ----------
     covariance : array-like
-        Covariance matrix with shape `(d, d)` or batch of matrices with shape
-        `(n, d, d)`.
+        Covariance matrix with shape `(n_features, n_features)` or batch of shape
+        `(n_matrices, n_features, n_features)`. Dimensions must be nonempty and
+        values finite. Symmetry is
+        checked with NumPy's default allclose tolerance before averaging out
+        roundoff asymmetry. Positive definiteness is not required.
     heuristic : EpsilonHeuristic
         Explicit heuristic configuration used to estimate epsilon.
+        ResidualVariance requires an explicit rank for this operation.
 
     Returns
     -------
     float or array
         Estimated epsilon value(s). If the input is a single covariance, a float
         is returned. If the input is a batch of covariances, an array of shape
-        `(n,)` is returned with one epsilon per covariance.
+        `(n_matrices,)` is returned with one epsilon per covariance.
+
+    Notes
+    -----
+    Validation raises TypeError for an unsupported heuristic, and ValueError for
+    invalid covariance values or shapes, missing residual rank, or a rank above
+    the covariance dimension.
     """
     covariance_arr: FloatArray = np.asarray(covariance, dtype=np.float64)
     _ = validate_covariance_input(covariance_arr)

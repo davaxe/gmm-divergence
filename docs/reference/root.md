@@ -17,7 +17,7 @@ configuration objects.
 | `kl_divergence`, `categorical_kl_divergence`, `symmetric_kl_divergence`, `jensen_shannon_divergence` | Main divergence helpers |
 | `component_kl_matrix` | Pairwise component KL diagnostics |
 | `aligned_joint_kl_divergence` | Joint KL for aligned component labels and observations |
-| `fit_gaussian_weights`, `fit_categorical_weights`, `prepare_gaussian_weight_fit`, `prune_mixture` | Main fitting helpers |
+| `fit_gaussian_weights`, `fit_categorical_weights`, `prune_mixture` | Main fitting helpers |
 | `DivergenceResult`, `GaussianWeightFitResult`, `CategoricalWeightFitResult` | Result containers |
 
 ## What Lives In Namespaces
@@ -71,8 +71,6 @@ configuration objects are documented on their namespace pages.
 ## Fitting Helpers
 
 ::: gmm_divergence.fit_categorical_weights
-
-::: gmm_divergence.prepare_gaussian_weight_fit
 
 ::: gmm_divergence.fit_gaussian_weights
 

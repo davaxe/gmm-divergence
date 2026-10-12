@@ -24,7 +24,12 @@ def as_weights(
     name: str = "Weights",
     writable: bool = False,
 ) -> Weights:
-    """Return validated nonnegative finite weights."""
+    """Copy a nonempty finite, nonnegative weight vector with positive total mass.
+
+    expected_length optionally enforces the vector length. normalize divides by
+    the sum when True; otherwise the supplied scale is retained. name labels
+    validation errors. The returned float64 array follows the writable flag.
+    """
     weights_arr = np.asarray(weights, dtype=np.float64)
 
     if weights_arr.ndim != 1:
@@ -65,7 +70,11 @@ def as_covariance(
     name: str = "Covariance",
     writable: bool = False,
 ) -> Covariance:
-    """Return a validated symmetric positive-definite covariance matrix."""
+    """Copy a finite, positive-definite covariance with shape (n_features, n_features).
+
+    Symmetry is checked within NumPy's default allclose tolerance, then averaged
+    exactly. name labels errors; writable controls the independent output array.
+    """
     return _as_covariance_array(covariance, (n_features, n_features), name=name, writable=writable)
 
 
@@ -78,7 +87,12 @@ def as_covariances(
     name: str = "Covariances",
     writable: bool = False,
 ) -> Covariances:
-    """Return a validated stack of symmetric positive-definite covariances."""
+    """Copy covariances with shape (n_components, n_features, n_features).
+
+    Each matrix must be finite, symmetric within NumPy's default allclose
+    tolerance, and positive definite. Roundoff asymmetry is averaged out.
+    name labels validation errors; writable controls the output array.
+    """
     return _as_covariance_array(
         covariances, (n_components, n_features, n_features), name=name, writable=writable
     )
@@ -112,7 +126,11 @@ def as_probabilities(values: npt.ArrayLike, /, *, name: str = "Weights") -> Floa
 
 
 def as_probability_rows(values: npt.ArrayLike, /, *, name: str) -> FloatArray:
-    """Validate nonempty probability rows using the same policy as probability vectors."""
+    """Copy nonempty probability rows without normalization or clipping.
+
+    values must be a finite, nonnegative 2D array whose rows sum to one within
+    rtol=1e-7, atol=1e-8. name labels errors. Output is read-only float64.
+    """
     array = np.asarray(values, dtype=np.float64)
     if array.ndim != 2 or 0 in array.shape:
         msg = f"{name} must be a nonempty 2D array of probability rows."
@@ -139,7 +157,11 @@ def as_points(
     writable: bool = False,
     require_nonempty: bool = False,
 ) -> FloatArray:
-    """Return validated points with shape `(n_points, n_features)`."""
+    """Copy finite points into shape (n_points, n_features).
+
+    A 1D input represents one point. require_nonempty rejects zero rows when
+    True. name labels validation errors; writable controls the float64 output.
+    """
     points_arr = np.asarray(points, dtype=np.float64)
     if points_arr.ndim == 1:
         points_arr = points_arr[None, :]
@@ -170,7 +192,11 @@ def as_sample_batches(
     name: str = "Sample batches",
     writable: bool = False,
 ) -> FloatArray:
-    """Return validated sample batches with shape `(n_distributions, n_samples, n_features)`."""
+    """Copy finite sample batches into a float64 array.
+
+    Required shape is (n_distributions, n_samples, n_features) with a positive
+    sample count. name labels validation errors; writable controls the output.
+    """
     samples_arr = np.asarray(samples, dtype=np.float64)
     if samples_arr.ndim != 3 or samples_arr.shape[0] != n_distributions:
         msg = (
@@ -197,7 +223,10 @@ def as_sample_batches(
 
 
 def validate_positive_int(value: object, /, *, name: str) -> int:
-    """Validate a positive integer option."""
+    """Return a positive Python int, rejecting booleans and noninteger values.
+
+    name identifies the option in TypeError or ValueError messages.
+    """
     if isinstance(value, bool) or not isinstance(value, Integral):
         msg = f"{name} must be a positive integer, got {value!r}."
         raise TypeError(msg)
@@ -208,7 +237,10 @@ def validate_positive_int(value: object, /, *, name: str) -> int:
 
 
 def validate_positive_finite(value: float, /, *, name: str) -> float:
-    """Validate a positive finite scalar option."""
+    """Return a finite, strictly positive real scalar, rejecting booleans.
+
+    name identifies the option in TypeError or ValueError messages.
+    """
     _validate_real(value, name=name)
     if not isfinite(value) or value <= 0.0:
         msg = f"{name} must be a positive finite value, got {value}."
@@ -217,7 +249,10 @@ def validate_positive_finite(value: float, /, *, name: str) -> float:
 
 
 def validate_nonnegative_finite(value: float, /, *, name: str) -> float:
-    """Validate a nonnegative finite scalar option."""
+    """Return a finite, nonnegative real scalar, rejecting booleans.
+
+    name identifies the option in TypeError or ValueError messages.
+    """
     _validate_real(value, name=name)
     if not isfinite(value) or value < 0.0:
         msg = f"{name} must be a nonnegative finite value, got {value}."
@@ -226,7 +261,10 @@ def validate_nonnegative_finite(value: float, /, *, name: str) -> float:
 
 
 def validate_unit_interval(value: float, /, *, name: str) -> float:
-    """Validate a finite scalar in the closed unit interval."""
+    """Return a finite real scalar in [0, 1], rejecting booleans.
+
+    name identifies the option in TypeError or ValueError messages.
+    """
     _validate_real(value, name=name)
     if not isfinite(value) or not 0.0 <= value <= 1.0:
         msg = f"{name} must be a finite value in [0, 1], got {value}."

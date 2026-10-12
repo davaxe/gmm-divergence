@@ -10,7 +10,11 @@ if TYPE_CHECKING:
 
 
 def logsumexp(a: FloatArray, axis: int = -1) -> FloatArray:
-    """Compute log-sum-exp."""
+    """Reduce log(exp(a).sum()) along axis with stable SciPy arithmetic.
+
+    Returns a float64 array with the reduction axis removed; scalar reductions
+    are represented by zero-dimensional arrays. axis defaults to the last axis.
+    """
     return np.asarray(scipy.special.logsumexp(a, axis=axis), dtype=np.float64)
 
 
@@ -22,7 +26,10 @@ def symmetrize(array: FloatArray) -> FloatArray:
 def pairwise_gaussian_kl(
     p_means: FloatArray, p_covariances: Covariances, q_means: FloatArray, q_covariances: Covariances
 ) -> FloatArray:
-    r"""Compute $D_{\mathrm{KL}}(p_i \| q_j)$ for all Gaussian component pairs.
+    r"""Compute $D_{\mathrm{KL}}(p_k \| q_j)$ for all Gaussian component pairs.
+
+    There are n_p reference components and n_q comparison components in d
+    features. Component probabilities do not enter these Gaussian divergences.
 
     Parameters
     ----------
@@ -38,8 +45,9 @@ def pairwise_gaussian_kl(
     Returns
     -------
     FloatArray
-        Matrix of shape (n_p, n_q), where entry (i, j) is
-        $D_{\mathrm{KL}}(p_i \| q_j)$.
+        Matrix of shape (n_p, n_q), where entry (k, j) compares the kth
+        reference Gaussian component p_k with the jth comparison component q_j.
+        Values are in nats; this matrix is not full-mixture KL.
     """
     if p_means.ndim != 2:
         msg = f"p_means must have shape (n_p, d), got {p_means.shape}."
@@ -84,7 +92,11 @@ def pairwise_gaussian_kl(
 
 
 def logdet_from_cholesky(_cholesky: FloatArray) -> FloatArray:
-    """Return scalar or batched log-determinants from Cholesky factors."""
+    """Compute natural-log determinants from lower covariance Cholesky factors.
+
+    _cholesky has shape (..., d, d) with positive diagonal entries. Returns a
+    float64 array of shape (...), or a zero-dimensional array for one matrix.
+    """
     return np.asarray(
         2.0 * np.sum(np.log(np.diagonal(_cholesky, axis1=-2, axis2=-1)), axis=-1), dtype=np.float64
     )
@@ -97,7 +109,13 @@ def gaussian_kl_from_factors(
     p_logdet: FloatArray | float,
     q_logdet: FloatArray | float,
 ) -> FloatArray:
-    """Evaluate Gaussian KL using broadcast-compatible arrays and cached factors."""
+    """Evaluate directed Gaussian KL from validated, broadcast-compatible factors.
+
+    p_covariance and q_chol end in (d, d); mean_difference is the comparison
+    mean minus reference mean and ends in (d,). p_logdet and q_logdet contain
+    natural-log covariance determinants. Leading dimensions broadcast to the
+    returned float64 array of KL values in nats. q_chol is a lower factor.
+    """
     whitened_covariance = np.linalg.solve(q_chol, p_covariance)
     solved_covariance = np.linalg.solve(q_chol.swapaxes(-1, -2), whitened_covariance)
     trace = np.trace(solved_covariance, axis1=-2, axis2=-1)

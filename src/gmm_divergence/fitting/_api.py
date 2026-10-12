@@ -47,16 +47,17 @@ def prepare_gaussian_weight_fit(
     target : Gaussian or GaussianMixture
         Reference distribution.
     candidates : sequence of Gaussian or GaussianMixture
-        Candidate distributions whose weights will be fitted.
+        Nonempty candidate sequence with the same feature dimension as target.
     objective : FitObjective
         Explicit fitting-objective configuration.
     candidate_selector : CandidateSelector or None, default=None
-        Optional candidate-selection strategy applied before preparation.
+        Optional strategy applied once before sampling and caching densities.
+        Precomputed candidate batches must cover all original candidates.
 
     Returns
     -------
     PreparedGaussianWeightFit
-        Cached objective data with separate `solve` and `report` stages.
+        Cached objective data with `fit` and `evaluate` methods.
     """
     return gaussian.prepare_gaussian_weight_fit(
         target=target,
@@ -79,28 +80,38 @@ def fit_gaussian_weights(
     Fits nonnegative weights `w_i` such that the weighted mixture
 
     $$
-    q_w(x) = \sum_i w_i q_i(x)
+    q_{\mathbf{w}}(x)=\sum_{i=1}^{L}w_iq_i(x),
+    \qquad w_i\geq0,\quad\sum_{i=1}^{L}w_i=1,
     $$
 
-    approximates the reference distribution `p` according to the selected
-    objective.
+    approximates target density $p$ according to the selected objective.
+    Here $L$ counts candidate distributions, $\mathbf{w}$ their fitted weights,
+    and $x\in\mathbb{R}^d$ one observation. A candidate $q_i$ may itself contain
+    several Gaussian components; its internal component probabilities are fixed.
 
     Parameters
     ----------
     target : Gaussian or GaussianMixture
         Reference distribution.
     candidates : sequence of Gaussian or GaussianMixture
-        Candidate distributions whose weights are fitted.
+        Nonempty candidate sequence with the same feature dimension as target.
     optimizer : Optimizer
         Explicit optimizer configuration.
     objective : FitObjective
         Explicit fitting-objective configuration.
+    candidate_selector : CandidateSelector or None, default=None
+        Optional candidate selection before preparation. Initial optimizer
+        vectors refer to retained candidates in selected order. Precomputed
+        sampling batches refer to all original candidates.
 
     Returns
     -------
     GaussianWeightFitResult
         Result containing the fitted weights, combined mixture, final objective
         value, objective and optimizer configurations, and termination metadata.
+        Weights remain aligned to the original candidates, with zeros for those
+        rejected by selection. KL and Jensen-Shannon values are in nats;
+        MomentMatching reports a squared raw-moment residual.
 
     """
     _ = validate_optimizer(optimizer)
@@ -118,12 +129,16 @@ def fit_categorical_weights(
     Find nonnegative candidate weights that sum to one and minimize
 
     $$
-    D_{\mathrm{KL}}\left(
-        p \;\middle\|\; \sum_{i=1}^{M} \alpha_i q_i
-    \right),
+    D_{\mathrm{KL}}(\boldsymbol{\pi}_p\|\boldsymbol{\pi}_{\mathbf{w}})
+    =\sum_{k:\pi_{p,k}>0}\pi_{p,k}
+    \log\frac{\pi_{p,k}}{\pi_{\mathbf{w},k}},
+    \qquad \pi_{\mathbf{w},k}=\sum_{i=1}^{L}w_i\pi_{i,k},
     $$
 
-    where `p` is the target distribution and `q_i` are the candidates.
+    where $\boldsymbol{\pi}_p$ is the target probability vector over $K$
+    categories, $\pi_{i,k}$ is candidate $i$'s probability of category $k$, and
+    $\mathbf{w}\in\Delta_L$ has $L$ nonnegative candidate weights summing to one.
+    Indices refer to the same categories in every probability vector.
 
     Parameters
     ----------
@@ -132,7 +147,8 @@ def fit_categorical_weights(
     candidates : array-like, shape (n_candidates, n_categories)
         Candidate probability distributions, one per row.
     optimizer : Optimizer
-        Simplex optimization method.
+        Explicit optimizer configuration. Initial vectors have one entry per
+        candidate row.
 
     Returns
     -------
@@ -145,6 +161,10 @@ def fit_categorical_weights(
     Probabilities must be finite and strictly nonnegative. Target and candidate
     rows must sum to one within `rtol=1e-7`, `atol=1e-8`. Inputs are not
     normalized or clipped.
+
+    Every category with positive target mass must have positive mass in at
+    least one candidate. The objective is evaluated exactly over categories;
+    it uses no sampling or approximation. Only forward KL fitting is supported.
     """
     _ = validate_optimizer(optimizer)
     return categorical.fit_categorical_weights(target, candidates, optimizer=optimizer)

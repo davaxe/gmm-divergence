@@ -31,11 +31,37 @@ if TYPE_CHECKING:
 def regularize_covariance(
     covariance: npt.ArrayLike, *, regularizer: CovarianceRegularizer
 ) -> FloatArray:
-    """Regularize a matrix `(d, d)` or batch `(n, d, d)`.
+    """Regularize a single covariance matrix or a batch of matrices.
 
     The shape determines batching. Returns an independent, read-only float64
     array of the same shape. Inputs may be singular, but the regularized
     matrices must be positive definite.
+
+    Parameters
+    ----------
+    covariance : array-like, shape (n_features, n_features) or (n_matrices, n_features, n_features)
+        Nonempty, finite, symmetric covariance matrix or batch. Symmetry is
+        checked with NumPy's default allclose tolerance, then roundoff asymmetry
+        is averaged out. Positive definiteness is checked after regularization.
+    regularizer : CovarianceRegularizer
+        Explicit loading, shrinkage, clipping, or low-rank configuration.
+        Epsilon heuristics are resolved separately for each covariance.
+
+    Returns
+    -------
+    ndarray
+        Independent, read-only float64 array matching the input shape.
+
+    Raises
+    ------
+    TypeError
+        If regularizer is unsupported.
+
+    Notes
+    -----
+    Invalid shapes, values, ranks, or non-positive-definite results raise
+    ValueError through covariance validation. Regularization does not guarantee
+    positive definiteness for every input and configuration.
     """
     match regularizer:
         case DiagonalLoading(epsilon=epsilon):

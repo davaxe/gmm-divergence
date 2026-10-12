@@ -18,14 +18,16 @@ def kl_closed_form(p: Gaussian, q: Gaussian) -> DivergenceResult:
     D_{\mathrm{KL}}(p \| q) = \frac{1}{2}
     \left[
         \mathrm{tr}(\Sigma_q^{-1} \Sigma_p)
-        + (\mu_q - \mu_p)^T \Sigma_q^{-1} (\mu_q - \mu_p)
-        - k
+        + (\mu_q - \mu_p)^\top \Sigma_q^{-1} (\mu_q - \mu_p)
+        - d
         + \log\left(\frac{\det(\Sigma_q)}{\det(\Sigma_p)}\right)
     \right]
     $$
 
     where $p = \mathcal{N}(\mu_p, \Sigma_p)$ and $q = \mathcal{N}(\mu_q,
-    \Sigma_q)$ are Gaussian distributions.
+    \Sigma_q)$ are Gaussian distributions in $d$ features. Means are vectors in
+    $\mathbb{R}^d$, covariances are positive-definite $d\times d$ matrices, and
+    logarithms are natural, giving divergence in nats.
 
     Parameters
     ----------

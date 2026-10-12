@@ -27,6 +27,34 @@ evaluable sklearn model; it does not fit observations.
 `mixture.as_gaussian()` requires exactly one component. Use
 `mixture.moment_match()` for an approximation matching aggregate moments.
 
+For a mixture $p(x)=\sum_{k=1}^{K_p}\pi_{p,k}
+\mathcal{N}(x;\mu_{p,k},\Sigma_{p,k})$, the aggregate moments are
+
+$$
+\mu_p=\sum_{k=1}^{K_p}\pi_{p,k}\mu_{p,k},
+\qquad
+\Sigma_p=\sum_{k=1}^{K_p}\pi_{p,k}
+\left[\Sigma_{p,k}+(\mu_{p,k}-\mu_p)(\mu_{p,k}-\mu_p)^\top\right].
+$$
+
+Here $K_p$ counts components, $\pi_{p,k}$ are normalized component probabilities,
+and each mean and covariance describes one component in $d$ features. The
+between-component term is essential; covariance is not simply an average of
+component covariances. See the [notation guide](index.md#notation-and-terminology).
+
+For $N\geq2$ observations $x_n$, `Gaussian.from_samples` uses
+$\widehat\mu=N^{-1}\sum_{n=1}^{N}x_n$ and
+
+$$
+\widehat\Sigma=\frac{1}{N-1}\sum_{n=1}^{N}
+(x_n-\widehat\mu)(x_n-\widehat\mu)^\top.
+$$
+
+This unbiased sample covariance differs from the responsibility-weighted
+maximum-likelihood covariance in
+[`component_statistics`](fitting.md#component-statistics), which divides by
+the soft count without an unbiasedness correction.
+
 `combine_distributions` always returns a directly usable `GaussianMixture`.
 Its `mapping` identifies the immediate source and local component of each
 flattened component. Nested combination maps to its immediate inputs.

@@ -29,6 +29,16 @@ class Gaussian:
 
     Array-like inputs are copied into read-only float64 arrays. An optional
     regularizer is applied before validating positive definiteness.
+
+    Parameters
+    ----------
+    mean : array-like, shape (n_features,)
+        Nonempty, finite feature means.
+    covariance : array-like, shape (n_features, n_features)
+        Finite, symmetric covariance. Must be positive definite after any
+        regularization.
+    regularizer : CovarianceRegularizer or None, default=None
+        Optional covariance regularization applied before construction.
     """
 
     mean: FloatArray
@@ -68,6 +78,19 @@ class Gaussian:
         At least two observations are required. Covariance uses the unbiased
         estimate (divisor `n_samples - 1`). Singular covariance requires an
         explicit regularizer.
+
+        Parameters
+        ----------
+        samples : array-like, shape (n_samples, n_features)
+            Finite observations with at least two rows and one feature. For
+            one feature, provide a column matrix rather than a 1D vector.
+        regularizer : CovarianceRegularizer or None, default=None
+            Optional regularization for the empirical covariance.
+
+        Returns
+        -------
+        Gaussian
+            Distribution with the sample mean and unbiased sample covariance.
         """
         observations = np.asarray(samples, dtype=np.float64)
         if observations.ndim != 2 or observations.shape[0] < 2 or observations.shape[1] == 0:
@@ -81,13 +104,39 @@ class Gaussian:
 
     @classmethod
     def univariate(cls, mean: float = 0.0, variance: float = 1.0) -> Gaussian:
-        """Create a one-feature Gaussian from mean and variance."""
+        """Create a one-feature Gaussian from mean and variance.
+
+        Parameters
+        ----------
+        mean : float, default=0.0
+            Finite feature mean.
+        variance : float, default=1.0
+            Finite, strictly positive feature variance.
+
+        Returns
+        -------
+        Gaussian
+            Gaussian with one feature.
+        """
         _ = validate_positive_finite(variance, name="variance")
         return cls([mean], [[variance]])
 
     @classmethod
     def isotropic(cls, mean: npt.ArrayLike, *, variance: float = 1.0) -> Gaussian:
-        """Create a Gaussian with the same variance along every feature."""
+        """Create a Gaussian with the same variance along every feature.
+
+        Parameters
+        ----------
+        mean : array-like, shape (n_features,)
+            Nonempty, finite feature means.
+        variance : float, default=1.0
+            Finite, strictly positive variance; covariance is `variance * I`.
+
+        Returns
+        -------
+        Gaussian
+            Gaussian with independent features and equal marginal variances.
+        """
         _ = validate_positive_finite(variance, name="variance")
         mean_array = np.asarray(mean, dtype=np.float64)
         if mean_array.ndim != 1 or mean_array.size == 0:
@@ -97,7 +146,18 @@ class Gaussian:
 
     @classmethod
     def standard(cls, n_features: int) -> Gaussian:
-        """Create a zero-mean Gaussian with identity covariance."""
+        """Create a zero-mean Gaussian with identity covariance.
+
+        Parameters
+        ----------
+        n_features : int
+            Positive number of features.
+
+        Returns
+        -------
+        Gaussian
+            Standard multivariate Gaussian of the requested dimension.
+        """
         n_features = validate_positive_int(n_features, name="n_features")
         return cls(np.zeros(n_features), np.eye(n_features))
 
@@ -107,6 +167,7 @@ class Gaussian:
         return self.mean.size
 
     def cholesky(self) -> FloatArray:
+        """Return the cached, read-only lower covariance factor, shape (n_features, n_features)."""
         if self._chol is None:
             chol = np.linalg.cholesky(self.covariance).astype(np.float64)
             chol.setflags(write=False)
@@ -115,6 +176,7 @@ class Gaussian:
         return self._chol
 
     def log_determinant(self) -> float:
+        """Return the cached natural logarithm of the covariance determinant."""
         if self._log_det is None:
             value = float(logdet_from_cholesky(self.cholesky()))
             object.__setattr__(self, "_log_det", value)
@@ -122,9 +184,20 @@ class Gaussian:
         return self._log_det
 
     def sample(self, n_samples: int, *, rng: np.random.Generator | int | None = None) -> FloatArray:
-        """Draw `(n_samples, n_features)` observations.
+        """Draw independent observations from this Gaussian.
 
-        An integer seed repeats draws; a Generator advances its state.
+        Parameters
+        ----------
+        n_samples : int
+            Positive number of observations to draw.
+        rng : numpy.random.Generator, int, or None, default=None
+            Random source. An integer restarts a reproducible stream on each
+            call; a generator advances its state. None uses fresh entropy.
+
+        Returns
+        -------
+        ndarray, shape (n_samples, n_features)
+            Newly allocated float64 observations.
         """
         n_samples = validate_positive_int(n_samples, name="n_samples")
         return np.random.default_rng(rng).multivariate_normal(
@@ -132,7 +205,18 @@ class Gaussian:
         )
 
     def logpdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Return log densities, shape `(n_points,)`, for one point or a point matrix."""
+        """Evaluate natural-log densities at one or more points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_features,) or (n_points, n_features)
+            Finite observations. A 1D input represents one observation.
+
+        Returns
+        -------
+        ndarray, shape (n_points,)
+            Log densities, including a length-one array for a single point.
+        """
         points = as_points(x, n_features=self.n_features, name="x")
         whitened = np.linalg.solve(self.cholesky(), (points - self.mean).T).T
         return -0.5 * (
@@ -142,10 +226,28 @@ class Gaussian:
         )
 
     def pdf(self, x: npt.ArrayLike) -> FloatArray:
-        """Return densities with the same point convention as `logpdf`."""
+        """Evaluate densities at one or more points.
+
+        Parameters
+        ----------
+        x : array-like, shape (n_features,) or (n_points, n_features)
+            Finite observations. A 1D input represents one observation.
+
+        Returns
+        -------
+        ndarray, shape (n_points,)
+            Densities, including a length-one array for a single point.
+        """
         return np.exp(self.logpdf(x))
 
     def component_arrays(self) -> tuple[Weights, FloatArray, Covariances]:
+        """Return weight, mean, and covariance arrays for one Gaussian component.
+
+        Shapes are (1,), (1, n_features), and (1, n_features, n_features).
+
+        The weight array is newly allocated; the other arrays are read-only
+        views of this Gaussian's parameters.
+        """
         return np.array([1.0]), self.mean[None, :], self.covariance[None, :, :]
 
     @override

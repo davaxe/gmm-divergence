@@ -12,12 +12,7 @@ from gmm_divergence.divergence import (
     kl_divergence,
     symmetric_kl_divergence,
 )
-from gmm_divergence.fitting import (
-    fit_categorical_weights,
-    fit_gaussian_weights,
-    prepare_gaussian_weight_fit,
-    prune_mixture,
-)
+from gmm_divergence.fitting import fit_categorical_weights, fit_gaussian_weights, prune_mixture
 from gmm_divergence.results import (
     CategoricalWeightFitResult,
     DivergenceResult,
@@ -42,7 +37,6 @@ __all__ = [
     "fitting",
     "jensen_shannon_divergence",
     "kl_divergence",
-    "prepare_gaussian_weight_fit",
     "prune_mixture",
     "sampling",
     "symmetric_kl_divergence",

@@ -5,9 +5,14 @@ icon: lucide/chart-no-axes-combined
 # Fitting API
 
 Top-level fitting helpers are documented under [Top-level API](root.md). This
-page documents prepared Gaussian-mixture fits, shared simplex optimization,
+page documents prepared Gaussian-mixture fits,
 optimizer and objective configurations, and
 candidate-selection helpers from `gmm_divergence.fitting`.
+
+The [notation conventions](index.md#notation-and-terminology) distinguish $L$
+candidate distributions $q_i$ and their fitted weights $w_i$ from the $K_i$
+Gaussian components inside each candidate. Fitting holds candidate parameters
+fixed and changes only $\mathbf{w}\in\Delta_L$.
 
 
 ::: gmm_divergence.fitting
@@ -68,13 +73,15 @@ share the same validation policy: values must be finite and nonnegative, and
 sums must be one within `rtol=1e-7`, `atol=1e-8`. Inputs are copied without
 normalization or negative-value clipping. Categorical KL uses the same policy.
 Optimizer weight vectors retain their separate validation, which permits
-unnormalized positive weights when evaluating gradients.
+unnormalized nonnegative weights with positive total mass when evaluating gradients.
 
 ## Objective Configuration
 
 Sampled objectives accept `sampling.Stratified` on either side. Each observation
-from component $k$ receives integration weight $\pi_k/n_k$, where $n_k$ is the
-number of draws allocated to that component. Objective values and gradients
+from source component $k$ receives its component probability divided by $n_k$,
+the number of draws allocated to that component. For the target this is
+$\pi_{p,k}/n_k$; for candidate $i$ it is $\pi_{i,k}/n_{i,k}$. These integration
+weights are distinct from the optimized candidate weights $w_i$. Objective values and gradients
 therefore preserve the mixture weights even when rounded sample counts differ
 from the component proportions. Raw `Draw`, `Samples`, and `SampleBatches`
 observations use ordinary sample means. Precomputed `SampleBatch` records retain
@@ -99,10 +106,14 @@ their integration weights and component IDs.
 ## Prepared Gaussian Weight Fits
 
 `prepared.fit(optimizer=...)` is the direct route to a complete result.
-`evaluate`, `solve`, and `report` support gradient inspection and warm starts.
-`report` accepts only solutions produced by the same prepared object.
+`prepared.evaluate(weights)` returns the cached objective value and gradient.
+For an SLSQP warm start, use the previous result's weights at
+`prepared.active_candidate_indices` as `initial_weights`.
 Forward and bidirectional KL values include the cached target log-density
 constant, so `objective_value` estimates the mathematical objective in nats.
+
+MomentMatching instead returns a squared raw-moment residual, without nats or
+sampling. See the [objective formulations](../fit_weights.md) for the equations.
 
 Gaussian results expose `mixture` directly. Its mapping refers to original
 candidate indices, including after filtering or reordering. Result `weights`
@@ -120,15 +131,6 @@ retained candidates. Generated samples are drawn only from retained candidates.
 
 ::: gmm_divergence.fitting.PreparedGaussianWeightFit
 
-## Shared Simplex Optimization
-
-`PreparedGaussianWeightFit.solve` returns a `SimplexOptimizationResult` with
-optimizer coordinates, active weights, and termination metadata. The shared
-optimizer works with an objective and gradient over simplex weights; Gaussian
-preparation and reporting remain separate.
-
-::: gmm_divergence.fitting.SimplexOptimizationResult
-
 ## Fitting Results
 
 ::: gmm_divergence.results.GaussianWeightFitResult
@@ -137,12 +139,19 @@ preparation and reporting remain separate.
 
 ## Candidate Scoring and Selection
 
-Choose an explicit `scorer`. `ForwardKLScore` samples from the target;
-`ReverseKLScore` samples from each candidate. Reverse scoring accepts a reusable
+Choose an explicit `scorer`. `ForwardKLScore` evaluates $D_{\mathrm{KL}}(p\|q_i)$;
+`ReverseKLScore` evaluates $D_{\mathrm{KL}}(q_i\|p)$. When using Monte Carlo,
+their observations originate from the target and candidate, respectively.
+Reverse scoring accepts a reusable
 generated estimator or one estimator per original candidate. Precomputed
 reverse observations require the per-candidate form, preventing accidental
 reuse of target samples. `BidirectionalKLScore` configures both directions and
 their `forward_weight`. Ranking preserves input order for tied scores.
+
+Writing $\beta$ for `forward_weight`, bidirectional scores are
+$\beta D_{\mathrm{KL}}(p\|q_i)+(1-\beta)D_{\mathrm{KL}}(q_i\|p)$, or the
+corresponding estimates. These are pairwise scores for selection; they do not
+equal divergence to the combined fitted density $q_{\mathbf{w}}$.
 
 ```python
 import gmm_divergence as gd

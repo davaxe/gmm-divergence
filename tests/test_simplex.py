@@ -21,7 +21,7 @@ def _objective(weights: FloatArray) -> tuple[float, FloatArray]:
 @pytest.mark.parametrize("method", [gd.fitting.SoftmaxLBFGSB(), gd.fitting.SimplexSLSQP()])
 def test_solver_accepts_objectives_without_prepared_fits(method: Optimizer) -> None:
     solution = optimize_simplex(_objective, n_weights=3, optimizer=method)
-    assert gd.fitting.SimplexOptimizationResult is SimplexOptimizationResult
+    assert isinstance(solution, SimplexOptimizationResult)
     assert solution.converged
     assert solution.optimizer is method
     np.testing.assert_allclose(solution.active_weights, [0.2, 0.3, 0.5], atol=1e-4)

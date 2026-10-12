@@ -18,7 +18,22 @@ from gmm_divergence.covariance import CovarianceRegularizer
 
 @dataclass(frozen=True, slots=True)
 class ComponentStatistics:
-    """Responsibility-weighted empirical component statistics."""
+    """Responsibility-weighted empirical statistics with read-only arrays.
+
+    Attributes
+    ----------
+    weights : ndarray, shape (n_components,)
+        Soft counts divided by the number of observations.
+    means : ndarray, shape (n_components, n_features)
+        Responsibility-weighted empirical means.
+    covariances : ndarray, shape (n_components, n_features, n_features)
+        Weighted maximum-likelihood covariances, which may be singular.
+    soft_counts : ndarray, shape (n_components,)
+        Sum of responsibilities for each component.
+    effective_sample_sizes : ndarray, shape (n_components,)
+        Kish concentration measure, soft_counts squared divided by the sum of
+        squared responsibilities; not a count of independent observations.
+    """
 
     weights: FloatArray
     means: FloatArray
@@ -37,6 +52,21 @@ class ComponentStatistics:
         """Convert statistics, optionally regularizing covariances without modifying them.
 
         Singular empirical covariances require regularization for conversion.
+
+        Parameters
+        ----------
+        regularizer : CovarianceRegularizer or None, default=None
+            Optional configuration applied to each empirical covariance.
+
+        Returns
+        -------
+        GaussianMixture
+            Independent mixture preserving empirical component order.
+
+        Notes
+        -----
+        Construction raises ValueError if a covariance is not positive definite
+        after any regularization.
         """
         return GaussianMixture(
             weights=self.weights,
@@ -56,18 +86,23 @@ def component_statistics(
 ) -> ComponentStatistics:
     r"""Compute empirical component statistics from fixed responsibilities.
 
-    For observations $x_i$ and responsibilities $r_{ik}$, compute
+    For $N$ observations $x_n\in\mathbb{R}^d$ and responsibilities $r_{nk}$
+    over $K$ components, with $r_{nk}\geq0$ and $\sum_{k=1}^{K}r_{nk}=1$, compute
 
     $$
-    N_k = \sum_i r_{ik}, \qquad \hat{\pi}_k = N_k/N,
-    \qquad \hat{\mu}_k = \frac{\sum_i r_{ik}x_i}{N_k},
+    N_k = \sum_{n=1}^{N}r_{nk}, \qquad \widehat\pi_k=N_k/N,
+    \qquad \widehat\mu_k=\frac{\sum_{n=1}^{N}r_{nk}x_n}{N_k},
     $$
 
     $$
-    \hat{\Sigma}_k = \frac{\sum_i r_{ik}(x_i-\hat{\mu}_k)
-    (x_i-\hat{\mu}_k)^\top}{N_k},
-    \qquad N_{\mathrm{eff},k} = \frac{N_k^2}{\sum_i r_{ik}^2}.
+    \widehat\Sigma_k=\frac{\sum_{n=1}^{N}r_{nk}(x_n-\widehat\mu_k)
+    (x_n-\widehat\mu_k)^\top}{N_k},
+    \qquad N_{\mathrm{eff},k}=\frac{N_k^2}{\sum_{n=1}^{N}r_{nk}^2}.
     $$
+
+    Here $N_k$ is the soft count, $\widehat\pi_k$ the empirical component
+    probability, $\widehat\mu_k$ and $\widehat\Sigma_k$ its estimated mean and
+    covariance, and $N_{\mathrm{eff},k}$ the Kish concentration measure.
 
     Parameters
     ----------

@@ -28,6 +28,21 @@ if TYPE_CHECKING:
 
 @dataclass(frozen=True, slots=True)
 class CandidateSelection:
+    """Selected and rejected positions in the original candidate sequence.
+
+    Parameters
+    ----------
+    selected_indices : tuple of int
+        Retained positions, in the order used for fitting. Fitting requires at
+        least one retained candidate.
+    rejected_indices : tuple of int
+        Rejected positions. Together with selected_indices, must partition the
+        original candidate sequence without overlap when used in fitting.
+    scores : array-like or None, default=None
+        Optional scores in original candidate order, copied into a read-only
+        float64 array. Built-in selectors supply one score per candidate.
+    """
+
     selected_indices: tuple[int, ...]
     rejected_indices: tuple[int, ...]
     scores: FloatArray | None = None
@@ -46,7 +61,21 @@ class CandidateSelector(Protocol):
     def select(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> CandidateSelection:
-        """Filter candidate distributions based on the target distribution."""
+        """Select candidates for a fixed target.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Nonempty original sequence sharing the target's feature dimension.
+
+        Returns
+        -------
+        CandidateSelection
+            Selected and rejected indices forming a complete, non-overlapping
+            partition of the original sequence. Selected order controls fitting order.
+        """
         ...
 
 
@@ -59,18 +88,55 @@ class CandidateScorer(Protocol):
 
     def score(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
-    ) -> FloatArray: ...
+    ) -> FloatArray:
+        """Assign scores to the original candidate sequence.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Original candidate sequence with the same feature dimension as target.
+
+        Returns
+        -------
+        ndarray, shape (n_candidates,)
+            One score per original candidate in input order. Lower scores are preferred.
+        """
+        ...
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ForwardKLScore:
-    """Score KL(target || candidate); samples belong to target."""
+    """Score directed KL from the target to each candidate.
+
+    Parameters
+    ----------
+    estimator : KLEstimator
+        Estimator configuration reused for every target-to-candidate call.
+        Precomputed observations must come from the target. Generated observations
+        follow the configured random stream semantics on each call.
+    """
 
     estimator: KLEstimator
 
     def score(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> FloatArray:
+        """Evaluate target-to-candidate KL with the configured estimator.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Original candidate sequence with the same feature dimension as target.
+
+        Returns
+        -------
+        ndarray, shape (n_candidates,)
+            One score per original candidate in input order. Lower scores are preferred.
+        """
         return np.array([
             kl_divergence(target, candidate, estimator=self.estimator).value
             for candidate in candidates
@@ -79,7 +145,16 @@ class ForwardKLScore:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ReverseKLScore:
-    """Score KL(candidate || target), with generated or per-candidate estimators."""
+    """Score directed KL from each candidate to the target.
+
+    Parameters
+    ----------
+    estimators : KLEstimator or sequence of KLEstimator
+        Reusable estimator configuration, or one estimator per original candidate
+        in input order. MonteCarlo with precomputed Samples requires the sequence
+        form so each batch originates from its own candidate. Generated estimators
+        may be reused; generator state advances as candidates are scored.
+    """
 
     estimators: KLEstimator | Sequence[KLEstimator]
 
@@ -99,6 +174,20 @@ class ReverseKLScore:
     def score(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> FloatArray:
+        """Evaluate candidate-to-target KL with candidate-specific sources.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Original candidate sequence with the same feature dimension as target.
+
+        Returns
+        -------
+        ndarray, shape (n_candidates,)
+            One score per original candidate in input order. Lower scores are preferred.
+        """
         estimators = self.estimators
         if isinstance(estimators, Sequence):
             if len(estimators) != len(candidates):
@@ -114,7 +203,18 @@ class ReverseKLScore:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class BidirectionalKLScore:
-    """Weighted forward and reverse scores with independently configured sources."""
+    """Combine forward and reverse scores with separate sample sources.
+
+    Parameters
+    ----------
+    forward : CandidateScorer
+        Forward scorer, normally ForwardKLScore with target observations.
+    reverse : CandidateScorer
+        Reverse scorer, normally ReverseKLScore with candidate observations.
+    forward_weight : float, default=0.5
+        Finite weight in [0, 1]. Reverse scores receive 1 - forward_weight.
+        At either endpoint, only the nonzero-weight scorer is evaluated.
+    """
 
     forward: CandidateScorer
     reverse: CandidateScorer
@@ -128,6 +228,20 @@ class BidirectionalKLScore:
     def score(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> FloatArray:
+        """Evaluate the weighted combination of directional scores.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Original candidate sequence with the same feature dimension as target.
+
+        Returns
+        -------
+        ndarray, shape (n_candidates,)
+            One score per original candidate in input order. Lower scores are preferred.
+        """
         if self.forward_weight == 1:
             return score_candidates(target, candidates, scorer=self.forward)
         if self.forward_weight == 0:
@@ -149,7 +263,23 @@ def score_candidates(
     *,
     scorer: CandidateScorer,
 ) -> FloatArray:
-    """Return one finite or infinite score per original candidate."""
+    """Compute scores for the original candidate sequence.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Reference distribution.
+    candidates : sequence of Gaussian or GaussianMixture
+        Nonempty candidate sequence sharing the target's feature dimension.
+    scorer : CandidateScorer
+        Configuration or custom scorer implementing score(target, candidates).
+        It must return one non-NaN score per candidate; infinite scores are allowed.
+
+    Returns
+    -------
+    ndarray, shape (n_candidates,)
+        Independent, read-only float64 scores in original input order.
+    """
     if not candidates:
         msg = "candidates must contain at least one distribution."
         raise ValueError(msg)
@@ -171,7 +301,26 @@ def rank_candidates(
     scorer: CandidateScorer,
     limit: int | None = None,
 ) -> list[tuple[int, float]]:
-    """Rank from lowest score to highest, retaining input order for ties."""
+    """Rank candidates from lowest score to highest with stable ties.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Reference distribution.
+    candidates : sequence of Gaussian or GaussianMixture
+        Nonempty candidate sequence sharing the target's feature dimension.
+    scorer : CandidateScorer
+        Explicit scoring configuration or custom scorer; lower scores are preferred.
+    limit : int or None, default=None
+        Positive maximum number of entries to return. None returns all candidates;
+        values above the candidate count also return all entries.
+
+    Returns
+    -------
+    list of tuple
+        Original candidate indices and float scores in ascending score order.
+        Equal scores retain original candidate order.
+    """
     if limit is not None:
         limit = validate_positive_int(limit, name="limit")
     scores = score_candidates(target, candidates, scorer=scorer)
@@ -189,13 +338,28 @@ class _KLSelectorBase(CandidateSelector, ABC):
     def _compute_kl_values(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> FloatArray:
-        """Compute pairwise KL divergence values between p and each q_i."""
+        """Compute configured scores for every original candidate against target."""
         return score_candidates(target, candidates, scorer=self.scorer)
 
     @override
     def select(
         self, target: GaussianDistribution, candidates: Sequence[GaussianDistribution]
     ) -> CandidateSelection:
+        """Partition candidates using the configured score rule.
+
+        Parameters
+        ----------
+        target : Gaussian or GaussianMixture
+            Reference distribution.
+        candidates : sequence of Gaussian or GaussianMixture
+            Nonempty original sequence sharing the target's feature dimension.
+
+        Returns
+        -------
+        CandidateSelection
+            Selected and rejected indices, each in original input order, with an
+            independent read-only score array for all original candidates.
+        """
         kl_values = self._compute_kl_values(target, candidates)
         mask = self._select_mask(kl_values)
         return CandidateSelection(
@@ -210,7 +374,16 @@ class _KLSelectorBase(CandidateSelector, ABC):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ThresholdSelector(_KLSelectorBase):
-    """Select candidates whose KL score is at or below a fixed threshold."""
+    """Retain candidates with scores at or below a fixed threshold.
+
+    Parameters
+    ----------
+    scorer : CandidateScorer
+        Explicit scoring configuration; lower scores are preferred.
+    threshold : float
+        Finite, nonnegative upper score threshold, inclusive. Selection may be
+        empty; fitting rejects a selection retaining no candidates.
+    """
 
     threshold: float
 
@@ -226,12 +399,18 @@ class ThresholdSelector(_KLSelectorBase):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class ToleranceSelector(_KLSelectorBase):
-    """Select candidates within a tolerance of the best KL score.
+    """Retain candidates within a tolerance of the minimum score.
 
-    In absolute mode, candidates with scores at most the minimum score plus
-    `delta` are kept. In relative mode, the tolerance is
-    `delta * abs(minimum_score)`, so `delta=0.5` means within 50% of the best
-    score when the best score is positive.
+    Parameters
+    ----------
+    scorer : CandidateScorer
+        Explicit scoring configuration; lower scores are preferred.
+    delta : float
+        Finite, nonnegative tolerance amount.
+    mode : {"absolute", "relative"}, default="absolute"
+        Absolute mode retains scores at most minimum_score + delta. Relative mode
+        uses minimum_score + delta * abs(minimum_score), including for negative
+        estimates. A zero minimum gives zero relative tolerance.
     """
 
     delta: float
@@ -257,6 +436,18 @@ class ToleranceSelector(_KLSelectorBase):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class TopKSelector(_KLSelectorBase):
+    """Retain up to k candidates with the lowest scores.
+
+    Parameters
+    ----------
+    scorer : CandidateScorer
+        Explicit scoring configuration; lower scores are preferred.
+    k : int
+        Positive maximum number to retain. Values above the candidate count retain
+        all candidates. Ties favor earlier input positions. Retained indices are
+        returned in original input order rather than score order.
+    """
+
     k: int
 
     def __post_init__(self) -> None:
@@ -276,6 +467,18 @@ class TopKSelector(_KLSelectorBase):
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class QuantileSelector(_KLSelectorBase):
+    """Retain candidates at or below an interpolated score quantile.
+
+    Parameters
+    ----------
+    scorer : CandidateScorer
+        Explicit scoring configuration; lower scores are preferred.
+    quantile : float
+        Finite quantile strictly between zero and one, passed to numpy.quantile.
+        Ties are included, so the retained count need not equal this fraction of
+        the candidate count.
+    """
+
     quantile: float
 
     def __post_init__(self) -> None:

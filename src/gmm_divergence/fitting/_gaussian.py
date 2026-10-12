@@ -1,8 +1,8 @@
-"""Prepare, solve, and report Gaussian-mixture weight fits."""
+"""Reusable Gaussian-mixture weight fitting."""
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -45,9 +45,16 @@ class PreparedGaussianWeightFit:
     """Reusable data and objective for fitting mixture weights.
 
     Preparation performs candidate selection, sampling, and all log-density or
-    moment calculations required by the objective. Call :meth:`solve` any
-    number of times without repeating that work, then pass a solution to
-    :meth:`report` to construct the full :class:`~gmm_divergence.GaussianWeightFitResult`.
+    moment calculations required by the objective. Call :meth:`fit` any
+    number of times without repeating that work, or inspect the objective
+    and gradient with :meth:`evaluate`.
+
+    Notes
+    -----
+    Obtain this object with fitting.prepare_gaussian_weight_fit. The target,
+    objective configuration, selected candidates, and sample batches are fixed
+    for its lifetime. Changing them requires a new preparation. Optimizer
+    choices and initial conditions can change between fit calls.
     """
 
     objective: FitObjective
@@ -61,11 +68,29 @@ class PreparedGaussianWeightFit:
     _objective_fn: ObjectiveFn = field(repr=False)
     """Cached objective callable over active candidate weights."""
 
-    _problem_token: object = field(default_factory=object, init=False, repr=False)
-
     def fit(self, *, optimizer: Optimizer) -> GaussianWeightFitResult:
-        """Solve this cached problem and construct a complete immutable result."""
-        return self.report(self.solve(optimizer=optimizer))
+        """Optimize this cached problem and return a complete immutable result.
+
+        For a warm start, pass the previous result's weights at
+        `active_candidate_indices` as `SimplexSLSQP.initial_weights`.
+
+        Parameters
+        ----------
+        optimizer : Optimizer
+            Explicit optimizer configuration. Initial vectors refer to retained
+            candidates in active_candidate_indices order, not all candidates.
+
+        Returns
+        -------
+        GaussianWeightFitResult
+            Complete result with weights for the original candidate sequence,
+            a combined mixture with provenance, and termination diagnostics.
+            Rejected candidates receive zero weight.
+        """
+        solution = optimize_simplex(
+            self._objective_fn, n_weights=self.n_active_candidates, optimizer=optimizer
+        )
+        return _build_fit_result(self, solution)
 
     @property
     def n_active_candidates(self) -> int:
@@ -78,24 +103,26 @@ class PreparedGaussianWeightFit:
         The weights must be nonnegative and have a positive sum. They are not
         normalized, which permits finite-difference gradient checks around a
         simplex point.
+
+        Parameters
+        ----------
+        weights : array-like, shape (n_active_candidates,)
+            Finite, nonnegative weights with positive total mass in retained
+            candidate order. Use unit total mass for the fitting objective.
+
+        Returns
+        -------
+        value : float
+            Cached objective value. KL and Jensen-Shannon objectives use nats;
+            MomentMatching returns a squared raw-moment residual.
+        gradient : ndarray, shape (n_active_candidates,)
+            Derivatives with respect to the supplied weights.
         """
         weights_arr = as_weights(
             weights, expected_length=self.n_active_candidates, name="weights", normalize=False
         )
         value, gradient = self._objective_fn(weights_arr)
         return float(value), np.asarray(gradient, dtype=np.float64)
-
-    def solve(self, *, optimizer: Optimizer) -> SimplexOptimizationResult:
-        """Optimize the prepared objective without rebuilding cached data."""
-        solution = optimize_simplex(
-            self._objective_fn, n_weights=self.n_active_candidates, optimizer=optimizer
-        )
-        return replace(solution, _problem_token=self._problem_token)
-
-    def report(self, solution: SimplexOptimizationResult, /) -> GaussianWeightFitResult:
-        """Construct a full fit result from an optimizer solution."""
-        solution.check_problem_token(self._problem_token)
-        return build_gaussian_mixture_fit_result(self, solution)
 
 
 def _validate_q_i(candidates: Sequence[Gaussian | GaussianMixture], p_dim: int) -> None:
@@ -161,7 +188,26 @@ def prepare_gaussian_weight_fit(
     objective: FitObjective,
     candidate_selection: CandidateSelector | None = None,
 ) -> PreparedGaussianWeightFit:
-    """Prepare and cache all objective data required for fitting."""
+    """Prepare candidate selection, sampling, and cached objective data.
+
+    Parameters
+    ----------
+    target : Gaussian or GaussianMixture
+        Fixed reference distribution.
+    candidates : sequence of Gaussian or GaussianMixture
+        Nonempty candidate sequence sharing the target's feature dimension.
+    objective : FitObjective
+        Explicit objective and sampling configuration.
+    candidate_selection : CandidateSelector or None, default=None
+        Optional selection applied once before generating samples. Precomputed
+        candidate batches remain indexed by the original candidate sequence.
+
+    Returns
+    -------
+    PreparedGaussianWeightFit
+        Reusable objective with retained candidate indices and cached densities
+        or moments. Changing inputs requires preparing another problem.
+    """
     if candidate_selection is not None and not callable(
         getattr(candidate_selection, "select", None)
     ):
@@ -202,7 +248,7 @@ def prepare_gaussian_weight_fit(
     )
 
 
-def build_gaussian_mixture_fit_result(
+def _build_fit_result(
     prepared: PreparedGaussianWeightFit, solution: SimplexOptimizationResult, /
 ) -> GaussianWeightFitResult:
     """Map a prepared-fit solution back to the original candidates."""

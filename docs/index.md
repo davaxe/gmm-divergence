@@ -28,7 +28,7 @@ The package currently includes:
 
     A quick introduction to the package, its features, and how to get started.
 
--  [:lucide-equal-approximately:{ .lg .middle } __Kl estimation__](kl_estimation.md)
+-  [:lucide-equal-approximately:{ .lg .middle } __KL estimation__](kl_estimation.md)
 
     ---
 

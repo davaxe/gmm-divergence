@@ -48,7 +48,9 @@ q = gd.GaussianMixture.from_components(
 
 ## Estimate KL divergence
 
-Use `kl_divergence` to estimate \(D_{\mathrm{KL}}(p \| q)\):
+Use `kl_divergence` to estimate $D_{\mathrm{KL}}(p \| q)$, with $p$ as the
+reference and $q$ as the comparison distribution. Values use natural logarithms
+and are reported in nats:
 
 ```python
 import gmm_divergence as gd

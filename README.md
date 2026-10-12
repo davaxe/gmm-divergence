@@ -88,11 +88,3 @@ fit = gd.fitting.fit_categorical_weights(
 )
 print(fit.weights)
 ```
-
-
-The public API uses explicit keyword-only estimator, objective, and optimizer
-configurations. Combined and fitted mixtures compose directly with divergence
-functions and retain component provenance. Distribution parameters and result
-arrays are owned and read-only. Categorical KL and forward-KL weight fitting are
-available at the root alongside their Gaussian counterparts. See the API
-reference for sampling records, directional scoring, and prepared-fit reuse.

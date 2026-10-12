@@ -33,7 +33,6 @@ from gmm_divergence.fitting._selector import (
     rank_candidates,
     score_candidates,
 )
-from gmm_divergence.fitting._simplex import SimplexOptimizationResult
 from gmm_divergence.results import CategoricalWeightFitResult, GaussianWeightFitResult
 
 __all__ = [
@@ -55,7 +54,6 @@ __all__ = [
     "QuantileSelector",
     "ReverseKL",
     "ReverseKLScore",
-    "SimplexOptimizationResult",
     "SimplexSLSQP",
     "SoftmaxLBFGSB",
     "ThresholdSelector",

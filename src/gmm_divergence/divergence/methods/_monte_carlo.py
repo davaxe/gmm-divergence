@@ -18,7 +18,45 @@ if TYPE_CHECKING:
 def kl_monte_carlo(
     p: GaussianDistribution, q: GaussianDistribution, /, *, estimator: MonteCarlo
 ) -> DivergenceResult:
-    """Estimate KL using observations from p and retain sampling diagnostics."""
+    r"""Estimate directed KL using source observations and their integration design.
+
+    For $N$ source observations $x_n$ and normalized integration weights $a_n$,
+    compute the log-density ratios $\ell_n=\log p(x_n)-\log q(x_n)$ and
+
+    $$
+    \widehat D_{\mathrm{KL}}(p\|q)=\sum_{n=1}^{N}a_n\ell_n.
+    $$
+
+    Ordinary iid draws use $a_n=1/N$. Stratified draws from component $k$ of
+    $p$ use $a_n=\pi_{p,k}/n_k$, where $\pi_{p,k}$ is the component probability
+    and $n_k$ its draw count. The evaluated densities are the full mixtures.
+
+    Parameters
+    ----------
+    p : Gaussian or GaussianMixture
+        Reference distribution supplying observations.
+    q : Gaussian or GaussianMixture
+        Comparison distribution with the same feature dimension.
+    estimator : MonteCarlo
+        Explicit sample source and optional adaptive stopping configuration.
+
+    Returns
+    -------
+    DivergenceResult
+        Weighted or ordinary mean log-density ratio in nats. Includes evaluation
+        counts, sample counts, supported standard error, and adaptive target status.
+
+    Notes
+    -----
+    Batches without explicit integration weights are assumed iid; their standard
+    error is $\sqrt{\sum_n(\ell_n-\bar\ell)^2/[N(N-1)]}$ for $N\geq2$, where
+    $\bar\ell$ is the ordinary mean. For stratified batches, it is
+    $\sqrt{\sum_k\pi_{p,k}^2s_k^2/n_k}$, where $s_k^2$ is the unbiased variance
+    of log-density ratios within stratum $k$, summed over positive-mass strata.
+    Stratified variance requires
+    at least two observations in every positive-weight component. Arbitrarily
+    weighted batches without component IDs do not support standard errors.
+    """
     if estimator.target_standard_error is not None:
         return _adaptive(p, q, estimator)
     batch = validate_sample_batch(p, estimator.sampling.sample(p))

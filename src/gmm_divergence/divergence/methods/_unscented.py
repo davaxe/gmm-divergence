@@ -19,16 +19,36 @@ def kl_unscented(p: GaussianDistribution, q: GaussianDistribution, /) -> Diverge
     $$
     D_{\mathrm{KL}}(p \| q)
     =
-    \mathbb{E}_{x \sim p}
+    \mathbb{E}_{X \sim p}
     \left[
-        \log p(x) - \log q(x)
+        \log p(X) - \log q(X)
     \right]
     $$
 
     by evaluating the log-density ratio at deterministic sigma points generated
-    from the Gaussian components of `p`. This is similar to monte carlo, but
-    with deterministic points chosen to capture the mean and covariance
-    structure of `p` more effectively.
+    from the Gaussian components of `p`. Each component contributes twice its
+    feature dimension in points with equal within-component integration weights.
+
+    For component $k$ of the reference density, let its mean be $\mu_{p,k}$ and its
+    covariance eigenpairs be $(\lambda_{k,j}, u_{k,j})$, for $j=1,\ldots,d$.
+    The points are
+
+    $$
+    x_{k,j}^{\pm}=\mu_{p,k}\pm\sqrt{d\lambda_{k,j}}\,u_{k,j},
+    $$
+
+    and the implemented approximation is
+
+    $$
+    \widehat D_{\mathrm{KL}}(p\|q)
+    =\sum_{k=1}^{K_p}\frac{\pi_{p,k}}{2d}
+    \sum_{j=1}^{d}\sum_{s\in\{+,-\}}
+    \left[\log p(x_{k,j}^{s})-\log q(x_{k,j}^{s})\right].
+    $$
+
+    Here $K_p$ is the reference component count, $\pi_{p,k}$ its component
+    probabilities, and $d$ the feature dimension. The densities evaluated at
+    each point are the full mixtures, not individual component densities.
 
     Parameters
     ----------
@@ -41,7 +61,8 @@ def kl_unscented(p: GaussianDistribution, q: GaussianDistribution, /) -> Diverge
     -------
     DivergenceResult
         Result object containing the unscented estimate of the KL divergence.
-        The reported number of samples equals the total number of sigma points.
+        n_evaluations counts sigma points. n_samples and monte_carlo are None
+        because the method draws no random observations.
 
     References
     ----------

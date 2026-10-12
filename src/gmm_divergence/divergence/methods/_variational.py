@@ -18,6 +18,22 @@ def kl_variational(
 ) -> DivergenceResult:
     r"""Estimate KL divergence using a variational method.
 
+    For Gaussian component densities $p_k$ and $q_j$, reference probabilities
+    $\pi_{p,k}$, comparison probabilities $\pi_{q,j}$, and component counts $K_p$, $K_q$,
+    the implemented approximation is
+
+    $$
+    \widehat D_{\mathrm{KL}}^{\mathrm{var}}(p\|q)
+    =\sum_{k=1}^{K_p}\pi_{p,k}
+    \log\frac{\sum_{j=1}^{K_p}\pi_{p,j}
+    \exp[-D_{\mathrm{KL}}(p_k\|p_j)]}
+    {\sum_{j=1}^{K_q}\pi_{q,j}\exp[-D_{\mathrm{KL}}(p_k\|q_j)]}.
+    $$
+
+    Pairwise component KL values are exact Gaussian divergences in nats.
+    The mixture result is a deterministic approximation, not a certified bound;
+    the hat denotes approximation, without implying Monte Carlo sampling.
+
     Parameters
     ----------
     p : Gaussian or GaussianMixture
