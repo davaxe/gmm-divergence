@@ -10,7 +10,6 @@ from gmm_divergence.fitting._simplex import SimplexOptimizationResult, optimize_
 
 if TYPE_CHECKING:
     from gmm_divergence._core._types import FloatArray
-    from gmm_divergence.fitting._options import Optimizer
 
 
 def _objective(weights: FloatArray) -> tuple[float, FloatArray]:
@@ -18,8 +17,8 @@ def _objective(weights: FloatArray) -> tuple[float, FloatArray]:
     return float(np.dot(residual, residual)), 2 * residual
 
 
-@pytest.mark.parametrize("method", [gd.fitting.SoftmaxLBFGSB(), gd.fitting.SimplexSLSQP()])
-def test_solver_accepts_objectives_without_prepared_fits(method: Optimizer) -> None:
+def test_solver_accepts_objectives_without_prepared_fits() -> None:
+    method = gd.fitting.SimplexSLSQP()
     solution = optimize_simplex(_objective, n_weights=3, optimizer=method)
     assert isinstance(solution, SimplexOptimizationResult)
     assert solution.converged
@@ -28,13 +27,8 @@ def test_solver_accepts_objectives_without_prepared_fits(method: Optimizer) -> N
     assert solution.objective_value == pytest.approx(0, abs=1e-8)
     assert solution.n_iterations > 0
     assert solution.message
-    assert not solution.parameters.flags.writeable
     assert not solution.active_weights.flags.writeable
-    warm_method = (
-        gd.fitting.SoftmaxLBFGSB(initial_logits=solution.parameters)
-        if isinstance(method, gd.fitting.SoftmaxLBFGSB)
-        else gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
-    )
+    warm_method = gd.fitting.SimplexSLSQP(initial_weights=solution.active_weights)
     warm_solution = optimize_simplex(_objective, n_weights=3, optimizer=warm_method)
     np.testing.assert_allclose(warm_solution.active_weights, solution.active_weights, atol=1e-4)
     assert warm_solution.converged

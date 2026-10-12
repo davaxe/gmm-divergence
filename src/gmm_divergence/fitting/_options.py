@@ -16,45 +16,6 @@ from gmm_divergence._core._validation import validate_positive_int as _validate_
 
 
 @dataclass(frozen=True, slots=True, kw_only=True)
-class SoftmaxLBFGSB:
-    r"""L-BFGS-B optimizer over unconstrained softmax logits.
-
-    The optimizer represents mixture weights through logits
-    $\mathbf{z}\in\mathbb{R}^{L}$ for $L$ retained candidates, and maps them
-    to candidate weights $\mathbf{w}\in\Delta_L$ with
-
-    $$
-    w_i=\frac{\exp(z_i)}{\sum_{j=1}^{L}\exp(z_j)},\qquad i=1,\ldots,L.
-    $$
-
-    This avoids explicit simplex constraints in the optimizer while still
-    ensuring that all fitted weights are non-negative and sum to one.
-
-    Parameters
-    ----------
-    tol : float, default=1e-8
-        Finite, positive convergence tolerance passed to scipy.optimize.minimize.
-    max_iterations : int, default=1000
-        Positive iteration budget.
-    initial_logits : array-like or None, default=None
-        Finite 1D logits with one entry per retained candidate. None starts from
-        zero logits, giving uniform weights. Inputs are copied and made read-only.
-    """
-
-    tol: float = 1e-8
-    """Optimizer convergence tolerance."""
-    max_iterations: int = 1000
-    """Maximum number of optimizer iterations."""
-    initial_logits: npt.ArrayLike | None = None
-    """Optional initial unconstrained logits for the active candidates."""
-
-    def __post_init__(self) -> None:
-        _ = _validate_positive_float(self.tol, name="tol")
-        _ = _validate_positive_int(self.max_iterations, name="max_iterations")
-        _freeze_optional_vector(self, "initial_logits")
-
-
-@dataclass(frozen=True, slots=True, kw_only=True)
 class SimplexSLSQP:
     r"""SLSQP optimizer over simplex-constrained weights.
 
@@ -346,14 +307,14 @@ class MomentMatching:
     """Whether to include raw second moments alongside the feature means."""
 
 
-Optimizer: TypeAlias = SoftmaxLBFGSB | SimplexSLSQP
+Optimizer: TypeAlias = SimplexSLSQP
 FitObjective: TypeAlias = ForwardKL | ReverseKL | BidirectionalKL | JensenShannon | MomentMatching
 
 
 def validate_optimizer(optimizer: object) -> Optimizer:
     """Reject unsupported optimizers before any preparation work."""
-    if not isinstance(optimizer, (SimplexSLSQP, SoftmaxLBFGSB)):
-        msg = "optimizer must be a SimplexSLSQP or SoftmaxLBFGSB configuration."
+    if not isinstance(optimizer, SimplexSLSQP):
+        msg = "optimizer must be a valid optimizer."
         raise TypeError(msg)
     return optimizer
 

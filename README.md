@@ -21,7 +21,7 @@ The package currently includes:
 - Gaussian-mixture weight fitting with forward, reverse, bidirectional,
   Jensen-Shannon, and moment-matching objectives; categorical-mixture weight
   fitting with forward KL
-- Softmax L-BFGS-B and simplex-constrained SLSQP optimizers, reusable Gaussian
+- Simplex-constrained SLSQP optimization, reusable Gaussian
   fitting objectives, and candidate selection
 - Responsibility-weighted empirical component statistics
 - Covariance regularization utilities for diagonal loading, shrinkage, eigenvalue clipping,
@@ -66,6 +66,16 @@ functions. Configuration objects are grouped by domain, for example
 ## Fitting Mixture Weights
 
 ```python
+import gmm_divergence as gd
+
+p = gd.GaussianMixture.from_components(
+    [
+        gd.Gaussian.univariate(mean=-0.8, variance=0.7),
+        gd.Gaussian.univariate(mean=1.8, variance=1.2),
+    ],
+    weights=[0.5, 0.5],
+)
+
 candidates = [
     gd.Gaussian.univariate(mean=-1.0, variance=0.5),
     gd.Gaussian.univariate(mean=1.5, variance=1.0),
@@ -74,7 +84,7 @@ candidates = [
 fit = gd.fit_gaussian_weights(
     p,
     candidates,
-    optimizer=gd.fitting.SoftmaxLBFGSB(),
+    optimizer=gd.fitting.SimplexSLSQP(),
     objective=gd.fitting.MomentMatching(fit_second_moments=True),
 )
 print(fit.weights)
@@ -83,8 +93,12 @@ print(fit.weights)
 Fit a mixture of categorical distributions using the same optimizer options:
 
 ```python
+import gmm_divergence as gd
+
 fit = gd.fitting.fit_categorical_weights(
-    [0.4, 0.6], [[0.8, 0.2], [0.1, 0.9]], optimizer=gd.fitting.SimplexSLSQP()
+    [0.4, 0.6],
+    [[0.8, 0.2], [0.1, 0.9]],
+    optimizer=gd.fitting.SimplexSLSQP(),
 )
 print(fit.weights)
 ```

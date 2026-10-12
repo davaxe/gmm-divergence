@@ -114,7 +114,7 @@ def test_fitting_validates_bounds_and_initial_values() -> None:
         _ = gd.fit_gaussian_weights(
             p,
             candidates,
-            optimizer=gd.fitting.SoftmaxLBFGSB(initial_logits=[0.0]),
+            optimizer=gd.fitting.SimplexSLSQP(initial_weights=[1.0]),
             objective=gd.fitting.MomentMatching(),
         )
 
@@ -174,7 +174,6 @@ def test_simplex_optimization_result_requires_simplex_weights() -> None:
     with pytest.raises(ValueError, match="sum to one"):
         _ = SimplexOptimizationResult(
             optimizer=method,
-            parameters=np.array([2.0, 3.0]),
             active_weights=np.array([2.0, 3.0]),
             objective_value=0.0,
             n_iterations=0,
@@ -212,12 +211,9 @@ class _FirstOnly(CandidateSelector):
 def test_selection_result_aligns_weights_and_mapping_to_original_candidates() -> None:
     p, candidates = _fixture()
     prepared = gd.fitting.prepare_gaussian_weight_fit(
-        p,
-        candidates,
-        objective=gd.fitting.MomentMatching(),
-        candidate_selector=_FirstOnly(),
+        p, candidates, objective=gd.fitting.MomentMatching(), candidate_selector=_FirstOnly()
     )
-    result = prepared.fit(optimizer=gd.fitting.SoftmaxLBFGSB())
+    result = prepared.fit(optimizer=gd.fitting.SimplexSLSQP())
     assert result.weights == pytest.approx([0.0, 1.0])
     assert result.active_candidate_indices == (1,)
     assert result.mixture.mapping is not None
@@ -251,7 +247,7 @@ def test_candidate_selection_requires_a_complete_partition() -> None:
         _ = gd.fit_gaussian_weights(
             p,
             candidates,
-            optimizer=gd.fitting.SoftmaxLBFGSB(),
+            optimizer=gd.fitting.SimplexSLSQP(),
             objective=gd.fitting.MomentMatching(),
             candidate_selector=InvalidSelector(),
         )
@@ -342,7 +338,8 @@ def test_stratified_forward_fit_preserves_rare_component_mass(
         p,
         candidates,
         objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Stratified(n_samples=2, rng=0)),
-        optimizer=gd.fitting.SoftmaxLBFGSB(tol=1e-10),
+        # Keep SLSQP away from the numerically unstable near-zero boundary.
+        optimizer=gd.fitting.SimplexSLSQP(tol=1e-10, min_weight=1e-8),
     )
     assert result.converged
     assert result.weights == pytest.approx(p.weights, abs=1e-6)

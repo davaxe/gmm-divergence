@@ -50,7 +50,7 @@ def main() -> None:
     res = gd.fit_gaussian_weights(
         target,
         components,
-        optimizer=gd.fitting.SoftmaxLBFGSB(),
+        optimizer=gd.fitting.SimplexSLSQP(),
         objective=gd.fitting.ForwardKL(target_sampling=gd.sampling.Draw(n_samples=10_000, rng=0)),
         candidate_selector=gd.fitting.TopKSelector(
             k=6, scorer=gd.fitting.ForwardKLScore(estimator=gd.divergence.MomentMatchedGaussian())

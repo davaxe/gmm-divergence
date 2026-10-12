@@ -1,3 +1,4 @@
+import itertools
 import re
 from pathlib import Path
 
@@ -5,10 +6,13 @@ import pytest
 
 CODE_BLOCK_RE = re.compile(r"`[ \t]*(python|py)[^\n]*\n(.*?)`", re.IGNORECASE | re.DOTALL)
 MARKDOWN_LINK_RE = re.compile(r"\[[^]]*\]\(([^)]+)\)")
-DOCS_DIR = Path(__file__).parent.parent / "docs"
+ROOT_DIR = Path(__file__).parent.parent
+DOCS_DIR = ROOT_DIR / "docs"
 
 
-@pytest.mark.parametrize("md_file", sorted(DOCS_DIR.rglob("*.md")))
+@pytest.mark.parametrize(
+    "md_file", sorted(itertools.chain(DOCS_DIR.rglob("*.md"), [ROOT_DIR / "README.md"]))
+)
 def test_python_code_blocks_in_docs(md_file: Path) -> None:
     """Test code block examples in docs."""
     assert md_file.suffix == ".md", f"Expected a Markdown file, got {md_file}"
