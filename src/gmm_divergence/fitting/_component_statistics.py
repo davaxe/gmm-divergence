@@ -18,28 +18,29 @@ from gmm_divergence.covariance import CovarianceRegularizer
 
 @dataclass(frozen=True, slots=True)
 class ComponentStatistics:
-    """Responsibility-weighted empirical statistics with read-only arrays.
-
-    Attributes
-    ----------
-    weights : ndarray, shape (n_components,)
-        Soft counts divided by the number of observations.
-    means : ndarray, shape (n_components, n_features)
-        Responsibility-weighted empirical means.
-    covariances : ndarray, shape (n_components, n_features, n_features)
-        Weighted maximum-likelihood covariances, which may be singular.
-    soft_counts : ndarray, shape (n_components,)
-        Sum of responsibilities for each component.
-    effective_sample_sizes : ndarray, shape (n_components,)
-        Kish concentration measure, soft_counts squared divided by the sum of
-        squared responsibilities; not a count of independent observations.
-    """
+    """Responsibility-weighted empirical statistics with read-only arrays."""
 
     weights: FloatArray
+    """Soft counts divided by the number of observations.
+    Shape (n_components,).
+    """
     means: FloatArray
+    """Responsibility-weighted empirical means.
+    Shape (n_components, n_features).
+    """
     covariances: FloatArray
+    """Weighted maximum-likelihood covariances, which may be singular.
+    Shape (n_components, n_features, n_features).
+    """
     soft_counts: FloatArray
+    """Sum of responsibilities for each component.
+    Shape (n_components,).
+    """
     effective_sample_sizes: FloatArray
+    """Kish concentration measure, soft_counts squared divided by the sum of
+    squared responsibilities; not a count of independent observations.
+    Shape (n_components,).
+    """
 
     def __post_init__(self) -> None:
         for name in ("weights", "means", "covariances", "soft_counts", "effective_sample_sizes"):

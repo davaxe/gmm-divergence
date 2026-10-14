@@ -27,57 +27,47 @@ __all__ = [
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class MonteCarloStatistics:
-    """Monte Carlo sampling diagnostics for one directed estimate.
-
-    Attributes
-    ----------
-    n_samples : int
-        Number of observations used, including all adaptive batches.
-    standard_error : float or None
-        Estimated standard error in nats, when supported by the sampling design.
-        None indicates that uncertainty cannot be estimated, not zero error.
-    target_reached : bool or None
-        Whether adaptive sampling reached its requested standard error. False
-        means the sample budget was exhausted first; None means a fixed run.
-    """
+    """Monte Carlo sampling diagnostics for one directed estimate."""
 
     n_samples: int
+    """Number of observations used, including all adaptive batches."""
     standard_error: float | None
+    """Estimated standard error in nats, when supported by the sampling design.
+    None indicates that uncertainty cannot be estimated, not zero error.
+    """
     target_reached: bool | None = None
+    """Whether adaptive sampling reached its requested standard error. False
+    means the sample budget was exhausted first; None means a fixed run.
+    """
 
 
 @dataclass(frozen=True, slots=True, kw_only=True, repr=False)
 class DivergenceResult:
-    """A divergence in nats with estimator and evaluation metadata.
-
-    Attributes
-    ----------
-    value : float
-        Directed or composite divergence value. Estimates may be negative;
-        categorical KL may be infinite when comparison support is missing.
-    divergence : str
-        Quantity computed: kl, categorical_kl, symmetric_kl, or jensen_shannon.
-    estimator : KLEstimator or None
-        Configuration used for a directed Gaussian-family estimate. None for
-        categorical and composite results; composites retain it on their terms.
-    n_evaluations : int or None
-        Number of sample or deterministic integration points evaluated. None
-        for methods without such counts, or composites with an uncounted term.
-        Each point counts once, even though both densities are evaluated there.
-    monte_carlo : MonteCarloStatistics or None
-        Sampling diagnostics for a directed Monte Carlo estimate. Other methods
-        and composites have no aggregate sampling-uncertainty record.
-    terms : tuple of DivergenceResult
-        Ordered directional results for composite quantities: forward then
-        reverse for symmetric KL, p-to-midpoint then q-to-midpoint for JS.
-    """
+    """A divergence in nats with estimator and evaluation metadata."""
 
     value: float
+    """Directed or composite divergence value. Estimates may be negative;
+    categorical KL may be infinite when comparison support is missing.
+    """
     divergence: str = "kl"
+    """Quantity computed: kl, categorical_kl, symmetric_kl, or jensen_shannon."""
     estimator: KLEstimator | None = None
+    """Configuration used for a directed Gaussian-family estimate. None for
+    categorical and composite results; composites retain it on their terms.
+    """
     n_evaluations: int | None = None
+    """Number of sample or deterministic integration points evaluated. None
+    for methods without such counts, or composites with an uncounted term.
+    Each point counts once, even though both densities are evaluated there.
+    """
     monte_carlo: MonteCarloStatistics | None = None
+    """Sampling diagnostics for a directed Monte Carlo estimate. Other methods
+    and composites have no aggregate sampling-uncertainty record.
+    """
     terms: tuple[DivergenceResult, ...] = ()
+    """Ordered directional results for composite quantities: forward then
+    reverse for symmetric KL, p-to-midpoint then q-to-midpoint for JS.
+    """
 
     @property
     def n_samples(self) -> int | None:
@@ -109,43 +99,35 @@ class DivergenceResult:
 
 @dataclass(frozen=True, slots=True, kw_only=True, repr=False)
 class GaussianWeightFitResult:
-    """Fitted candidate weights and a directly usable mixture with provenance.
-
-    Attributes
-    ----------
-    weights : ndarray, shape (n_candidates,)
-        Independent, read-only weights in original candidate order. Rejected
-        candidates receive zero weight.
-    objective : FitObjective
-        Objective and sampling configuration used for preparation.
-    optimizer : Optimizer
-        Optimizer configuration, including any initial conditions.
-    objective_value : float
-        Final cached objective: KL or JS in nats, including target constants,
-        or a squared raw-moment residual for MomentMatching.
-    mixture : GaussianMixture
-        Combined fitted distribution. Its mapping identifies original candidate
-        indices and component positions within those candidates.
-    converged : bool
-        Whether the optimizer reported successful termination.
-    n_iterations : int
-        Number of optimizer iterations.
-    message : str
-        Optimizer termination explanation.
-    active_candidate_indices : tuple of int
-        Retained positions in their optimization order. Slice weights by these
-        indices when constructing a warm start for the prepared problem.
-    """
+    """Fitted candidate weights and a directly usable mixture with provenance."""
 
     weights: Weights
+    """Independent, read-only weights in original candidate order. Rejected
+    candidates receive zero weight.
+    Shape (n_candidates,).
+    """
     objective: FitObjective
+    """Objective and sampling configuration used for preparation."""
     optimizer: Optimizer
+    """Optimizer configuration, including any initial conditions."""
     objective_value: float
+    """Final cached objective: KL or JS in nats, including target constants,
+    or a squared raw-moment residual for MomentMatching.
+    """
     mixture: GaussianMixture
+    """Combined fitted distribution. Its mapping identifies original candidate
+    indices and component positions within those candidates.
+    """
     converged: bool
+    """Whether the optimizer reported successful termination."""
     n_iterations: int
+    """Number of optimizer iterations."""
     message: str
+    """Optimizer termination explanation."""
     active_candidate_indices: tuple[int, ...] = ()
+    """Retained positions in their optimization order. Slice weights by these
+    indices when constructing a warm start for the prepared problem.
+    """
 
     def __post_init__(self) -> None:
         """Take independent, read-only ownership of result arrays."""
@@ -186,36 +168,28 @@ class GaussianWeightFitResult:
 
 @dataclass(frozen=True, slots=True, kw_only=True, repr=False)
 class CategoricalWeightFitResult:
-    """Categorical forward-KL fit with independently owned, read-only arrays.
-
-    Attributes
-    ----------
-    weights : ndarray, shape (n_candidates,)
-        Simplex weights in original candidate-row order.
-    probabilities : ndarray, shape (n_categories,)
-        Weighted combination of candidate rows in original category order.
-    optimizer : Optimizer
-        Optimizer configuration, including any initial conditions.
-    objective_value : float
-        Exact forward KL from the target to fitted probabilities, in nats.
-    converged : bool
-        Whether the optimizer reported successful termination.
-    n_iterations : int
-        Number of optimizer iterations.
-    message : str
-        Optimizer termination explanation.
-    objective : str
-        Always forward_kl; categorical fitting supports this objective only.
-    """
+    """Categorical forward-KL fit with independently owned, read-only arrays."""
 
     weights: FloatArray
+    """Simplex weights in original candidate-row order.
+    Shape (n_candidates,).
+    """
     probabilities: FloatArray
+    """Weighted combination of candidate rows in original category order.
+    Shape (n_categories,).
+    """
     optimizer: Optimizer
+    """Optimizer configuration, including any initial conditions."""
     objective_value: float
+    """Exact forward KL from the target to fitted probabilities, in nats."""
     converged: bool
+    """Whether the optimizer reported successful termination."""
     n_iterations: int
+    """Number of optimizer iterations."""
     message: str
+    """Optimizer termination explanation."""
     objective: Literal["forward_kl"] = field(default="forward_kl", init=False)
+    """Always forward_kl; categorical fitting supports this objective only."""
 
     def __post_init__(self) -> None:
         """Take independent, read-only ownership of result arrays."""
@@ -237,25 +211,20 @@ class CategoricalWeightFitResult:
 
 @dataclass(frozen=True, slots=True, kw_only=True)
 class AlignedJointKLResult:
-    """Joint KL of aligned labels and observations, an upper bound on marginal KL.
-
-    Attributes
-    ----------
-    value : float
-        Total joint KL in nats, equal to weight_kl + weighted_component_kl.
-    weight_kl : float
-        Categorical KL between aligned mixture weights. Infinite when a
-        positive reference weight has zero comparison weight.
-    component_kls : ndarray, shape (n_components,)
-        Independent, read-only directed Gaussian KL values for aligned pairs.
-    weighted_component_kl : float
-        Sum of component_kls weighted by the reference mixture's weights.
-    """
+    """Joint KL of aligned labels and observations, an upper bound on marginal KL."""
 
     value: float
+    """Total joint KL in nats, equal to weight_kl + weighted_component_kl."""
     weight_kl: float
+    """Categorical KL between aligned mixture weights. Infinite when a
+    positive reference weight has zero comparison weight.
+    """
     component_kls: FloatArray
+    """Independent, read-only directed Gaussian KL values for aligned pairs.
+    Shape (n_components,).
+    """
     weighted_component_kl: float
+    """Sum of component_kls weighted by the reference mixture's weights."""
 
     def __post_init__(self) -> None:
         """Take independent, read-only ownership of result arrays."""
