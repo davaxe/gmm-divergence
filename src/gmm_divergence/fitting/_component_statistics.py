@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Literal
 
 import numpy as np
 import numpy.typing as npt
@@ -84,6 +84,7 @@ def component_statistics(
     *,
     responsibilities: npt.ArrayLike | None = None,
     mixture: GaussianMixture | None = None,
+    empty_component_policy: Literal["raise", "reference"] = "raise",
 ) -> ComponentStatistics:
     r"""Compute empirical component statistics from fixed responsibilities.
 
@@ -136,67 +137,63 @@ def component_statistics(
     Kish effective sample size measures concentration of responsibility weights,
     not component mass or the number of independent observations.
     """
-    x, r = _validate_component_statistics_inputs(
-        x, responsibilities=responsibilities, mixture=mixture
-    )
-
-    n_samples, n_features = x.shape
-    n_components = r.shape[1]
-    counts = r.sum(axis=0)
-    sample_probabilities = counts / n_samples
-    component_means = (r.T @ x) / counts[:, None]
-    component_covariances = np.empty((n_components, n_features, n_features), dtype=np.float64)
-
-    for k in range(n_components):
-        diff = x - component_means[k]
-
-        covariance = ((r[:, k, None] * diff).T @ diff) / counts[k]
-        component_covariances[k] = 0.5 * (covariance + covariance.T)
-
-    effective_sample_sizes = counts**2 / np.sum(r**2, axis=0)
-    return ComponentStatistics(
-        weights=sample_probabilities,
-        means=component_means,
-        covariances=component_covariances,
-        soft_counts=counts,
-        effective_sample_sizes=effective_sample_sizes,
-    )
-
-
-def _validate_component_statistics_inputs(
-    x: npt.ArrayLike, *, responsibilities: npt.ArrayLike | None, mixture: GaussianMixture | None
-) -> tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]:
-    """Validate observations and resolve component responsibilities."""
     if (responsibilities is None) == (mixture is None):
         msg = "Exactly one of 'responsibilities' or 'mixture' must be provided."
         raise ValueError(msg)
 
-    _validate_mixture(mixture)
+    if empty_component_policy == "reference" and mixture is None:
+        msg_0 = "empty_component_policy='reference' requires mixture."
+        raise ValueError(msg_0)
 
     x = np.asarray(x, dtype=np.float64)
     if x.ndim != 2 or 0 in x.shape or not np.isfinite(x).all():
-        msg_0 = "x must be a nonempty, finite 2D array."
-        raise ValueError(msg_0)
+        msg = "x must be a nonempty, finite 2D array."
+        raise ValueError(msg)
 
     r = np.asarray(
         mixture.responsibilities(x) if mixture is not None else responsibilities, dtype=np.float64
     )
-
     if r.ndim != 2 or r.shape[0] != len(x) or r.shape[1] == 0:
-        msg_1 = "responsibilities must have shape (n_samples, n_components)."
-        raise ValueError(msg_1)
-
+        msg = "responsibilities must have shape (n_samples, n_components)."
+        raise ValueError(msg)
     r = as_probability_rows(r, name="responsibilities")
 
-    empty = np.flatnonzero(r.sum(axis=0) == 0)
-    if empty.size:
-        msg_4 = f"Components with zero responsibility mass: {empty.tolist()}."
-        raise ValueError(msg_4)
+    n_samples, n_features = x.shape
+    n_components = r.shape[1]
+    counts = r.sum(axis=0)
+    empty = np.flatnonzero(counts == 0)
 
-    return x, r
+    if empty.size and empty_component_policy == "raise":
+        msg = f"Components with zero responsibility mass: {empty.tolist()}."
+        raise ValueError(msg)
 
+    if empty_component_policy == "reference" and mixture is not None:
+        means = mixture.means.copy()
+        covariances = mixture.covariances.copy()
+    else:
+        means = np.empty((n_components, n_features), dtype=np.float64)
+        covariances = np.empty((n_components, n_features, n_features), dtype=np.float64)
 
-def _validate_mixture(mixture: object) -> None:
-    if mixture is not None and not isinstance(mixture, GaussianMixture):
-        msg = "mixture must be a GaussianMixture."
-        raise TypeError(msg)
+    effective_sample_sizes = np.zeros(n_components, dtype=np.float64)
+
+    for k in np.flatnonzero(counts > 0):
+        # Scale before normalization to handle extremely small responsibilities.
+        column = r[:, k]
+        scaled = column / column.max()
+        weights = scaled / scaled.sum()
+
+        means[k] = weights @ x
+        centered = x - means[k]
+        covariance = (centered * weights[:, None]).T @ centered
+        covariances[k] = 0.5 * (covariance + covariance.T)
+
+        # Equivalent to counts[k]**2 / sum(r[:, k]**2), without underflow.
+        effective_sample_sizes[k] = 1.0 / (weights @ weights)
+
+    return ComponentStatistics(
+        weights=counts / n_samples,
+        means=means,
+        covariances=covariances,
+        soft_counts=counts,
+        effective_sample_sizes=effective_sample_sizes,
+    )
